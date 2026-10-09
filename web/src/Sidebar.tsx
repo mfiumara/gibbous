@@ -4,6 +4,7 @@ import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread } from 
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type PrBadge } from './api';
 import { EDGE, axis, progress, settle } from './drawer';
+import { prefetch } from './thread/prefetch';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 
 const roleTag: Partial<Record<Thread['role'], string>> = { reviewer: 'review', planner: 'plan', coordinator: 'lead', worker: 'task' };
@@ -61,8 +62,12 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
   const toggleArchive = () => { if (archived) api.patch(`/api/threads/${t.id}`, { status: 'idle' }).catch(toastError); else archiveWithUndo(t); };
   const rename = (title: string) => { setRenaming(false); if (title.trim() && title.trim() !== t.title) api.patch(`/api/threads/${t.id}`, { title: title.trim() }).catch(toastError); };
   // Phones have no hover or right-click: a long press opens the same menu.
-  const touchStart = () => { longPressed.current = false; press.current = setTimeout(() => { longPressed.current = true; setMenu(true); navigator.vibrate?.(8); }, 500); };
+  const touchStart = () => { prefetch(t.id); longPressed.current = false; press.current = setTimeout(() => { longPressed.current = true; setMenu(true); navigator.vibrate?.(8); }, 500); };
   const touchEnd = () => clearTimeout(press.current);
+  // Warm the timeline cache when the pointer rests on a row (not on a fly-by), so the click paints instantly.
+  const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const hoverIn = (e: { pointerType: string }) => { if (e.pointerType === 'mouse' && !active) hover.current = setTimeout(() => prefetch(t.id), 120); };
+  const hoverOut = () => clearTimeout(hover.current);
   if (sel.on) return (
     <label className={`${rowCls(false)} pl-3 pr-2 py-[5px] pointer-coarse:py-2 cursor-pointer`}>
       <input type="checkbox" className="accent-tide size-3.5" checked={sel.ids.has(t.id)} onChange={() => sel.toggle(t.id)} aria-label={`Select ${t.title}`} />
@@ -77,7 +82,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
   return (
     <div className="group relative" onContextMenu={e => { e.preventDefault(); setMenu(true); }}>
       <a href={`#/t/${t.id}`} onClick={e => { if (longPressed.current) { e.preventDefault(); longPressed.current = false; return; } close(); }}
-        onDoubleClick={e => { e.preventDefault(); setRenaming(true); }} onTouchStart={touchStart} onTouchEnd={touchEnd} onTouchMove={touchEnd}
+        onDoubleClick={e => { e.preventDefault(); setRenaming(true); }} onTouchStart={touchStart} onTouchEnd={touchEnd} onTouchMove={touchEnd} onPointerEnter={hoverIn} onPointerLeave={hoverOut}
         aria-current={active ? 'page' : undefined}
         className={`${rowCls(active)} pl-3 pr-2 py-[5px] pointer-coarse:py-2 select-none [-webkit-touch-callout:none] ${pr ? 'flex-wrap gap-y-[3px]' : ''}`}>
         <Moon thread={t.status} size={9} />

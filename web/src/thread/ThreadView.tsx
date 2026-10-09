@@ -4,7 +4,8 @@ import { api } from '../api';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
 import { Moon, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
-import { fromHistory, withInflight, reduce, checkpointFor, type Timeline, type Item } from './timeline';
+import { reduce, checkpointFor, type Timeline, type Item } from './timeline';
+import { getCached, putCached, onCached, fromResume, reconcile, revive } from './cache';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
 import { useSubagents, SubagentLine, SubagentsPanel } from './Subagents';
 import { isLive } from './agents';
@@ -77,6 +78,25 @@ export function ThreadView({ id }: { id: string }) {
   const [dropped, setDropped] = useState<{ files: File[]; n: number }>();
   const reopen = useRef<() => void>(() => {});
   const initial = useRef(new Set<string>()); // rows present at load don't animate in; new ones do
+  const fresh = useRef(false); // this open has Hermes' answer (vs. the cached copy painted on switch)
+  const anchor = useRef<{ id: string; y: number } | null>(null); // reading position across the background refresh
+  const tlRef = useRef(tl); tlRef.current = tl;
+  const limitRef = useRef(limit); limitRef.current = limit;
+
+  // Switching threads resets during render (not in an effect), so the first frame already shows the new thread:
+  // its cached timeline if we have one, else skeletons. Hermes' fresh copy replaces it in the background.
+  const key = `${id}:${thread?.sessionId}`;
+  const [shown, setShown] = useState('');
+  if (shown !== key) {
+    setShown(key);
+    const c = thread ? getCached(id) : undefined;
+    const hit = c && c.session === thread!.sessionId ? c : undefined;
+    setTl(hit ? revive(hit, thread!.status === 'running') : { items: [], running: false });
+    setSid(undefined); setLimit(PAGE); setEdit(undefined); setCheckpoints(hit?.checkpoints); setLoading(!hit);
+    initial.current = new Set(hit?.tl.items.map(i => i.id));
+    fresh.current = false; anchor.current = null;
+    stick.current = !SCROLL.has(id); restore.current = SCROLL.has(id);
+  }
 
   useEffect(() => { if (wide()) localStorage.setItem('gibbous.panel', panel ?? ''); }, [panel]);
 
@@ -86,7 +106,6 @@ export function ThreadView({ id }: { id: string }) {
     let cancelled = false;
     let unsub = () => {};
     const open = async () => {
-      setLoading(true);
       try {
         const { session_id } = await api.post<{ session_id: string }>(`/api/threads/${id}/attach`);
         if (cancelled) return;
@@ -102,27 +121,48 @@ export function ThreadView({ id }: { id: string }) {
         const r = await rpc.call('session.resume', { session_id: thread.sessionId, ...(thread.profile ? { profile: thread.profile } : {}) });
         if (cancelled) return;
         if (r.session_id !== session_id) offs.push(rpc.onSession(r.session_id, onEv)); // reaped in between
-        const items: Item[] = withInflight(fromHistory(r.messages ?? [], !!r.running), r.inflight, !!r.running);
+        const next = fromResume(r), prev = tlRef.current.items;
+        // Rows already on screen (from the cache) keep their ids and DOM, so the swap is invisible.
+        const items = reconcile(prev, next.items);
+        if (prev.length && !stick.current) {
+          // Reading back in the thread: keep the rendered window's first row so nothing above the viewport moves,
+          // and remember the first visible row to re-pin it after the commit.
+          const top = prev.length > limitRef.current ? prev[prev.length - limitRef.current] : prev[0];
+          const at = items.findIndex(i => i.id === top.id);
+          if (at >= 0) setLimit(l => Math.max(l, items.length - at));
+          const el = scroller.current;
+          const row = el && [...el.querySelectorAll<HTMLElement>('[data-k]')].find(n => n.offsetTop + n.offsetHeight > el.offsetTop + el.scrollTop);
+          anchor.current = row ? { id: row.dataset.k!, y: row.offsetTop - el!.scrollTop } : null;
+        }
         initial.current = new Set(items.map(i => i.id));
-        // Attaching mid-turn: time it from its user row so the finished turn still gets a duration footer.
-        const startedAt = r.running ? (items.findLast(i => i.kind === 'user') as { at?: number } | undefined)?.at ?? Date.now() : undefined;
-        setTl({ items, running: !!r.running, turnStartedAt: startedAt, info: r.info, usage: r.info?.usage ?? undefined, todos: r.todo_state?.todos });
+        setTl({ ...next, items });
         setSid(r.session_id);
-        stick.current = !SCROLL.has(id);
-        restore.current = SCROLL.has(id);
+        if (!prev.length) { stick.current = !SCROLL.has(id); restore.current = SCROLL.has(id); }
+        fresh.current = true;
       } catch (e) {
         toastError(e);
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
-    setTl({ items: [], running: false }); setSid(undefined); setLimit(PAGE); setEdit(undefined); setCheckpoints(undefined);
     reopen.current = open;
     open();
     const offReady = rpc.onReady(open);
     return () => { cancelled = true; unsub(); offReady(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, thread?.sessionId]);
+
+  // A prefetch (sidebar hover/press) that lands while we still show skeletons: paint it now.
+  useEffect(() => onCached(k => {
+    const c = k === id && !fresh.current && !tlRef.current.items.length ? getCached(id) : undefined;
+    if (!c || c.session !== thread?.sessionId) return;
+    initial.current = new Set(c.tl.items.map(i => i.id));
+    setTl(revive(c, useStore.getState().threads.find(t => t.id === id)?.status === 'running')); setCheckpoints(c.checkpoints); setLoading(false);
+  }), [id, thread?.sessionId]);
+
+  // Keep this thread's cache entry current as live events reduce the timeline (only once Hermes answered this open,
+  // so a stale copy is never re-stamped as fresh).
+  useEffect(() => { if (sid && thread) putCached(id, { tl, session: thread.sessionId, checkpoints }); }, [tl, sid, checkpoints]);
 
   // File checkpoints (Hermes snapshots before each turn's first edit); refreshed whenever a turn ends.
   const loadCheckpoints = useCallback(() => {
@@ -134,7 +174,10 @@ export function ThreadView({ id }: { id: string }) {
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
+    const a = anchor.current; anchor.current = null;
+    const row = a && !stick.current ? content.current?.querySelector<HTMLElement>(`[data-k="${CSS.escape(a.id)}"]`) : null;
     if (keepFromBottom.current != null) { el.scrollTop = el.scrollHeight - keepFromBottom.current; keepFromBottom.current = null; }
+    else if (row) el.scrollTop = row.offsetTop - a!.y;
     else if (stick.current) el.scrollTop = el.scrollHeight;
     else if (restore.current && !loading) { restore.current = false; el.scrollTop = el.scrollHeight - (SCROLL.get(id) ?? 0); }
   }, [tl.items, requests.length, loading, limit]);
@@ -264,13 +307,13 @@ export function ThreadView({ id }: { id: string }) {
                 case 'user': {
                   const idx = users.indexOf(it);
                   const cp = checkpointFor(it.at, users[idx + 1]?.at, checkpoints?.list ?? []);
-                  return <div key={it.id} className={anim}><UserMessage item={it} onEdit={it.rowId != null ? () => setEdit({ rowId: it.rowId, text: it.text }) : undefined} onRevert={cp ? () => revert(cp) : undefined} /></div>;
+                  return <div key={it.id} className={anim} data-k={it.id}><UserMessage item={it} onEdit={it.rowId != null ? () => setEdit({ rowId: it.rowId, text: it.text }) : undefined} onRevert={cp ? () => revert(cp) : undefined} /></div>;
                 }
-                case 'assistant': return <div key={it.id} className={anim}><AssistantMessage item={it} endOfTurn={items[i + 1]?.kind === 'turn'} /></div>;
-                case 'reasoning': return <div key={it.id} className={anim}><ReasoningBlock item={it} /></div>;
-                case 'tool': return <div key={it.id} className={anim}><ToolRow item={it} cwd={thread.cwd} /></div>;
-                case 'subagent': return <div key={it.id} className={anim}><SubagentLine item={it} agents={agents} onOpen={openAgents} /></div>;
-                case 'side': return <div key={it.id} className={anim}><SideCard item={it} /></div>;
+                case 'assistant': return <div key={it.id} className={anim} data-k={it.id}><AssistantMessage item={it} endOfTurn={items[i + 1]?.kind === 'turn'} /></div>;
+                case 'reasoning': return <div key={it.id} className={anim} data-k={it.id}><ReasoningBlock item={it} /></div>;
+                case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} /></div>;
+                case 'subagent': return <div key={it.id} className={anim} data-k={it.id}><SubagentLine item={it} agents={agents} onOpen={openAgents} /></div>;
+                case 'side': return <div key={it.id} className={anim} data-k={it.id}><SideCard item={it} /></div>;
                 case 'turn': return <p key={it.id} className="flex justify-end items-center gap-1.5 font-mono text-[11.5px] text-dust -mt-2 select-none"><Clock size={11} />{[it.ms != null && fmtDuration(it.ms), it.tokens && `${fmtTokens(it.tokens)} tokens`, it.cost && fmtUsd(it.cost)].filter(Boolean).join(' · ')}</p>;
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
