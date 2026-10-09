@@ -97,7 +97,7 @@ export function ExternalThread({ thread }: { thread: Thread }) {
               case 'assistant': return <Markdown key={it.id} text={it.text} />;
               case 'reasoning': return <ReasoningBlock key={it.id} item={it} />;
               case 'tool': return <ToolRow key={it.id} item={it} />;
-              case 'notice': return <p key={it.id} className="text-[12.5px] text-ash border-l border-line pl-3 truncate">{it.text}</p>;
+              case 'notice': return <p key={it.id} className="text-[12.5px] text-ash border-l border-line pl-3 truncate select-text">{it.text}</p>;
               default: return null;
             }
           })}

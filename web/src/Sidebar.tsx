@@ -27,7 +27,7 @@ function PrLine({ pr }: { pr: PrBadge }) {
   const open = (e: React.MouseEvent | React.KeyboardEvent) => { e.preventDefault(); e.stopPropagation(); window.open(pr.url, '_blank', 'noopener'); };
   return (
     <span role="link" tabIndex={-1} onClick={open} data-tip={`Pull request #${pr.number} · ${word ?? 'open'}${ci ? ` · checks ${ci.word}` : ''}\nOpens on GitHub`}
-      className="basis-full flex items-center gap-1.5 pl-[19px] h-4 text-[11px] leading-none text-ash tabular-nums cursor-pointer hover:[&_.pr-n]:text-dust">
+      className="basis-full flex items-center gap-1.5 pl-[19px] h-4 text-[11px] leading-none text-ash tabular-nums hover:[&_.pr-n]:text-dust">
       <Icon size={10} strokeWidth={2.4} className={`flex-none ${cls}`} aria-hidden />
       <span className="pr-n transition-colors">{pr.number}</span>
       {word && <><span aria-hidden className="opacity-50">·</span><span className={cls}>{word}</span></>}
@@ -64,7 +64,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
   const touchStart = () => { longPressed.current = false; press.current = setTimeout(() => { longPressed.current = true; setMenu(true); navigator.vibrate?.(8); }, 500); };
   const touchEnd = () => clearTimeout(press.current);
   if (sel.on) return (
-    <label className={`${rowCls(false)} pl-3 pr-2 py-[5px] pointer-coarse:py-2 cursor-pointer`}>
+    <label className={`${rowCls(false)} pl-3 pr-2 py-[5px] pointer-coarse:py-2`}>
       <input type="checkbox" className="accent-tide size-3.5" checked={sel.ids.has(t.id)} onChange={() => sel.toggle(t.id)} aria-label={`Select ${t.title}`} />
       <span className="truncate flex-1">{t.title}</span><span className="text-[11px] text-ash">{ago(t.updatedAt)}</span>
     </label>

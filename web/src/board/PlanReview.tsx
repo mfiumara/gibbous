@@ -45,7 +45,7 @@ export function PlanReview({ draft }: { draft: PlanDraft }) {
         <Button size="sm" onClick={() => api.post(`/api/plans/${draft.id}/discard`).catch(toastError)}>Discard</Button>
       </div>
       {draft.error && <p className="rounded-lg border border-oxide/40 bg-oxide/5 px-3 py-2 text-[13px] text-oxide">The planner's reply couldn't be read ({draft.error}). Re-plan with feedback, or add tasks by hand.</p>}
-      {draft.summary && <details className="text-[13px] text-dust"><summary className="cursor-pointer label">Planner's summary</summary><div className="mt-2"><Markdown text={draft.summary} /></div></details>}
+      {draft.summary && <details className="text-[13px] text-dust"><summary className="label">Planner's summary</summary><div className="mt-2"><Markdown text={draft.summary} /></div></details>}
       <ol className="space-y-2.5">
         {tasks.map((t, i) => (
           <li key={t.key} className="group rounded-xl border border-line bg-basalt p-3 space-y-2">

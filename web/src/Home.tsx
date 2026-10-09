@@ -14,9 +14,9 @@ localStorage.removeItem('gibbous.draft.home');
 // let the chosen value ellipsize.
 function SelectChip({ icon, value, onChange, children, label }: { icon: React.ReactNode; value: string; onChange(v: string): void; children: React.ReactNode; label: string }) {
   return (
-    <label className="press relative inline-flex items-center gap-2 h-8 pl-2.5 pr-7 max-w-full min-w-0 rounded-lg bg-ridge/60 shadow-[inset_0_1px_0_var(--surface-hi),0_1px_2px_rgb(0_0_0/.15)] hover:bg-ridge hover:border-ash/40 text-[13px] cursor-pointer">
+    <label className="press relative inline-flex items-center gap-2 h-8 pl-2.5 pr-7 max-w-full min-w-0 rounded-lg bg-ridge/60 shadow-[inset_0_1px_0_var(--surface-hi),0_1px_2px_rgb(0_0_0/.15)] hover:bg-ridge hover:border-ash/40 text-[13px]">
       <span className="text-dust flex-none">{icon}</span>
-      <select value={value} onChange={e => onChange(e.target.value)} aria-label={label} className="appearance-none bg-transparent focus:outline-none cursor-pointer min-w-0 max-w-56 text-ellipsis">{children}</select>
+      <select value={value} onChange={e => onChange(e.target.value)} aria-label={label} className="appearance-none bg-transparent focus:outline-none min-w-0 max-w-56 text-ellipsis">{children}</select>
       <ChevronDown size={12} className="absolute right-2.5 text-ash pointer-events-none" />
     </label>
   );
@@ -98,7 +98,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
               <option value="__add">+ Add project…</option>
             </SelectChip>}
             {!host && canWorktree && <>
-              <label className="press inline-flex items-center gap-2 h-8 px-2.5 rounded-lg bg-ridge/60 shadow-[inset_0_1px_0_var(--surface-hi),0_1px_2px_rgb(0_0_0/.15)] text-[13px] cursor-pointer select-none">
+              <label className="press inline-flex items-center gap-2 h-8 px-2.5 rounded-lg bg-ridge/60 shadow-[inset_0_1px_0_var(--surface-hi),0_1px_2px_rgb(0_0_0/.15)] text-[13px] select-none">
                 <Switch label="Isolated worktree" checked={worktree} onChange={setWorktree} />Worktree
               </label>
               {worktree && <SelectChip icon={<GitBranch size={13} />} label="Base branch" value={base} onChange={setBase}>

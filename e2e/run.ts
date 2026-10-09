@@ -95,6 +95,24 @@ try {
   await page.waitForSelector('[role=dialog][aria-label="Search or jump"]', { timeout: 3000 }).catch(() => failures.push('⌘K palette did not open'));
   await page.keyboard.press('Escape');
 
+  // An app, not a page: chrome isn't selectable and has no browser context menu; messages and fields keep both.
+  await visit(page, '#/', 'e2e');
+  const feel = await page.evaluate(() => {
+    const sel = (e: Element | null) => e ? getComputedStyle(e).userSelect : 'missing';
+    const menu = (e: Element | null) => { const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); e?.dispatchEvent(ev); return ev.defaultPrevented; };
+    // A timeline message and a user bubble, built from the real classes (no thread exists in this run).
+    const msg = Object.assign(document.createElement('div'), { innerHTML: '<div class="prose-moon"><p>reply</p></div><div class="rounded-br-md"><div class="whitespace-pre-wrap">prompt</div></div>' });
+    document.getElementById('root')!.append(msg);
+    const nav = document.querySelector('nav a[href]'), box = document.querySelector('textarea');
+    const r = { nav: sel(nav), button: sel(document.querySelector('button')), prose: sel(msg.querySelector('.prose-moon p')), bubble: sel(msg.querySelector('.whitespace-pre-wrap')), box: sel(box),
+      navMenu: menu(nav), boxMenu: menu(box) };
+    msg.remove();
+    return r;
+  });
+  if (feel.nav !== 'none' || feel.button !== 'none') failures.push(`chrome text is selectable: ${JSON.stringify(feel)}`);
+  if (feel.prose !== 'text' || feel.bubble !== 'text' || feel.box !== 'text') failures.push(`message/field text isn't selectable: ${JSON.stringify(feel)}`);
+  if (!feel.navMenu || feel.boxMenu) failures.push(`browser context menu: chrome should block it, fields keep it: ${JSON.stringify(feel)}`);
+
   // Every density fills the window exactly: nothing cut off at the bottom, no gap (viewport units ignore zoom).
   for (const d of ['compact', 'cozy', 'roomy']) {
     await page.evaluate(x => { localStorage.setItem('gibbous.density', x); document.documentElement.dataset.density = x; }, d);
