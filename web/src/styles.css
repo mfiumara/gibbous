@@ -1,0 +1,298 @@
+@import "tailwindcss";
+@import "@fontsource-variable/atkinson-hyperlegible-next";
+@import "@fontsource/martian-mono/400.css";
+@import "@fontsource/martian-mono/500.css";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@xterm/xterm/css/xterm.css";
+
+/* ── Tokens ─────────────────────────────────────────────────────────────
+   Night (default): basalt surfaces, moonlight text, one warm halo reserved for "needs you".
+   [data-theme="light"] overrides every colour below. */
+@theme {
+  --color-basalt: #15171c;      /* app background */
+  --color-crater: #1c1f26;      /* raised surfaces */
+  --color-ridge: #262a33;       /* hover, inputs */
+  --color-line: rgb(232 229 220 / .075); /* hairlines: a tint of moonlight, not a drawn grey, so they recede */
+  --color-well: #111317;        /* code, diffs, terminal */
+  --color-moon: #e8e5dc;        /* primary text, "done" */
+  --color-dust: #a4a7b1;        /* secondary text */
+  --color-ash: #858890;         /* tertiary; still ≥4.5:1 on basalt and crater */
+  --color-tide: #9db4d8;        /* running, focus */
+  --color-halo: #f2c46d;        /* needs you */
+  --color-oxide: #e8775f;       /* errors */
+  --color-sprout: #8fc79a;      /* additions */
+  --color-chart: #5f8ee0;       /* single-series data marks (validated vs crater: lightness, chroma, contrast) */
+
+  --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-label: "Martian Mono", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --ease-out: cubic-bezier(.22, .8, .24, 1);
+
+  /* Motion is felt, not watched: short, small, no overshoot. */
+  --animate-rise: rise .2s var(--ease-out) both;
+  --animate-fade: fade .16s var(--ease-out) both;
+  --animate-pop: pop .14s var(--ease-out) both;
+}
+
+[data-theme="light"] {
+  --color-basalt: #f3f4f7;
+  --color-crater: #ffffff;
+  --color-ridge: #e9ebf0;
+  --color-line: rgb(22 24 29 / .085);
+  --color-well: #f7f8fa;
+  --color-moon: #16181d;
+  --color-dust: #4b505b;
+  --color-ash: #6a6e77;
+  --color-tide: #3a68b0;
+  --color-halo: #95650d;
+  --color-oxide: #c0442d;
+  --color-sprout: #287c3f;
+  --color-chart: #3a68b0;
+  color-scheme: light;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(3px); } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { opacity: 0; transform: scale(.985); } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes wax { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+@keyframes halo { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-halo) 55%, transparent); } 50% { box-shadow: 0 0 0 4px transparent; } }
+@keyframes caret { 50% { opacity: 0; } }
+
+@layer base {
+  :root { color-scheme: dark; --surface-hi: rgb(255 255 255 / .045);
+    /* Lit edge for raised things: brighter where light would catch the top, fading down the sides. */
+    --edge: linear-gradient(180deg, rgb(255 255 255 / .14), rgb(255 255 255 / .05) 22%, rgb(255 255 255 / .025) 70%, rgb(255 255 255 / .05));
+    --well-shadow: inset 0 1px 2px rgb(0 0 0 / .35), inset 0 0 0 1px rgb(255 255 255 / .04); --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 30px -12px rgb(0 0 0 / .6); --shadow-pop: 0 16px 48px -12px rgb(0 0 0 / .6), 0 2px 6px rgb(0 0 0 / .3); }
+  [data-theme="light"] { --surface-hi: rgb(255 255 255 / .9);
+    --edge: linear-gradient(180deg, rgb(22 24 29 / .07), rgb(22 24 29 / .09) 60%, rgb(22 24 29 / .14));
+    --well-shadow: inset 0 1px 2px rgb(22 24 29 / .08), inset 0 0 0 1px rgb(22 24 29 / .08); --shadow: 0 1px 2px rgb(16 20 30 / .06), 0 8px 24px -14px rgb(16 20 30 / .16); --shadow-pop: 0 18px 50px -16px rgb(16 20 30 / .28), 0 2px 6px rgb(16 20 30 / .08); }
+  [data-density="compact"] { zoom: .92; --zoom: .92; }
+  [data-density="roomy"] { zoom: 1.06; --zoom: 1.06; }
+  html, body, #root { height: 100%; }
+  /* An app, not a page: no rubber-band bounce of the window itself. Only html/body: on every element it also stopped
+     scroll chaining, so a wheel over a code block or reasoning line (their own small scrollers) never reached the
+     thread and scrolling up "did nothing". */
+  html { overscroll-behavior: none; }
+  /* Pinned to the window, not sized in viewport units: 100dvh ignores the density zoom (Roomy ran 48px past the
+     bottom, Compact left a gap) and 100% can be iOS's toolbar-collapsed height. inset:0 is exact in every case. */
+  #root { position: fixed; inset: 0; }
+  body {
+    margin: 0; background: var(--color-basalt); color: var(--color-moon);
+    font-family: var(--font-sans); font-size: 14.5px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+    overscroll-behavior: none; font-variant-numeric: tabular-nums;
+  }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+  ::selection { background: color-mix(in srgb, var(--color-tide) 32%, transparent); }
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--color-tide) 80%, transparent); outline-offset: 2px; border-radius: 6px; }
+  * { scrollbar-width: thin; scrollbar-color: var(--color-line) transparent; }
+  /* Text wraps, so a text box never needs to scroll sideways; with classic (mouse-attached) scrollbars WebKit would
+     otherwise draw a grey bar under a box that's a pixel too wide. */
+  textarea { overflow-x: hidden; }
+  /* Classic scrollbars, WebKit flavour: a slim thumb on no track, only as visible as it needs to be. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--color-moon) 14%, transparent); border-radius: 9999px; border: 3px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--color-moon) 26%, transparent); }
+  button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+  svg.lucide { stroke-width: 1.75; }
+}
+
+@layer components {
+  /* Small uppercase mono labels: section names, metadata. */
+  .label { font-family: var(--font-label); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-dust); }
+
+  /* Raised surface: no outline. A lit edge (gradient border), a soft top highlight and a shadow that lifts it. */
+  .surface { border: 1px solid transparent; background: linear-gradient(var(--color-crater), var(--color-crater)) padding-box, var(--edge) border-box;
+    box-shadow: inset 0 1px 0 0 var(--surface-hi), var(--shadow); }
+  /* Moonlit: the composer catches light from the moon behind the app. The light comes from the moon's side
+     (top-right; top on phones), and its strength follows tonight's phase (--ml, set in ui.tsx): bright at full moon,
+     only an earthshine glimmer at new moon. Hover lets a little in; focus brings it up fully. */
+  .moonlit { position: relative; isolation: isolate; --mx: 86%;
+    /* During a lunar eclipse the light turns the Moon's copper, as far as --blood (ui.tsx) says it has. */
+    --mc: calc(238 - 6 * var(--blood, 0)) calc(235 - 130 * var(--blood, 0)) calc(224 - 150 * var(--blood, 0));
+    /* Light strength: a crescent still glimmers, a full moon really shines. */
+    --s: calc(.3 + .7 * var(--ml, .5));
+    transition: box-shadow .9s var(--ease-out); }
+  [data-theme="light"] .moonlit { --mc: calc(58 + 120 * var(--blood, 0)) calc(104 - 40 * var(--blood, 0)) calc(176 - 136 * var(--blood, 0)); }
+  @media (max-width: 640px) { .moonlit { --mx: 50%; } }
+  .moonlit::before, .moonlit::after { content: ""; position: absolute; border-radius: inherit; pointer-events: none; opacity: 0;
+    transition: opacity .9s var(--ease-out); }
+  /* The lit rim: a gradient border, brightest where it faces the moon, running down the near side. */
+  .moonlit::before { inset: -1px; padding: 1.5px;
+    background: radial-gradient(110% 220% at var(--mx) -40%, rgb(var(--mc) / calc(.95 * var(--s))), rgb(var(--mc) / calc(.35 * var(--s))) 40%, rgb(var(--mc) / calc(.06 * var(--s))) 75%, transparent 95%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+  /* The sheen across the surface, under the content. */
+  .moonlit::after { inset: 0; z-index: -1;
+    background: radial-gradient(85% 150% at var(--mx) -45%, rgb(var(--mc) / calc(.13 * var(--s))), rgb(var(--mc) / calc(.03 * var(--s))) 50%, transparent 80%); }
+  .moonlit:hover::before, .moonlit:hover::after { opacity: .55; transition-duration: .45s; }
+  .moonlit:focus-within::before, .moonlit:focus-within::after { opacity: 1; transition-duration: .7s; }
+  .moonlit:hover { box-shadow: inset 0 1px 0 var(--surface-hi), var(--shadow), 12px -10px 50px -20px rgb(var(--mc) / calc(.18 * var(--s))); }
+  .moonlit:focus-within { box-shadow: inset 0 1px 0 var(--surface-hi), var(--shadow),
+    18px -14px 70px -18px rgb(var(--mc) / calc(.4 * var(--s))), 0 0 0 1px rgb(var(--mc) / calc(.06 * var(--s))); }
+  /* Tiles: rows and cards inside a page. A soft fill and a top highlight, no outline. */
+  .tile { background: color-mix(in srgb, var(--color-crater) 62%, transparent); box-shadow: inset 0 1px 0 var(--surface-hi), 0 1px 2px rgb(0 0 0 / .12); transform: translateY(0);
+    transition: background-color .38s var(--ease-out), box-shadow .45s var(--ease-out), transform .45s var(--ease-out); }
+  .tile:hover { transition-duration: .12s, .18s, .18s; }
+  .tile:hover { background: var(--color-crater); box-shadow: inset 0 1px 0 var(--surface-hi), 0 8px 22px -10px rgb(0 0 0 / .55); transform: translateY(-1px); }
+  .tile.press:active:not(:disabled) { transform: translateY(0) scale(.99); }
+  /* Recessed: fields sit into the surface instead of being boxed on it. */
+  /* The sidebar's edge: a hairline that fades out at both ends instead of a ruled line. */
+  .edge-r { position: relative; }
+  .edge-r::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 1px; pointer-events: none;
+    background: linear-gradient(180deg, transparent, var(--color-line) 12%, var(--color-line) 88%, transparent); }
+  .well { background: color-mix(in srgb, var(--color-well) 80%, transparent); box-shadow: var(--well-shadow); border: 1px solid transparent; }
+
+  /* Floating layers (menus, completions, palette, toasts): translucent, blurred, rise in. */
+  .pop {
+    backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid transparent; background: linear-gradient(color-mix(in srgb, var(--color-crater) 96%, transparent), color-mix(in srgb, var(--color-crater) 96%, transparent)) padding-box, var(--edge) border-box;
+    box-shadow: inset 0 1px 0 0 var(--surface-hi), var(--shadow-pop);
+    animation: var(--animate-pop); transform-origin: var(--origin, top);
+  }
+
+  /* Every pressable thing: quick colour fade, a tiny press. */
+  /* Hover is asymmetric: it arrives fast (feels responsive) and leaves slowly, so moving down a list leaves a soft
+     trail instead of a flicker. Icons inside follow the text colour. */
+  .press { transition: background-color .38s var(--ease-out), color .3s var(--ease-out), border-color .3s var(--ease-out), box-shadow .38s var(--ease-out), opacity .2s, transform .18s var(--ease-out); }
+  .press:hover { transition-duration: .1s, .1s, .1s, .14s, .1s, .18s; }
+  .press svg { transition: color .3s var(--ease-out), opacity .3s var(--ease-out), transform .25s var(--ease-out); }
+  .press:hover svg { transition-duration: .1s; }
+  /* Nav rows: the icon brightens with the label (it stays a step dimmer at rest). */
+  nav a.press > svg:first-child, nav button.press > svg:first-child { opacity: .8; }
+  nav a.press:hover > svg:first-child, nav button.press:hover > svg:first-child, nav a.press[aria-current] > svg:first-child { opacity: 1; }
+  .press:active:not(:disabled) { transform: scale(.985); }
+
+  /* Native <dialog> with enter/exit motion. */
+  dialog.sheet { opacity: 0; transform: scale(.985); transition: opacity .16s var(--ease-out), transform .18s var(--ease-out), overlay .2s allow-discrete, display .2s allow-discrete; }
+  dialog.sheet[open] { opacity: 1; transform: none; }
+  @starting-style { dialog.sheet[open] { opacity: 0; transform: scale(.985); } }
+  dialog.sheet::backdrop { background: rgb(5 6 9 / 0); backdrop-filter: blur(0); transition: background .2s, backdrop-filter .2s, overlay .2s allow-discrete, display .2s allow-discrete; }
+  dialog.sheet[open]::backdrop { background: rgb(5 6 9 / .55); backdrop-filter: blur(3px); }
+  @starting-style { dialog.sheet[open]::backdrop { background: rgb(5 6 9 / 0); backdrop-filter: blur(0); } }
+
+  .skeleton { border-radius: 6px; background: linear-gradient(90deg, var(--color-ridge) 0%, color-mix(in srgb, var(--color-ridge) 40%, var(--color-line)) 50%, var(--color-ridge) 100%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
+
+  /* Tooltip bubble (positioned by ui.tsx). */
+  .tip { position: fixed; z-index: 100; pointer-events: none; padding: 4px 8px; border-radius: 6px; font-size: 12px; line-height: 1.4; white-space: pre-line; max-width: min(340px, calc(100vw - 16px)); width: max-content;
+    color: var(--color-moon); background: color-mix(in srgb, var(--color-crater) 94%, transparent); border: 1px solid var(--color-line); box-shadow: var(--shadow-pop);
+    backdrop-filter: blur(12px); animation: fade .14s var(--ease-out) both; }
+  .tip kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--color-dust); margin-left: 6px; }
+
+  /* Markdown in the timeline */
+  .prose-moon { overflow-wrap: anywhere; line-height: 1.62; }
+  .prose-moon > * + * { margin-top: .72em; }
+  .prose-moon h1, .prose-moon h2, .prose-moon h3 { font-weight: 700; line-height: 1.3; margin-top: 1.15em; letter-spacing: -.005em; }
+  .prose-moon h1 { font-size: 1.24em; } .prose-moon h2 { font-size: 1.12em; } .prose-moon h3 { font-size: 1em; }
+  .prose-moon ul { list-style: disc; padding-left: 1.3em; } .prose-moon ol { list-style: decimal; padding-left: 1.4em; }
+  .prose-moon li + li { margin-top: .22em; } .prose-moon li::marker { color: var(--color-ash); }
+  .prose-moon a { color: var(--color-tide); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-tide) 40%, transparent); text-underline-offset: 3px; transition: text-decoration-color .15s; }
+  .prose-moon a:hover { text-decoration-color: var(--color-tide); }
+  .prose-moon blockquote { border-left: 2px solid var(--color-line); padding-left: .9em; color: var(--color-dust); }
+  .prose-moon code { font-family: var(--font-mono); font-size: .86em; background: var(--color-ridge); padding: .12em .38em; border-radius: 5px; }
+  .prose-moon pre { position: relative; background: var(--color-well); border: 1px solid var(--color-line); border-radius: 10px; padding: .85em 1em; overflow-x: auto; font-size: 12.5px; line-height: 1.6; }
+  .prose-moon pre code { background: none; padding: 0; font-size: inherit; }
+  .prose-moon table { border-collapse: collapse; display: block; overflow-x: auto; font-size: .94em; }
+  .prose-moon th, .prose-moon td { border: 1px solid var(--color-line); padding: .35em .65em; text-align: left; }
+  .prose-moon th { background: var(--color-crater); font-weight: 700; }
+  .prose-moon hr { border-color: var(--color-line); }
+  .prose-moon img { border-radius: 8px; border: 1px solid var(--color-line); max-height: 420px; }
+
+  /* Moon-phase status glyph. */
+  .moon { position: relative; display: inline-block; flex: none; border-radius: 9999px; overflow: hidden; }
+  .moon-running { box-shadow: 0 0 10px -1px color-mix(in srgb, var(--color-tide) 55%, transparent); }
+  .moon-running::after { content: ""; position: absolute; inset: 0; border-radius: 9999px; background: var(--color-basalt); animation: wax 1.8s cubic-bezier(.45,.05,.55,.95) infinite; }
+  .moon-needs { animation: halo 1.8s ease-in-out infinite; }
+  .caret::after { content: "▍"; color: var(--color-tide); animation: caret 1s steps(1) infinite; margin-left: 1px; }
+
+  /* Tonight's Moon (SkyMoon.tsx): huge, faint, partly beyond the top-right edge, behind everything. */
+  /* Scrolling performance: a live backdrop-filter over the page (it used to be on the thread header) re-blurs this
+     moon on every scrolled frame and halved the frame rate. Keep blurs on transient layers only. No mix-blend-mode either
+     (it was screen / multiply): blending re-composited every frame against the moon, and over these near-solid
+     backgrounds plain alpha over the premultiplied moon looks the same. */
+  .sky-moon { position: fixed; z-index: -1; pointer-events: none; --s: clamp(600px, 104vmin, 1400px); width: var(--s); height: var(--s);
+    top: calc(var(--s) * -.16); right: calc(var(--s) * -.2); opacity: 0; transition: opacity 2.4s var(--ease-out);
+    mask-image: linear-gradient(225deg, #000 50%, transparent 88%); -webkit-mask-image: linear-gradient(225deg, #000 50%, transparent 88%); }
+  /* .26 is the ceiling: secondary text over the brightest highlands still clears 4.5:1. */
+  .sky-moon[data-ready] { opacity: .26; }
+  /* Daylight: a negative, multiplied in. The lit face prints as a fine engraving; the night side vanishes into paper. */
+  [data-theme="light"] .sky-moon { filter: invert(1); }
+  [data-theme="light"] .sky-moon[data-ready] { opacity: .2; }
+  /* Phones: centred over the top of the screen, a little wider than it, fading downward. */
+  @media (max-width: 640px) {
+    .sky-moon { --s: 100vw; right: auto; left: 50%; translate: -50% 0; top: calc(var(--s) * -.12);
+      mask-image: linear-gradient(180deg, #000 45%, transparent 92%); -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent 92%); }
+  }
+  [data-skymoon="off"] .sky-moon { display: none; }
+  /* Eclipse wash: the copper light spills faintly over the app from the moon's corner, only as red as the Moon is. */
+  .moon-wash { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: calc(var(--blood, 0) * .9); transition: opacity 60s linear;
+    background: radial-gradient(70% 80% at 88% 0%, rgb(196 82 52 / .16), rgb(150 52 36 / .06) 45%, transparent 75%); }
+  [data-theme="light"] .moon-wash { background: radial-gradient(70% 80% at 88% 0%, rgb(190 80 50 / .1), rgb(190 80 50 / .03) 45%, transparent 75%); }
+  @media (max-width: 640px) { .moon-wash { background: radial-gradient(110% 60% at 50% 0%, rgb(196 82 52 / .16), transparent 75%); } }
+  [data-skymoon="off"] .moon-wash { display: none; }
+}
+
+/* hljs — muted, readable in both themes */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #b8a6e0; }
+.hljs-string, .hljs-attr-value, .hljs-template-string { color: #a9cf9e; }
+.hljs-number, .hljs-literal { color: #e7b97a; }
+.hljs-comment { color: var(--color-ash); font-style: italic; }
+.hljs-title, .hljs-title.function_ { color: #8fb9e8; }
+.hljs-attr, .hljs-property, .hljs-variable { color: #d7c8a0; }
+.hljs-type, .hljs-class .hljs-title { color: #7fc4c0; }
+.hljs-meta, .hljs-tag { color: var(--color-dust); }
+.hljs-addition { color: var(--color-sprout); } .hljs-deletion { color: var(--color-oxide); }
+[data-theme="light"] .hljs-keyword, [data-theme="light"] .hljs-built_in { color: #6a3fb5; }
+[data-theme="light"] .hljs-string { color: #2f7a3a; }
+[data-theme="light"] .hljs-number, [data-theme="light"] .hljs-literal { color: #a3600c; }
+[data-theme="light"] .hljs-title, [data-theme="light"] .hljs-title.function_ { color: #2a5fae; }
+[data-theme="light"] .hljs-attr, [data-theme="light"] .hljs-property, [data-theme="light"] .hljs-variable { color: #8a5a00; }
+[data-theme="light"] .hljs-type { color: #11756f; }
+
+
+.xterm { padding: 10px; height: 100%; }
+.safe-b { padding-bottom: env(safe-area-inset-bottom); }
+.moon-loader { display: inline-block; flex: none; width: var(--s); height: var(--s); background: url(/moon/phases.webp) 0 0 / calc(var(--s) * 36) var(--s) no-repeat;
+  animation: lunation 3s steps(36) infinite, fade .3s var(--ease-out) both; }
+@keyframes lunation { to { background-position-x: calc(var(--s) * -36); } }
+[data-theme="light"] .moon-loader { filter: drop-shadow(0 0 1px rgb(0 0 0 / .35)); }
+/* The sidebar's still moon reddens with the real one during an eclipse (--blood, ui.tsx). */
+.moon-still { filter: sepia(var(--blood, 0)) saturate(calc(1 + 2.5 * var(--blood, 0))) hue-rotate(calc(-12deg * var(--blood, 0))) brightness(calc(1 - .25 * var(--blood, 0))); }
+[data-theme="light"] .moon-still { filter: sepia(var(--blood, 0)) saturate(calc(1 + 2.5 * var(--blood, 0))) hue-rotate(calc(-12deg * var(--blood, 0))) drop-shadow(0 0 1px rgb(0 0 0 / .35)); }
+@media (prefers-reduced-motion: reduce) { .moon-loader { animation: none; background-position-x: calc(var(--s) * var(--tonight) * -1); } }
+[data-motion="off"] .moon-loader, .moon-loader.moon-still { animation: none; background-position-x: calc(var(--s) * var(--tonight) * -1); }
+/* Near new moon the lit sliver is a few pixels: a faint rim keeps the logo's disc readable. */
+.moon-still { border-radius: 9999px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-moon) 16%, transparent); }
+/* Touch screens: iOS zooms into any field under 16px on focus, and flashes grey on every tap. The size iOS checks is
+   after the density zoom, so Compact (.92) needs 16/.92 here or every focus zooms the page and pans it sideways. */
+@media (pointer: coarse) {
+  input, textarea, select { font-size: max(16px, calc(16px / var(--zoom, 1))) !important; }
+  .label { font-size: 11px; }
+  * { -webkit-tap-highlight-color: transparent; }
+  /* Nothing hides behind hover on a touch screen: hover-revealed actions just show, slightly dimmed. */
+  .opacity-0[class*="group-hover"][class*=":opacity-100"] { opacity: .75; }
+}
+.safe-t { padding-top: env(safe-area-inset-top); }
+
+[data-motion="off"] *, [data-motion="off"] *::before, [data-motion="off"] *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  .moon-running::after { transform: translateX(45%); }
+}
+
+/* ⌘F matches (CSS Custom Highlight API). */
+::highlight(find) { background-color: color-mix(in srgb, var(--color-halo) 28%, transparent); color: inherit; }
+::highlight(find-current) { background-color: var(--color-halo); color: #1a1408; }
+/* Long threads: skip layout/paint for off-screen timeline rows. */
+.tl-row { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+
+/* Composer autosize: the textarea and an invisible copy of its text share one grid cell, so the box grows with
+   the text without ever being measured or collapsed. Both must wrap identically. */
+.grow-wrap { display: grid; }
+.grow-wrap::after { content: attr(data-value) " "; white-space: pre-wrap; overflow-wrap: break-word; visibility: hidden; overflow: hidden; }
+.grow-wrap > textarea, .grow-wrap::after { grid-area: 1 / 1; max-height: 40vh; scrollbar-gutter: stable; } /* same wrap width with or without a scrollbar */
+.grow-wrap > textarea { overflow-y: auto; }
+.grow-text, .grow-wrap::after { padding: .875rem 1rem .25rem; font: inherit; font-size: 15px; line-height: 1.625; letter-spacing: inherit; border: 0; }

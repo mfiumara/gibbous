@@ -1,0 +1,20 @@
+{
+  "name": "server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --disable-warning=ExperimentalWarning main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "web-push": "^3.6.7",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/web-push": "^3.6.4",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2"
+  }
+}
