@@ -97,7 +97,7 @@ function Data() {
     <Section title="Backup" description={`Projects, threads, tasks, playbooks, schedules and settings in one file. Conversations themselves live in Hermes.${bytes ? ` Current state: ${(bytes / 1024).toFixed(0)} KB.` : ''}`}
       aside={<div className="flex gap-2">
         <a href="/api/backup" download={`gibbous-backup-${new Date().toLocaleDateString('en-CA')}.json`} className="press inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[13px] hover:bg-ridge"><Download size={13} />Download backup</a>
-        <label className="press inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[13px] hover:bg-ridge cursor-pointer focus-within:outline-2"><Upload size={13} />Restore…
+        <label className="press inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[13px] hover:bg-ridge has-[:focus-visible]:outline-2"><Upload size={13} />Restore…
           <input type="file" accept="application/json,.json" className="sr-only" onChange={e => { restoreFrom(e.target.files?.[0]); e.target.value = ''; }} /></label>
       </div>} />
     <Section title="Diagnostics" description="Tokens and keys are removed. Attach it to bug reports."

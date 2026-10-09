@@ -297,3 +297,39 @@
 .grow-wrap > textarea, .grow-wrap::after { grid-area: 1 / 1; max-height: 40vh; scrollbar-gutter: stable; } /* same wrap width with or without a scrollbar */
 .grow-wrap > textarea { overflow-y: auto; }
 .grow-text, .grow-wrap::after { padding: .875rem 1rem .25rem; font: inherit; font-size: 15px; line-height: 1.625; letter-spacing: inherit; border: 0; }
+
+/* ── Native feel ────────────────────────────────────────────────────────
+   An app, not a page: chrome can't be selected, dragged, long-pressed or double-tap-zoomed, and points with the arrow.
+   Layered (base/components), so Tailwind utilities like select-text, cursor-grab or touch-none still win. */
+@layer base {
+  /* Chrome text isn't selectable; what you'd want to copy opts back in. Inputs must be listed explicitly: iOS Safari
+     otherwise inherits the none and fields can't take a caret. -webkit-touch-callout stops the long-press link/image
+     sheet on chrome (rows, the logo); content keeps it. */
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; cursor: default; }
+  :where(.prose-moon, pre, code, samp, table, dd, .whitespace-pre-wrap, .whitespace-pre, input, textarea, [contenteditable]) {
+    -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; cursor: auto; }
+  /* A button inside content (copy, expand) is still chrome. */
+  :where(button, [role="button"], summary) { -webkit-user-select: none; user-select: none; }
+  /* The arrow on everything you click, like a Mac app; the pointing hand only for real links in what Hermes wrote.
+     cursor is inherited, so content resets to auto (I-beam over text, arrow elsewhere). */
+  :where(a, button, [role="button"], [role="link"], [role="tab"], [role="switch"], [role="menuitem"], summary, label, select) { cursor: default; }
+  .prose-moon a[href] { cursor: pointer; }
+  /* No drag ghost when a click on a link or icon wanders a few pixels; real drags use draggable="true" and images in
+     messages can still be dragged out. */
+  :where(img, a) { -webkit-user-drag: none; }
+  :where(.prose-moon) :where(img, a), [draggable="true"] { -webkit-user-drag: auto; }
+  /* No double-tap zoom (and no 300ms wait for it) anywhere; pans and pinch stay with the browser. Effective
+     touch-action is the intersection up the tree, so this on html covers everything. */
+  html { touch-action: manipulation; }
+  /* Rings are for the keyboard. Containers focused by code (tabIndex -1 scrollers, panels, dialogs) never show one:
+     WebKit counts a click on them as focus-visible. */
+  [tabindex="-1"]:focus-visible { outline: none; }
+  :focus:not(:focus-visible) { outline: none; }
+}
+@layer components {
+  /* Pressing lands at once (the asymmetric hover fade above is for leaving); release fades back at the normal pace. */
+  .press:active:not(:disabled), .press:active:not(:disabled) svg { transition-duration: 0s; }
+  /* Touch has no hover to show what's under the finger: dim on press like a UIKit button (needs the empty touchstart
+     listener in main.tsx, or iOS never applies :active). */
+  @media (hover: none) { .press:active:not(:disabled) { opacity: .6; } }
+}

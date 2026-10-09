@@ -163,7 +163,7 @@ function AgentPage({ a, name, sid, active }: { a: Agent; name: string; sid?: str
           {live && sid && a.liveId && <IconButton label="Stop this subagent" onClick={() => rpc.call('subagent.interrupt', { session_id: sid, subagent_id: a.liveId! }).catch(toastError)}><Square size={12} /></IconButton>}
         </div>
         <p className="font-mono text-[11px] text-ash">{[label[a.state], a.model, elapsed != null && fmtDuration(elapsed), a.toolCalls ? `${a.toolCalls} tools` : '', a.tokens ? `${fmtTokens(a.tokens)} tok` : ''].filter(Boolean).join(' · ')}</p>
-        <details className="text-[13px] text-dust"><summary className="cursor-pointer text-ash hover:text-dust select-none">Task</summary><div className="mt-1 whitespace-pre-wrap">{a.goal}</div></details>
+        <details className="text-[13px] text-dust"><summary className="text-ash hover:text-dust select-none">Task</summary><div className="mt-1 whitespace-pre-wrap">{a.goal}</div></details>
         {live && a.activity && <p className="flex items-center gap-2 text-[12.5px] text-tide"><MoonLoader size={12} label="working" /><span className="truncate">{a.activity}</span></p>}
       </header>
       <div className="space-y-2.5 border-t border-line pt-3">

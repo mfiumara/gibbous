@@ -150,7 +150,7 @@ export function SessionsView() {
         </div>
         {foreign && <p className="text-[13px] text-dust">Sessions from {src === 'claude' ? 'Claude Code' : 'Codex'} on this Mac. Opening one copies it into Hermes so you can continue it here.</p>}
         {src !== 'all' && !foreign && !machine && (
-          <label className="flex items-center gap-2 text-sm text-dust cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-sm text-dust select-none">
             <input type="checkbox" className="accent-tide" checked={synced.has(src)} onChange={() => toggleSync(src)} />
             Keep {sourceLabel(src)} conversations in the sidebar (new ones are added automatically)
           </label>

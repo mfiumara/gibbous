@@ -27,7 +27,7 @@ export function Graph({ tasks, onOpen }: { tasks: Task[]; onOpen(t: Task): void 
           const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x, y2 = b.y + H / 2, mx = (x1 + x2) / 2;
           const hot = critical.has(t.id) && critical.has(d);
           return <path key={`${d}-${t.id}`} d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2 - 2},${y2}`} fill="none" markerEnd="url(#arrow)"
-            stroke={hot ? 'var(--color-halo)' : 'var(--color-line)'} strokeWidth={hot ? 2 : 1.5} className="pointer-events-auto cursor-pointer hover:stroke-oxide" onClick={() => confirm('Remove this dependency?') && unlink(t, d)} />;
+            stroke={hot ? 'var(--color-halo)' : 'var(--color-line)'} strokeWidth={hot ? 2 : 1.5} className="pointer-events-auto hover:stroke-oxide" onClick={() => confirm('Remove this dependency?') && unlink(t, d)} />;
         }))}
         {drag && (() => { const a = pos.get(drag.from)!; return <path d={`M${a.x + W},${a.y + H / 2} L${drag.x},${drag.y}`} stroke="var(--color-tide)" strokeWidth={2} strokeDasharray="4 4" fill="none" />; })()}
       </svg>
