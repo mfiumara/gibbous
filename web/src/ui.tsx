@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { createPortal, flushSync } from 'react-dom';
+import { screenChange } from './screenTransition';
 import { Download, X } from 'lucide-react';
 import { api, type ThreadStatus, type TaskStatus } from './api';
 import { useStore, toastError } from './store';
@@ -24,7 +25,6 @@ export function parse(h: string): Route {
 }
 
 
-// Route changes are instant: the page and the sidebar highlight just switch, nothing slides or morphs.
 // Tonight's moonlight as CSS variables, so surfaces are lit like the moon in the background: --ml strength
 // (0 = new … 1 = full, dimmed by Earth's shadow) and --blood, how copper-red an eclipse has turned it (0..1).
 // Both follow the real eclipse contacts, so the UI warms over the hour before totality and cools after it.
@@ -36,16 +36,24 @@ const setMoonlight = () => {
 setMoonlight();
 setInterval(setMoonlight, 60_000);
 
-export function useRoute() {
-  const [r, setR] = useState(() => parse(location.hash));
-  useEffect(() => {
-    const f = () => setR(parse(location.hash));
-    addEventListener('hashchange', f);
-    return () => removeEventListener('hashchange', f);
-  }, []);
-  return r;
-}
-export const go = (path: string) => { location.hash = path; };
+// One route for the whole app, so a change is one screen transition (screenTransition.ts), not one per useRoute().
+let route = parse(location.hash), routeHash = location.hash;
+const routeSubs = new Set<() => void>();
+const syncRoute = () => {
+  if (location.hash === routeHash) return;
+  const from = route; routeHash = location.hash;
+  // Reads the latest hash: a skipped transition may run its update after a newer navigation already committed.
+  screenChange(from, parse(routeHash), sync => {
+    route = parse(routeHash);
+    const notify = () => routeSubs.forEach(f => f());
+    sync ? flushSync(notify) : notify();
+  });
+};
+addEventListener('hashchange', syncRoute);
+export const routeNow = () => route;
+const subRoute = (f: () => void) => { routeSubs.add(f); return () => { routeSubs.delete(f); }; };
+export function useRoute() { return useSyncExternalStore(subRoute, routeNow); }
+export const go = (path: string) => { location.hash = path; syncRoute(); };
 
 // Unsent text survives reloads, navigation and restarts; an empty draft leaves nothing behind.
 export function useDraft(key: string): [string, (v: string | ((t: string) => string)) => void] {

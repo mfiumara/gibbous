@@ -3,7 +3,8 @@ import { X, Search, CornerDownLeft, Copy } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
-import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, parse, sourceLabel, applyPrefs } from './ui';
+import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, parse, sourceLabel, applyPrefs, type Route } from './ui';
+import { BackSwipe } from './BackSwipe';
 import { Sidebar } from './Sidebar';
 import { ProjectFilter } from './ProjectFilter';
 import { Home, AddProjectDialog } from './Home';
@@ -117,6 +118,18 @@ export function App() {
     (window as any).webkit?.messageHandlers?.gibbousBadge?.postMessage(waiting); // macOS app: Dock + menu-bar count
   }, [waiting]);
 
+  const screenRef = useRef<HTMLDivElement>(null);
+  const screen = (r: Route) =>
+    r.name === 'thread' ? <ThreadRoute key={r.id} id={r.id} /> :
+    r.name === 'board' ? <Board projectId={r.projectId} /> :
+    r.name === 'inbox' ? <InboxView /> :
+    r.name === 'sessions' ? <SessionsView /> :
+    r.name === 'search' ? <SearchView q={r.q} /> :
+    r.name === 'settings' ? <SettingsView tab={r.tab} /> :
+    r.name === 'rooms' ? <RoomsView id={r.id} /> :
+    r.name === 'automations' ? <AutomationsView /> :
+    <Home projectId={r.projectId} host={r.host} onAddProject={() => setAdding(true)} />;
+
   if (!loaded) return <div className="h-full grid place-items-center"><MoonLoader size={56} label="Starting Gibbous" /></div>;
   if (!authed) return <Login />;
 
@@ -126,17 +139,14 @@ export function App() {
       <Sidebar route={route} onAddProject={() => setAdding(true)} />
       <main className="flex-1 min-w-0 h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         <HealthBanner />
-        <div className="flex-1 min-h-0"><Boundary key={location.hash}><Suspense fallback={<div className="h-full grid place-items-center"><MoonLoader size={40} /></div>}>
-          {route.name === 'thread' ? <ThreadRoute key={route.id} id={route.id} /> :
-           route.name === 'board' ? <Board projectId={route.projectId} /> :
-           route.name === 'inbox' ? <InboxView /> :
-           route.name === 'sessions' ? <SessionsView /> :
-           route.name === 'search' ? <SearchView q={route.q} /> :
-           route.name === 'settings' ? <SettingsView tab={route.tab} /> :
-           route.name === 'rooms' ? <RoomsView id={route.id} /> :
-           route.name === 'automations' ? <AutomationsView /> :
-           <Home projectId={route.projectId} host={route.host} onAddProject={() => setAdding(true)} />}
-        </Suspense></Boundary></div>
+        {/* .vt-screen is the only part that moves on navigation (screenTransition.ts); BackSwipe draws the screen
+            a back gesture returns to underneath it. */}
+        <div className="flex-1 min-h-0 relative">
+          <BackSwipe screen={screenRef} render={screen} />
+          <div ref={screenRef} className="vt-screen relative h-full"><Boundary key={location.hash}><Suspense fallback={<div className="h-full grid place-items-center"><MoonLoader size={40} /></div>}>
+            {screen(route)}
+          </Suspense></Boundary></div>
+        </div>
       </main>
       <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
       {palette && <Palette start={palette === 'projects' ? 'projects' : undefined} onClose={() => useStore.setState({ palette: false })} />}

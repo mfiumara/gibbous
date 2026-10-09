@@ -333,3 +333,22 @@
      listener in main.tsx, or iOS never applies :active). */
   @media (hover: none) { .press:active:not(:disabled) { opacity: .6; } }
 }
+/* ── Screen transitions (screenTransition.ts picks the kind, screens.ts the rules) ─────────────────────────────
+   Only the screen area is captured: the root isn't, so the sidebar, the sky moon and overlays stay live underneath.
+   Both screens are transparent over the sky, so in a push/pop the lower one is clipped to the strip left of the moving
+   edge instead of being covered by an opaque sheet (the clip and the 30% parallax move together: no overlap, ever). */
+:root { view-transition-name: none; }
+.vt-screen { view-transition-name: screen; }
+:root[data-vt="fade"]::view-transition-group(screen), :root[data-vt="fade"]::view-transition-old(screen), :root[data-vt="fade"]::view-transition-new(screen) { animation-duration: .12s; }
+:root[data-vt="push"], :root[data-vt="pop"] { --vt-ease: cubic-bezier(.32, .72, 0, 1); --vt-d: .38s; }
+:root[data-vt="push"]::view-transition-group(screen), :root[data-vt="pop"]::view-transition-group(screen) { animation-duration: var(--vt-d); }
+:root[data-vt="push"]::view-transition-old(screen), :root[data-vt="push"]::view-transition-new(screen),
+:root[data-vt="pop"]::view-transition-old(screen), :root[data-vt="pop"]::view-transition-new(screen) { mix-blend-mode: normal; animation-duration: var(--vt-d); animation-timing-function: var(--vt-ease); animation-fill-mode: both; }
+:root[data-vt="push"]::view-transition-old(screen) { animation-name: vt-under-out; }
+:root[data-vt="push"]::view-transition-new(screen) { animation-name: vt-top-in; box-shadow: -14px 0 32px -12px rgb(0 0 0 / .55); }
+:root[data-vt="pop"]::view-transition-old(screen) { animation-name: vt-top-out; z-index: 1; box-shadow: -14px 0 32px -12px rgb(0 0 0 / .55); }
+:root[data-vt="pop"]::view-transition-new(screen) { animation-name: vt-under-in; }
+@keyframes vt-top-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes vt-top-out { from { transform: none; } to { transform: translateX(100%); } }
+@keyframes vt-under-out { from { transform: none; clip-path: inset(0 0 0 0); filter: brightness(1); } to { transform: translateX(-30%); clip-path: inset(0 70% 0 0); filter: brightness(.75); } }
+@keyframes vt-under-in { from { transform: translateX(-30%); clip-path: inset(0 70% 0 0); filter: brightness(.75); } to { transform: none; clip-path: inset(0 0 0 0); filter: brightness(1); } }
