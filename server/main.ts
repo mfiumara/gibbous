@@ -648,6 +648,7 @@ orch.on('change', ({ kind, data }) => broadcast(kind, kind === 'requests' ? [...
 const pollPrs = () => refreshPrs(b => broadcast('prs', b)).catch(e => console.error('[prs]', e));
 setTimeout(pollPrs, 3000);
 setInterval(pollPrs, 60_000);
+setInterval(() => orch.reconcileRunning().catch(e => console.error('[reconcile]', e)), 30_000);
 notifications.on('notify', n => broadcast('notify', n));
 hc.on('ready', () => { broadcast('hermes', { ready: true }); pollHealth(true); }); // after `hermes update`, serve restarts
 hc.on('down', () => broadcast('hermes', { ready: false }));

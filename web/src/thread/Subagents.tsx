@@ -49,7 +49,7 @@ export function SubagentChip({ agents, onOpen }: { agents: Agent[]; onOpen(): vo
   return (
     <button onClick={onOpen} aria-label={`${agents.length} subagents: ${summaryLine(agents)}`}
       data-tip={`${agents.length} subagent${agents.length > 1 ? 's' : ''} · ${summaryLine(agents)}\nClick to watch them side by side.`}
-      className={`press inline-flex items-center gap-1.5 h-8 px-2 rounded-lg text-[12px] hover:bg-ridge flex-none ${active ? 'text-tide' : 'text-dust hover:text-moon'}`}>
+      className={`press inline-flex items-center gap-1.5 h-8 px-1.5 sm:px-2 rounded-lg text-[12px] hover:bg-ridge flex-none ${active ? 'text-tide' : 'text-dust hover:text-moon'}`}>
       {active ? <MoonLoader size={13} label="subagents working" /> : <Bot size={14} />}
       <span className="tabular-nums">{active ? `${active}/${agents.length}` : agents.length}</span>
     </button>

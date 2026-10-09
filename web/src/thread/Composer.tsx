@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Navigation, Square, Paperclip, CornerDownLeft, Layers, MessageCircleQuestion, Mic, Headphones, Camera, Clock } from 'lucide-react';
+import { ArrowUp, Navigation, Square, Paperclip, CornerDownLeft, Layers, MessageCircleQuestion, Mic, Headphones, Clock } from 'lucide-react';
 import { canDictate, dictate, handsFree, setHandsFree } from '../voice';
 import { Menu, MenuItem, MoonLoader, useDraft, NO_PREDICT } from '../ui';
 import { useAttachments, AttachmentChips, filesFrom, takeHandoff } from '../attachments';
@@ -55,7 +55,6 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
   const [busy, setBusy] = useState(false);
   const ta = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const cameraInput = useRef<HTMLInputElement>(null);
   const toast = useStore(s => s.toast);
 
   useEffect(() => { setEditText(edit ? edit.text : null); if (edit) ta.current?.focus(); }, [edit]);
@@ -206,11 +205,9 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
           className="grow-text block w-full resize-none bg-transparent placeholder:text-ash focus:outline-none" />
         </div>
         {/* Round buttons never shrink (they went oval on a phone); the model name is what gives way. */}
-        <div className="flex items-center gap-1 px-2 pb-2 min-w-0">
+        <div className="flex items-center gap-0.5 sm:gap-1 px-2 pb-2 min-w-0">
           <input ref={fileInput} type="file" multiple hidden onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
-          <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
           <button aria-label="Attach files" data-tip="Attach files" onClick={() => fileInput.current?.click()} className="press size-8 flex-none grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge"><Paperclip size={16} /></button>
-          <button aria-label="Take a photo" onClick={() => cameraInput.current?.click()} className="hidden pointer-coarse:grid press size-8 flex-none place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge"><Camera size={16} /></button>
           <div className="relative flex-none">
             <button aria-label="Send mode" data-tip="Side question or background task" aria-expanded={modeMenu} onClick={() => setModeMenu(!modeMenu)} className={`press size-8 flex-none grid place-items-center rounded-lg hover:bg-ridge ${mode !== 'send' ? 'text-tide' : 'text-dust hover:text-moon'}`}><Layers size={15} /></button>
             <Menu open={modeMenu} onClose={() => setModeMenu(false)} align="left" side="top">

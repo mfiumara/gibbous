@@ -81,3 +81,15 @@ test('a send after Hermes reaped the live session re-attaches instead of failing
   await until('turn finished', () => t.lastText === 'done');
   assert.equal(t.status, 'idle');
 });
+
+test('a thread stuck on "running" after Hermes finished is set back to idle', async () => {
+  const t = await orch.createThread({ title: 'Stuck chat', cwd: repo });
+  await orch.attach(t);
+  t.status = 'running'; t.updatedAt = Date.now() - 60_000; // the message.complete never reached us
+  await orch.reconcileRunning();
+  assert.equal(t.status, 'idle');
+  t.status = 'running'; t.updatedAt = Date.now();           // just started: leave it alone
+  await orch.reconcileRunning();
+  assert.equal(t.status, 'running');
+  t.status = 'idle';
+});

@@ -11,6 +11,9 @@ const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const usable = (ps: ModelOptionProvider[]) => ps.filter(p => p.authenticated !== false && p.models?.length);
 
 // Model, reasoning effort and fast mode for one thread; lives in the composer and opens upward.
+// Phones: the row has room for ~8 characters, so drop the vendor ("claude-opus-5-5" → "opus-5-5", "openai/gpt-6" → "gpt-6").
+export const shortModel = (m: string) => m.replace(/^.*\//, '').replace(/^(claude|anthropic|google|meta-llama)-/, '');
+
 export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: string }) {
   const rpc = useRpc();
   const [open, setOpen] = useState(false);
@@ -27,10 +30,12 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
   const needle = q.toLowerCase();
   const isCurrent = (p: ModelOptionProvider, m: string) => info?.model === m && (!info.provider || info.provider === p.slug);
   return (
-    <div className="relative min-w-0">
+    // flex + max-w-full: the button must shrink with its wrapper. A plain block wrapper shrank alone and the button
+    // spilled out under the next chips (model name, shield, subagents and context moon piled up on a phone).
+    <div className="relative min-w-0 flex">
       <button onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" disabled={!sid} data-tip="Model for this thread"
-        className="press inline-flex items-center gap-1.5 h-8 px-2 rounded-lg text-[12px] text-dust hover:text-moon hover:bg-ridge disabled:opacity-40 min-w-0">
-        <span className="font-mono truncate min-w-0 max-w-36 sm:max-w-52">{info?.model ?? 'model'}</span>
+        className="press inline-flex items-center gap-1.5 h-8 px-2 rounded-lg text-[12px] text-dust hover:text-moon hover:bg-ridge disabled:opacity-40 min-w-0 max-w-full overflow-hidden">
+        <span className="font-mono truncate min-w-0 max-w-36 sm:max-w-52"><span className="sm:hidden">{shortModel(info?.model ?? 'model')}</span><span className="hidden sm:inline">{info?.model ?? 'model'}</span></span>
         {info?.reasoning_effort && <span className="label text-[9px] text-ash hidden sm:inline">{info.reasoning_effort}</span>}
         {info?.fast && <Zap size={11} className="text-halo flex-none" />}
         <ChevronDown size={11} className="flex-none" />

@@ -7,6 +7,7 @@ import { Moon, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens,
 import { fromHistory, withInflight, reduce, checkpointFor, type Timeline, type Item } from './timeline';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
 import { useSubagents, SubagentLine, SubagentsPanel } from './Subagents';
+import { isLive } from './agents';
 import { Composer, type EditTarget } from './Composer';
 import { RequestCard } from './RequestCard';
 import { ThreadHeader, type PanelDef } from './ThreadHeader';
@@ -176,6 +177,9 @@ export function ThreadView({ id }: { id: string }) {
 
   const items = tl.items.length > limit ? tl.items.slice(-limit) : tl.items;
   const running = tl.running || thread.status === 'running';
+  // The parent blocked on delegate_task does nothing itself: say what it's waiting for.
+  const liveAgents = agents.filter(isLive).length;
+  const waitingOn = liveAgents ? `Waiting on ${liveAgents} subagent${liveAgents > 1 ? 's' : ''}` : undefined;
   const notice = (text: string) => setTl(t => ({ ...t, items: [...t.items, { kind: 'notice', id: `n${Date.now()}`, text, tone: 'info' }] }));
 
   const branch = async () => {
@@ -271,7 +275,7 @@ export function ThreadView({ id }: { id: string }) {
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
             })}
-            {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? 'Waxing…'}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
+            {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
             {thread.status === 'error' && !running && thread.error && !tl.items.some(i => i.kind === 'notice') && <p className="text-[13px] text-oxide">{thread.error}</p>}
             {requests.map(r => <div key={r.id} className="animate-rise"><RequestCard r={r} /></div>)}
           </div>

@@ -89,6 +89,21 @@ export class Orchestrator extends EventEmitter {
     }
   }
 
+  // A turn can end without Gibbous seeing message.complete (a notification turn Hermes released, a dropped event).
+  // The thread then said "running" forever: Waxing… and a Stop button with nothing happening. Ask Hermes now and then.
+  async reconcileRunning() {
+    for (const t of state.threads) {
+      if (t.readOnly || t.status !== 'running' || Date.now() - t.updatedAt < 20_000 || !this.live.has(t.sessionId)) continue;
+      if ([...this.requests.values()].some(r => r.threadId === t.id)) continue;
+      const r = await this.cl(t).call('session.resume', { session_id: t.sessionId, omit_messages: true, ...(t.profile ? { profile: t.profile } : {}) }).catch(() => null);
+      if (!r || r.running || r.open_requests?.length || t.status !== 'running') continue;
+      console.log(`[orch] ${t.id}: Hermes finished the turn without telling us; marking idle`);
+      this.touch(t, { status: 'idle' });
+      this.emit('turnDone', t);
+      this.afterTurn(t, !r.inflight?.error).catch(e => console.error('[orch] reconcile', e));
+    }
+  }
+
   // Attach Gibbous's connection to a thread's session; returns the live session id.
   attach(t: Thread): Promise<string> {
     if (t.readOnly) return Promise.reject(new Error(`this conversation belongs to ${t.source ?? 'another Hermes surface'}; it is read-only in Gibbous`));
