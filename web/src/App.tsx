@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
 import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, parse, sourceLabel, applyPrefs } from './ui';
 import { Sidebar } from './Sidebar';
+import { ProjectFilter } from './ProjectFilter';
 import { Home, AddProjectDialog } from './Home';
 import { ThreadView } from './thread/ThreadView';
 import { ExternalThread } from './thread/ExternalThread';
@@ -138,7 +139,7 @@ export function App() {
         </Suspense></Boundary></div>
       </main>
       <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
-      {palette && <Palette onClose={() => useStore.setState({ palette: false })} />}
+      {palette && <Palette start={palette === 'projects' ? 'projects' : undefined} onClose={() => useStore.setState({ palette: false })} />}
       <Modal open={help} onClose={() => setHelp(false)} title="Keyboard shortcuts">
         <ul className="divide-y divide-line">{SHORTCUTS.map(([k, d]) => <li key={k} className="flex items-center py-2 text-sm"><span className="flex-1 text-dust">{d}</span><Kbd>{k}</Kbd></li>)}</ul>
       </Modal>
@@ -178,7 +179,7 @@ function ThreadRoute({ id }: { id: string }) {
   return t?.readOnly ? <ExternalThread thread={t} /> : <ThreadView id={id} />;
 }
 
-type Opt = { label: string; hint: string; href?: string; run?: () => void; status?: ThreadStatus; keywords?: string };
+type Opt = { label: string; hint: string; href?: string; run?: () => void; status?: ThreadStatus; keywords?: string; stay?: boolean };
 
 // Every settings section, findable by what's inside it ("theme", "password", "budget"…).
 const SETTINGS: [string, string, string][] = [
@@ -202,7 +203,8 @@ const SETTINGS: [string, string, string][] = [
   ['update', 'Update', 'version upgrade compatibility'],
 ];
 
-function Palette({ onClose }: { onClose(): void }) {
+function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
+  const [mode, setMode] = useState(start);
   const { threads, projects } = useStore(useShallow(s => ({ threads: s.threads, projects: s.projects })));
   const route = useRoute();
   const here = route.name === 'thread' ? threads.find(t => t.id === route.id) : undefined;
@@ -215,6 +217,7 @@ function Palette({ onClose }: { onClose(): void }) {
       ...projects.flatMap(p => [{ label: `New thread in ${p.name}`, hint: 'start', href: `/new/${p.id}` }, { label: `${p.name} board`, hint: 'board', href: `/board/${p.id}` }]),
       ...threads.filter(t => t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt)
         .map(t => ({ label: t.title, hint: t.readOnly ? sourceLabel(t.source) : projects.find(p => p.id === t.projectId)?.name ?? 'chat', href: `/t/${t.id}`, status: t.status })),
+      ...(projects.length > 1 ? [{ label: 'Filter projects in the sidebar…', hint: 'filter', keywords: 'show hide projects sidebar toggle', stay: true, run: () => setMode('projects') }] : []),
       { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Hermes history', hint: 'go', href: '/sessions' }, { label: 'Settings', hint: 'go', href: '/settings' },
       ...SETTINGS.map(([id, label, keywords]) => ({ label: `${label} settings`, hint: 'settings', href: `/settings/${id}`, keywords })),
       ...(here ? [
@@ -233,7 +236,8 @@ function Palette({ onClose }: { onClose(): void }) {
     // Always offer a full-text search across every conversation.
     return [...hits.slice(0, 11), ...(needle ? [{ label: `Search all conversations for “${q.trim()}”`, hint: 'search', href: `/search?q=${encodeURIComponent(q.trim())}` }] : [])];
   }, [q, threads, projects]);
-  const pick = (i: number) => { const o = options[i]; if (!o) return; o.run ? o.run() : go(o.href!); onClose(); };
+  const pick = (i: number) => { const o = options[i]; if (!o) return; o.run ? o.run() : go(o.href!); if (!o.stay) onClose(); };
+  if (mode === 'projects') return <ProjectFilter onClose={onClose} onBack={start ? undefined : () => setMode(undefined)} />;
   return (
     <div className="fixed inset-0 z-[60] bg-black/45 backdrop-blur-[3px] flex justify-center pt-[12vh] px-3 animate-fade" onClick={onClose}>
       <div role="dialog" aria-label="Search or jump" className="pop w-full max-w-xl h-fit rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>

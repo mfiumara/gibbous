@@ -17,7 +17,9 @@ interface S {
   seen: Record<string, number>;   // thread id → when you last looked (per device)
   markSeen(id: string): void;
   sidebar: boolean; // mobile drawer
-  palette: boolean;
+  palette: boolean | 'projects'; // 'projects' opens it straight in the project filter
+  hiddenProjects: string[];       // projects hidden from the sidebar, per device
+  setHiddenProjects(ids: string[]): void;
   load(): Promise<void>;
   toast(t: Omit<Toast, 'id'>): void;
   dismiss(id: number): void;
@@ -34,6 +36,8 @@ export const useStore = create<S>((set, get) => ({
   loaded: false, authed: null, connected: false,
   projects: [], threads: [], tasks: [], requests: [], playbooks: [], plans: [], schedules: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {},
   toasts: [], sidebar: false, palette: false,
+  hiddenProjects: JSON.parse(localStorage.getItem('gibbous.hiddenProjects') ?? '[]'),
+  setHiddenProjects(ids) { localStorage.setItem('gibbous.hiddenProjects', JSON.stringify(ids)); set({ hiddenProjects: ids }); },
   // First run: everything counts as seen, so the sidebar doesn't light up all at once.
   seen: JSON.parse(localStorage.getItem('gibbous.seen') ?? 'null') ?? { '*': Date.now() },
   markSeen(id) {

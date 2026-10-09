@@ -189,8 +189,8 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
   const toggle = (id: string) => setCollapsed(c => { const n = { ...c, [id]: !c[id] }; localStorage.setItem('gibbous.collapsed', JSON.stringify(n)); return n; });
   const [q, setQ] = useState('');
   // Projects: order lives on the server (same on every device); which ones are hidden is per device.
-  const [hidden, setHiddenState] = useState<string[]>(() => JSON.parse(localStorage.getItem('gibbous.hiddenProjects') ?? '[]'));
-  const setHidden = (h: string[]) => { setHiddenState(h); localStorage.setItem('gibbous.hiddenProjects', JSON.stringify(h)); };
+  // Shared with the ⌘K project filter (ProjectFilter.tsx), so both stay in sync.
+  const hidden = useStore(s => s.hiddenProjects), setHidden = useStore(s => s.setHiddenProjects);
   const shown = projects.filter(p => !hidden.includes(p.id));
   const [filterMenu, setFilterMenu] = useState(false);
   const [projMenu, setProjMenu] = useState<string | null>(null);
@@ -281,6 +281,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
             })}
             <div className="my-1 h-px bg-line" />
             <MenuItem icon={<Check />} onClick={() => { setHidden([]); setFilterMenu(false); }}>Show all</MenuItem>
+            <MenuItem icon={<Search />} onClick={() => { setFilterMenu(false); useStore.setState({ palette: 'projects' }); }} kbd="⌘K">Filter with the keyboard</MenuItem>
             {projects.length > 2 && <MenuItem icon={<EyeOff />} onClick={() => { setHidden(projects.filter(p => !threads.some(t => t.projectId === p.id && t.status !== 'archived')).map(p => p.id)); setFilterMenu(false); }}>Hide projects with no threads</MenuItem>}
           </Menu>
         </div>}
