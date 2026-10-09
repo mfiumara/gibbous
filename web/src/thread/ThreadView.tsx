@@ -282,7 +282,7 @@ export function ThreadView({ id }: { id: string }) {
         </div>
 
 
-        <div className="flex-none px-3 pt-1 pb-3 pointer-coarse:pb-[max(.5rem,calc(env(safe-area-inset-bottom)-1.25rem))] pointer-coarse:-mb-[env(safe-area-inset-bottom)]">
+        <div className="kb-bar flex-none px-3 pt-1 pb-3 pointer-coarse:pb-[max(.5rem,calc(env(safe-area-inset-bottom)-1.25rem))] pointer-coarse:-mb-[env(safe-area-inset-bottom)]">
           <div className="relative mx-auto max-w-3xl">
             {/* Sits on top of the composer, so it never covers what you are typing however tall the box gets. */}
             {!atBottom && <button onClick={() => { const el = scroller.current!; stick.current = true; setAtBottom(true); el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }}
@@ -298,7 +298,7 @@ export function ThreadView({ id }: { id: string }) {
       </div>
 
       {panel && (
-        <aside className="fixed inset-0 z-40 bg-basalt flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:py-0 lg:static lg:z-auto lg:w-[44%] lg:min-w-[380px] lg:max-w-[760px] lg:border-l lg:border-line animate-fade">
+        <aside className="kb-fixed fixed inset-0 z-40 bg-basalt flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:py-0 lg:static lg:z-auto lg:w-[44%] lg:min-w-[380px] lg:max-w-[760px] lg:border-l lg:border-line animate-fade">
           <div className="flex items-center gap-1 px-2 h-12 border-b border-line flex-none">
             {/* Phones: the panel covers the chat, so "back" is always the first thing. */}
             <button onClick={() => setPanel(null)} aria-label="Back to the conversation" className="lg:hidden press inline-grid place-items-center size-8 flex-none rounded-lg text-tide"><ChevronLeft size={20} /></button>

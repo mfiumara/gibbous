@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, Zap, Search, Check, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useRpc } from '../rpc';
 import { useStore, toastError } from '../store';
-import { Menu, MoonLoader, inputCls } from '../ui';
+import { Menu, MoonLoader, inputCls, useSheet } from '../ui';
 import type { ModelOptionProvider, SessionLiveInfo, Usage } from '../hermes/contract';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -17,6 +17,7 @@ export const shortModel = (m: string) => m.replace(/^.*\//, '').replace(/^(claud
 export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: string }) {
   const rpc = useRpc();
   const [open, setOpen] = useState(false);
+  const sheet = useSheet(); // phones: no autofocus, the keyboard would cover the sheet
   const [providers, setProviders] = useState<ModelOptionProvider[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [q, setQ] = useState('');
@@ -53,7 +54,7 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
         <div className="border-t border-line p-1.5 flex flex-col min-h-0">
           <div className="flex items-center gap-1 mb-1">
             <div className="relative flex-1"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ash" />
-              <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search models" aria-label="Search models" className={inputCls + ' pl-8 py-1.5 text-[13px]'} /></div>
+              <input autoFocus={!sheet} value={q} onChange={e => setQ(e.target.value)} placeholder="Search models" aria-label="Search models" className={inputCls + ' pl-8 py-1.5 text-[13px]'} /></div>
             <button onClick={() => load(true)} aria-label="Rescan signed-in providers" data-tip="Rescan subscriptions on this machine" disabled={refreshing}
               className="press size-8 grid place-items-center rounded-md text-dust hover:text-moon hover:bg-ridge flex-none"><RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /></button>
           </div>

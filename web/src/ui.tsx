@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, X } from 'lucide-react';
 import { api, type ThreadStatus, type TaskStatus } from './api';
 import { useStore, toastError } from './store';
+import { SHEET_QUERY, decide, offset, dismiss } from './sheet';
 import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel } from './moon';
 
 // ── routing (hash-based so the PWA works from any path) ────────────────
@@ -219,16 +220,97 @@ export function fixedScale() {
 // Anchored popover menu: closes on outside click / Escape.
 // Menus render into <body>, anchored to their parent element: a blurred or overflow-hidden ancestor (the thread
 // header) would otherwise clip the panel and trap the click-away backdrop inside itself.
-export function Menu({ open, onClose, children, align = 'right', side = 'bottom', className = '' }: { open: boolean; onClose(): void; children: ReactNode; align?: 'left' | 'right'; side?: 'top' | 'bottom'; className?: string }) {
+// Phones present every Menu as a bottom sheet instead (MenuSheet). Menus with a search box read this to skip
+// autofocus there: a focused field pops the keyboard over the sheet.
+const sheetMq = typeof window !== 'undefined' ? matchMedia(SHEET_QUERY) : null;
+export const useSheet = () => useSyncExternalStore((f: () => void) => { sheetMq?.addEventListener('change', f); return () => sheetMq?.removeEventListener('change', f); }, () => !!sheetMq?.matches);
+
+export function Menu(p: { open: boolean; onClose(): void; children: ReactNode; align?: 'left' | 'right'; side?: 'top' | 'bottom'; className?: string }) {
+  const sheet = useSheet();
+  useEffect(() => {
+    if (!p.open) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); p.onClose(); } };
+    addEventListener('keydown', k);
+    return () => removeEventListener('keydown', k);
+  }, [p.open, p.onClose]);
+  return sheet ? <MenuSheet {...p} /> : <MenuPopover {...p} />;
+}
+
+// iOS-style action sheet: dimmed scrim, rises from the bottom, follows the finger down (sheet.ts decides).
+// It stays mounted for its exit slide after `open` turns false, so picking an item slides it away too.
+function MenuSheet({ open, onClose, children, className = '' }: { open: boolean; onClose(): void; children: ReactNode; className?: string }) {
+  const [shown, setShown] = useState(open);
+  const sheet = useRef<HTMLDivElement>(null), scrim = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose); close.current = onClose;
+  const pressed = useRef(false);
+  useEffect(() => {
+    if (open) { setShown(true); pressed.current = false; return; }
+    const t = setTimeout(() => setShown(false), 240);
+    return () => clearTimeout(t);
+  }, [open]);
+  // Slide out from wherever it is, then tell the owner (scrim tap, drag past the threshold).
+  const leave = () => {
+    const s = sheet.current, b = scrim.current;
+    if (s && b) { s.style.transition = b.style.transition = ''; s.style.translate = '0 100%'; b.style.opacity = '0'; }
+    setTimeout(() => close.current(), 200);
+  };
+  useEffect(() => {
+    const s = sheet.current;
+    if (!open || !s) return;
+    // Reopened mid-exit: drop the exit slide's inline position so the CSS brings it back up.
+    s.style.transition = s.style.translate = ''; if (scrim.current) scrim.current.style.transition = scrim.current.style.opacity = '';
+    let g: { x0: number; y0: number; t: number; y: number; vy: number; mode: 'drag' | 'scroll' | null; atTop: boolean } | null = null;
+    const start = (e: TouchEvent) => {
+      // Not the sidebar drawer's gesture (it listens on window) — this touch belongs to the sheet.
+      e.stopPropagation();
+      const t = e.touches[0];
+      let atTop = true;
+      for (let el = e.target as HTMLElement | null; el && el !== s; el = el.parentElement) if (el.scrollTop > 0) atTop = false;
+      g = { x0: t.clientX, y0: t.clientY, t: e.timeStamp, y: t.clientY, vy: 0, mode: null, atTop };
+    };
+    const move = (e: TouchEvent) => {
+      if (!g) return;
+      const t = e.touches[0], dy = t.clientY - g.y0;
+      g.mode ??= decide(t.clientX - g.x0, dy, g.atTop);
+      if (g.mode !== 'drag') return;
+      e.preventDefault();
+      const dt = e.timeStamp - g.t;
+      if (dt > 0) g.vy = (t.clientY - g.y) / dt;
+      g.y = t.clientY; g.t = e.timeStamp;
+      s.style.transition = 'none'; s.style.translate = `0 ${offset(dy)}px`;
+      if (scrim.current) { scrim.current.style.transition = 'none'; scrim.current.style.opacity = String(1 - Math.max(0, dy) / s.offsetHeight); }
+    };
+    const end = (e: TouchEvent) => {
+      const was = g; g = null;
+      if (was?.mode !== 'drag') return;
+      const dy = (e.changedTouches[0]?.clientY ?? was.y) - was.y0;
+      // A finger that stopped before lifting isn't a flick.
+      if (dismiss(dy, e.timeStamp - was.t > 80 ? 0 : was.vy, s.offsetHeight)) return leave();
+      s.style.transition = scrim.current!.style.transition = ''; s.style.translate = ''; scrim.current!.style.opacity = '';
+    };
+    s.addEventListener('touchstart', start, { passive: true });
+    s.addEventListener('touchmove', move, { passive: false });
+    s.addEventListener('touchend', end); s.addEventListener('touchcancel', end);
+    return () => { s.removeEventListener('touchstart', start); s.removeEventListener('touchmove', move); s.removeEventListener('touchend', end); s.removeEventListener('touchcancel', end); };
+  }, [open, shown]);
+  if (!open && !shown) return null;
+  // Only a press that began inside the sheet layer may click in it: lifting the finger of the long-press that
+  // opened it (sidebar rows) also clicks whatever is under that finger now — the scrim, or worse, an item. (Keyboard and scripted clicks have detail 0 and pass.)
+  return createPortal(<div className="menu-sheet-layer" data-leaving={open ? undefined : ''}
+    onPointerDownCapture={() => { pressed.current = true; }} onClickCapture={e => { if (!pressed.current && e.detail > 0) { e.preventDefault(); e.stopPropagation(); } }}>
+    <div ref={scrim} className="menu-sheet-scrim" onClick={leave} />
+    <div ref={sheet} className="menu-sheet">
+      <div className="menu-sheet-grab" aria-hidden />
+      {/* The owner's sizing classes (w-80, max-h-80) are for the popover; the sheet is full width and scrolls as a whole. */}
+      <div role="menu" className={`p-1.5 text-[15px] ${className} menu-sheet-body`}>{children}</div>
+    </div>
+  </div>, document.body);
+}
+
+function MenuPopover({ open, onClose, children, align = 'right', side = 'bottom', className = '' }: { open: boolean; onClose(): void; children: ReactNode; align?: 'left' | 'right'; side?: 'top' | 'bottom'; className?: string }) {
   const anchor = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ style: CSSProperties; origin: string } | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    addEventListener('keydown', k);
-    return () => removeEventListener('keydown', k);
-  }, [open, onClose]);
   useLayoutEffect(() => {
     if (!open) { setPos(null); return; }
     const place = () => {
