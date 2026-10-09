@@ -3,6 +3,7 @@ import { Plus, Inbox, History, Settings, ChevronDown, FolderPlus, Archive, Searc
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type PrBadge } from './api';
+import { EDGE, axis, progress, settle } from './drawer';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 
 const roleTag: Partial<Record<Thread['role'], string>> = { reviewer: 'review', planner: 'plan', coordinator: 'lead', worker: 'task' };
@@ -164,19 +165,61 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
   // The phone drawer closes whenever you land somewhere (palette, back swipe, links) and on Escape.
   const where = JSON.stringify(route);
   useEffect(close, [where]);
-  // Phones: swipe in from the left edge to open, swipe left to close. Mostly-horizontal swipes only.
+  // Phones: the drawer follows your finger, like a native one. Drag in from the left edge to open; with it open, drag
+  // it (or the dimmed page) left to close. On release a flick decides, otherwise it snaps to the nearer side
+  // (drawer.ts). It used to wait for the finger to lift and then jump, and any leftward swipe anywhere closed it.
+  const navRef = useRef<HTMLElement>(null), scrimRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    let x0 = 0, y0 = 0, edge = false;
-    const start = (e: TouchEvent) => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; edge = x0 < 20; };
-    const end = (e: TouchEvent) => {
-      const t = e.changedTouches[0], dx = t.clientX - x0, dy = Math.abs(t.clientY - y0);
-      if (dy > Math.abs(dx) * .6 || innerWidth >= 1024) return;
-      const open = useStore.getState().sidebar;
-      if (!open && edge && dx > 60) useStore.setState({ sidebar: true });
-      if (open && dx < -60) close();
+    let g: { x0: number; y0: number; t0: number; open: boolean; lock: 'x' | 'y' | null; w: number; lastX: number; lastT: number; vx: number } | null = null;
+    // Sideways scrollers (code blocks, tables, the subagent pager, chip rows) keep their own horizontal swipes.
+    const inScroller = (el: EventTarget | null) => {
+      for (let n = el as HTMLElement | null; n && n !== document.body; n = n.parentElement) {
+        if (n.scrollWidth > n.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(n).overflowX)) return true;
+      }
+      return false;
     };
-    addEventListener('touchstart', start, { passive: true }); addEventListener('touchend', end, { passive: true });
-    return () => { removeEventListener('touchstart', start); removeEventListener('touchend', end); };
+    const paint = (p: number | null) => {
+      const nav = navRef.current, scrim = scrimRef.current;
+      if (!nav || !scrim) return;
+      if (p == null) { nav.style.translate = nav.style.transition = scrim.style.opacity = scrim.style.transition = scrim.style.pointerEvents = ''; return; }
+      nav.style.transition = scrim.style.transition = 'none';
+      nav.style.translate = `${(p - 1) * 100}% 0`; // Tailwind's translate-x-* use the `translate` property, not transform
+      scrim.style.opacity = String(p); scrim.style.pointerEvents = 'auto';
+    };
+    const start = (e: TouchEvent) => {
+      if (innerWidth >= 1024 || e.touches.length > 1) { g = null; return; }
+      const t = e.touches[0], open = useStore.getState().sidebar;
+      const onDrawer = !!navRef.current?.contains(e.target as Node) || e.target === scrimRef.current;
+      if (open ? !onDrawer : t.clientX > EDGE || inScroller(e.target)) { g = null; return; }
+      g = { x0: t.clientX, y0: t.clientY, t0: e.timeStamp, open, lock: null, w: navRef.current?.offsetWidth || 276, lastX: t.clientX, lastT: e.timeStamp, vx: 0 };
+    };
+    const move = (e: TouchEvent) => {
+      if (!g) return;
+      const t = e.touches[0], dx = t.clientX - g.x0;
+      if (!g.lock) { g.lock = axis(dx, t.clientY - g.y0); if (g.lock === 'y') { g = null; return; } if (!g.lock) return; }
+      if (g.open && inScroller(e.target) && dx > 0) return;
+      e.preventDefault(); // we own this gesture: no page scroll, no iOS back-swipe
+      const dt = e.timeStamp - g.lastT;
+      if (dt > 0) g.vx = .7 * ((t.clientX - g.lastX) / dt) + .3 * g.vx;
+      g.lastX = t.clientX; g.lastT = e.timeStamp;
+      paint(progress(g.open, dx, g.w));
+    };
+    const end = (e: TouchEvent) => {
+      if (!g) return;
+      const was = g; g = null;
+      if (was.lock !== 'x') return;
+      const dx = (e.changedTouches[0]?.clientX ?? was.lastX) - was.x0;
+      const open = settle(was.open, dx, e.timeStamp - was.lastT > 80 ? 0 : was.vx, was.w);
+      // Hand back to the CSS transition from where the finger left it.
+      const nav = navRef.current, scrim = scrimRef.current;
+      if (nav && scrim) { nav.style.transition = scrim.style.transition = ''; void nav.offsetWidth; nav.style.translate = open ? '0 0' : '-100% 0'; scrim.style.opacity = open ? '1' : '0'; }
+      useStore.setState({ sidebar: open });
+      setTimeout(() => paint(null), 320);
+    };
+    addEventListener('touchstart', start, { passive: true });
+    addEventListener('touchmove', move, { passive: false });
+    addEventListener('touchend', end, { passive: true }); addEventListener('touchcancel', end, { passive: true });
+    return () => { removeEventListener('touchstart', start); removeEventListener('touchmove', move); removeEventListener('touchend', end); removeEventListener('touchcancel', end); };
   }, []);
   useEffect(() => {
     if (!sidebar) return;
@@ -243,8 +286,8 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
   );
 
   return <>
-    <div onClick={close} className={`fixed inset-0 z-40 bg-black/50 lg:hidden transition-opacity duration-300 ${sidebar ? 'opacity-100 backdrop-blur-[2px]' : 'opacity-0 pointer-events-none'}`} />
-    <nav aria-label="Threads" style={{ '--sb-w': `${width.w}px` } as React.CSSProperties}
+    <div ref={scrimRef} onClick={close} className={`fixed inset-0 z-40 bg-black/50 lg:hidden transition-opacity duration-300 ${sidebar ? 'opacity-100 backdrop-blur-[2px]' : 'opacity-0 pointer-events-none'}`} />
+    <nav ref={navRef} aria-label="Threads" style={{ '--sb-w': `${width.w}px` } as React.CSSProperties}
       className={`fixed lg:relative inset-y-0 left-0 z-50 w-[276px] lg:w-[var(--sb-w)] max-w-[85vw] flex-none flex flex-col pt-[env(safe-area-inset-top)] bg-crater lg:bg-transparent edge-r transition-transform duration-300 [transition-timing-function:var(--ease-out)] lg:translate-x-0 ${sidebar ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
       <div className="flex items-center gap-2.5 px-4 h-12 flex-none">
         <TonightMoon size={18} />
