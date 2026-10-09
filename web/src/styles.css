@@ -286,8 +286,9 @@
 /* ⌘F matches (CSS Custom Highlight API). */
 ::highlight(find) { background-color: color-mix(in srgb, var(--color-halo) 28%, transparent); color: inherit; }
 ::highlight(find-current) { background-color: var(--color-halo); color: #1a1408; }
-/* Long threads: skip layout/paint for off-screen timeline rows. */
-.tl-row { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+/* Timeline rows are fully rendered: no content-visibility:auto. Skipping off-screen rows made every row render for
+   the first time mid-scroll (and resize from its 64px guess), so scrolling up a fresh thread dropped ~30% of frames to
+   100-190ms. The timeline renders at most PAGE rows anyway (ThreadView.tsx). */
 
 /* Composer autosize: the textarea and an invisible copy of its text share one grid cell, so the box grows with
    the text without ever being measured or collapsed. Both must wrap identically. */

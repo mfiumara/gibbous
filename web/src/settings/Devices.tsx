@@ -4,6 +4,7 @@ import { renderSVG } from 'uqr';
 import { api } from '../api';
 import { rpc } from '../rpc';
 import { useStore, toastError } from '../store';
+import { useShallow } from 'zustand/react/shallow';
 import { Button, Switch } from '../ui';
 import { Section, Row } from './common';
 import type { McpServerSummary } from '../hermes/contract';
@@ -22,7 +23,7 @@ const KINDS: { key: 'input' | 'done' | 'task' | 'failure' | 'plan'; title: strin
 ];
 
 export function NotificationsTab() {
-  const { vapidPublicKey, toast, settings } = useStore();
+  const { vapidPublicKey, toast, settings } = useStore(useShallow(s => ({ vapidPublicKey: s.vapidPublicKey, toast: s.toast, settings: s.settings })));
   const [perm, setPerm] = useState<string>(() => !('Notification' in window) ? 'unsupported' : Notification.permission);
   const enable = async () => {
     try {
@@ -53,7 +54,7 @@ export function NotificationsTab() {
 }
 
 export function PhoneTab() {
-  const { tailnetUrl, tailnetLogin, toast } = useStore();
+  const { tailnetUrl, tailnetLogin, toast } = useStore(useShallow(s => ({ tailnetUrl: s.tailnetUrl, tailnetLogin: s.tailnetLogin, toast: s.toast })));
   // QR encodes the sign-in link (token inside): scan with the phone camera, it opens Safari signed in.
   const qr = useMemo(() => tailnetLogin ? renderSVG(tailnetLogin, { border: 1, pixelSize: 6, blackColor: 'currentColor', whiteColor: 'transparent' }) : '', [tailnetLogin]);
   if (!tailnetUrl) return <Section title="Phone" description="Tailscale isn't running on this Mac, so Gibbous is only reachable locally. Install Tailscale on the Mac and your phone, then run scripts/tailscale.sh." />;

@@ -1,6 +1,7 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { X, Search, CornerDownLeft, Copy } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo } from './store';
+import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
 import { useRoute, Moon, Kbd, Modal, TooltipHost, MoonLoader, go, parse, sourceLabel, applyPrefs } from './ui';
 import { Sidebar } from './Sidebar';
@@ -29,7 +30,7 @@ const SHORTCUTS: [string, string][] = [
 ];
 
 export function App() {
-  const { loaded, authed, palette } = useStore();
+  const { loaded, authed, palette } = useStore(useShallow(s => ({ loaded: s.loaded, authed: s.authed, palette: s.palette })));
   const route = useRoute();
   const [adding, setAdding] = useState(false);
   const [help, setHelp] = useState(false);
@@ -201,7 +202,7 @@ const SETTINGS: [string, string, string][] = [
 ];
 
 function Palette({ onClose }: { onClose(): void }) {
-  const { threads, projects } = useStore();
+  const { threads, projects } = useStore(useShallow(s => ({ threads: s.threads, projects: s.projects })));
   const route = useRoute();
   const here = route.name === 'thread' ? threads.find(t => t.id === route.id) : undefined;
   const [q, setQ] = useState('');
@@ -280,7 +281,7 @@ function chime() {
 }
 
 function Toasts() {
-  const { toasts, dismiss } = useStore();
+  const { toasts, dismiss } = useStore(useShallow(s => ({ toasts: s.toasts, dismiss: s.dismiss })));
   return (
     <div aria-live="polite" className="fixed z-[70] top-[calc(env(safe-area-inset-top)+.5rem)] sm:top-auto sm:bottom-4 right-3 left-3 sm:left-auto sm:right-4 sm:w-96 flex flex-col gap-2 pointer-events-none sm:pb-[env(safe-area-inset-bottom)]">
       {toasts.map(t => (

@@ -5,6 +5,10 @@ import { parseDiff } from './diff';
 
 export interface LineComment { id: string; file: string; line: number; code: string; text: string }
 
+// Big files (lockfiles, generated code) render their first CAP lines until asked: thousands of table rows made the
+// panel scroll and typing a comment stutter.
+const CAP = 600;
+
 const rowCls = { '+': 'bg-sprout/10 text-moon', '-': 'bg-oxide/10 text-moon', ' ': 'text-dust', '@': 'text-tide/70 bg-tide/5' };
 
 export function DiffView({ diff, compact, comments, onComment, onRemoveComment }: {
@@ -13,11 +17,12 @@ export function DiffView({ diff, compact, comments, onComment, onRemoveComment }
   const files = useMemo(() => parseDiff(diff), [diff]);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const [full, setFull] = useState<Set<string>>(new Set());
   if (!files.length) return <p className="text-sm text-ash">No changes.</p>;
   return (
     <div className="space-y-2">
       {files.map((f, i) => {
-        const lines = compact ? f.lines.filter(l => l.t !== '@').slice(0, 10) : f.lines;
+        const lines = compact ? f.lines.filter(l => l.t !== '@').slice(0, 10) : full.has(f.name) ? f.lines : f.lines.slice(0, CAP);
         const add = f.lines.filter(l => l.t === '+').length, del = f.lines.filter(l => l.t === '-').length;
         return (
           <div key={i} className="rounded-lg border border-line overflow-hidden bg-well">
@@ -69,6 +74,7 @@ export function DiffView({ diff, compact, comments, onComment, onRemoveComment }
                 </tbody>
               </table>
             </div>
+            {!compact && f.lines.length > lines.length && <button onClick={() => setFull(s => new Set(s).add(f.name))} className="press w-full px-2.5 py-1 text-left text-[11.5px] text-tide hover:bg-ridge/50 border-t border-line">Show the other {f.lines.length - lines.length} lines</button>}
             {compact && f.lines.length > lines.length && <div className="px-2.5 py-0.5 text-[11px] text-ash border-t border-line">… {f.lines.length - lines.length} more lines</div>}
           </div>
         );

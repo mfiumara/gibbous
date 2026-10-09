@@ -70,6 +70,7 @@ export function ThreadView({ id }: { id: string }) {
   const markGesture = () => { gesture.current = performance.now(); };
   const lastTop = useRef(0);
   const restore = useRef(false);
+  const keepFromBottom = useRef<number | null>(null); // "Show earlier": hold the reading position while rows land above
   const [dragOver, setDragOver] = useState(false);
   const dragDepth = useRef(0);
   const [dropped, setDropped] = useState<{ files: File[]; n: number }>();
@@ -132,9 +133,10 @@ export function ThreadView({ id }: { id: string }) {
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    if (stick.current) el.scrollTop = el.scrollHeight;
+    if (keepFromBottom.current != null) { el.scrollTop = el.scrollHeight - keepFromBottom.current; keepFromBottom.current = null; }
+    else if (stick.current) el.scrollTop = el.scrollHeight;
     else if (restore.current && !loading) { restore.current = false; el.scrollTop = el.scrollHeight - (SCROLL.get(id) ?? 0); }
-  }, [tl.items, requests.length, loading]);
+  }, [tl.items, requests.length, loading, limit]);
 
   // Content also grows without new items (markdown/highlighting settling, the status line, a taller composer
   // shrinking the viewport) and the tab may have been hidden: whenever anything resizes, re-pin if following.
@@ -242,7 +244,7 @@ export function ThreadView({ id }: { id: string }) {
             if (!loading) { if (stick.current) SCROLL.delete(id); else SCROLL.set(id, el.scrollHeight - el.scrollTop); } }}
           className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
           <div ref={content} className="mx-auto max-w-3xl px-4 py-6 space-y-3">
-            {tl.items.length > limit && <button onClick={() => { stick.current = false; setLimit(l => l + PAGE); }} className="press mx-auto block label hover:text-moon rounded-md px-2 py-1">Show earlier ({tl.items.length - limit})</button>}
+            {tl.items.length > limit && <button onClick={() => { const el = scroller.current!; stick.current = false; keepFromBottom.current = el.scrollHeight - el.scrollTop; setLimit(l => l + PAGE); }} className="press mx-auto block label hover:text-moon rounded-md px-2 py-1">Show earlier ({tl.items.length - limit})</button>}
             {loading && !tl.items.length && <div className="space-y-5 pt-2" aria-label="Loading conversation">
               <div className="flex justify-end"><Skeleton className="h-9 w-2/5 rounded-2xl" /></div>
               <div className="space-y-2"><Skeleton className="h-3.5 w-11/12" /><Skeleton className="h-3.5 w-4/5" /><Skeleton className="h-3.5 w-2/3" /></div>

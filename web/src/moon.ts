@@ -25,9 +25,11 @@ export async function locate(): Promise<Loc | null> {
     const pos = await new Promise<GeolocationPosition | null>(res => navigator.geolocation.getCurrentPosition(res, () => res(null), { timeout: 10_000, maximumAge: 86_400_000, enableHighAccuracy: false }));
     if (pos) return keep(pos.coords.latitude, pos.coords.longitude, 'device');
   }
+  // geojs: no key and CORS-enabled. (ipapi.co rate-limits with a 429 that has no CORS header, so it always failed.)
   try {
-    const r = await fetch('https://ipapi.co/json/', { referrerPolicy: 'no-referrer' }).then(r => r.json());
-    if (Number.isFinite(r.latitude)) return keep(r.latitude, r.longitude, 'ip');
+    const r = await fetch('https://get.geojs.io/v1/ip/geo.json', { referrerPolicy: 'no-referrer' }).then(r => r.json());
+    const lat = Number(r.latitude), lon = Number(r.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lon) && r.latitude != null) return keep(lat, lon, 'ip');
   } catch { /* offline: keep the old one, or draw north-up */ }
   return old;
 }

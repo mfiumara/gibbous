@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Inbox, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread } from './store';
+import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type PrBadge } from './api';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 
@@ -46,7 +47,8 @@ function PrLine({ pr }: { pr: PrBadge }) {
 // Bulk select: when on, rows become checkboxes and a bar offers archive/delete for the selection.
 const SelectCtx = createContext<{ on: boolean; ids: Set<string>; toggle(id: string): void }>({ on: false, ids: new Set(), toggle: () => {} });
 
-function ThreadLink({ t, active }: { t: Thread; active: boolean }) {
+// Memoized: a thread event re-renders only that thread's row (upsert keeps the other objects identical).
+const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: boolean; minute?: number }) {
   const sel = useContext(SelectCtx);
   const unread = useStore(s => !active && isUnread(t, s.seen));
   const pr = useStore(s => s.prs[t.id]);
@@ -96,7 +98,7 @@ function ThreadLink({ t, active }: { t: Thread; active: boolean }) {
       </Menu>
     </div>
   );
-}
+});
 
 // With `href` (a project), the title opens that page and only the chevron folds the section.
 interface Drag { onStart(): void; onOver(): void; onDrop(): void; onEnd(): void; over: 'above' | 'below' | null; dragging: boolean }
@@ -154,8 +156,11 @@ function useSidebarWidth() {
 }
 
 export function Sidebar({ route, onAddProject }: { route: Route; onAddProject(): void }) {
-  const { projects, threads, requests, tasks, connected, hermesReady, sidebar, hosts } = useStore();
+  const { projects, threads, requests, tasks, connected, hermesReady, sidebar, hosts } = useStore(useShallow(s => ({ projects: s.projects, threads: s.threads, requests: s.requests, tasks: s.tasks, connected: s.connected, hermesReady: s.hermesReady, sidebar: s.sidebar, hosts: s.hosts })));
   const width = useSidebarWidth();
+  // Rows are memoized: a minute tick keeps their "5m" ages current.
+  const [minute, setMinute] = useState(0);
+  useEffect(() => { const h = setInterval(() => setMinute(m => m + 1), 60_000); return () => clearInterval(h); }, []);
   // The phone drawer closes whenever you land somewhere (palette, back swipe, links) and on Escape.
   const where = JSON.stringify(route);
   useEffect(close, [where]);
@@ -292,8 +297,8 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
           <Archive size={12} className="text-tide" /><span className="flex-1">Archived · {all.length} {all.length === 1 ? 'thread' : 'threads'}</span>
           <button onClick={() => setShowArchived(false)} className="press text-tide hover:underline">Show active</button>
         </div>}
-        {matches ? <div className="space-y-px">{matches.length ? matches.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} />) : <p className="px-3 py-2 text-[13px] text-ash">No thread matches “{q}”.</p>}</div> : <>
-        {pinned.length > 0 && <Section id="pinned" title="Pinned" collapsed={!!collapsed.pinned} toggle={toggle}>{pinned.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} />)}</Section>}
+        {matches ? <div className="space-y-px">{matches.length ? matches.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />) : <p className="px-3 py-2 text-[13px] text-ash">No thread matches “{q}”.</p>}</div> : <>
+        {pinned.length > 0 && <Section id="pinned" title="Pinned" collapsed={!!collapsed.pinned} toggle={toggle}>{pinned.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}</Section>}
         {hosts.length > 0 && <p className="flex items-center gap-1.5 pl-2 text-[11px] font-bold text-dust"><Laptop size={12} />This Mac</p>}
         {shown.map((p, pi) => {
           const list = visible.filter(t => t.projectId === p.id);
@@ -323,7 +328,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
                   </Menu>
                 </span>
               </>}>
-              {own.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} />)}
+              {own.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}
               {agents.length > 0 && <>
                 <button onClick={() => toggle(`agents:${p.id}`)} aria-expanded={!!collapsed[`agents:${p.id}`]}
                   className="press w-full flex items-center gap-2.5 pl-3 pr-2 py-[5px] pointer-coarse:py-2 rounded-lg text-[13px] text-ash hover:text-moon hover:bg-ridge/40">
@@ -331,15 +336,15 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
                   <span className="flex-1 text-left">{agents.length} task agent{agents.length > 1 ? 's' : ''}</span>
                   <ChevronDown size={12} className={`transition-transform ${collapsed[`agents:${p.id}`] ? '' : '-rotate-90'}`} />
                 </button>
-                {collapsed[`agents:${p.id}`] && <div className="pl-3 space-y-px animate-fade">{agents.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} />)}</div>}
+                {collapsed[`agents:${p.id}`] && <div className="pl-3 space-y-px animate-fade">{agents.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}</div>}
               </>}
             </Section>
           );
         })}
-        {loose.length > 0 && <Section id="chats" title="Chats" collapsed={!!collapsed.chats} toggle={toggle}>{loose.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} />)}</Section>}
+        {loose.length > 0 && <Section id="chats" title="Chats" collapsed={!!collapsed.chats} toggle={toggle}>{loose.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}</Section>}
         {bySource.map(([src, list]) => (
           <Section key={src} id={`src:${src}`} title={sourceLabel(src)} count={list.length} collapsed={!!collapsed[`src:${src}`]} toggle={toggle}>
-            {list.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} />)}
+            {list.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}
           </Section>
         ))}
         <button onClick={onAddProject} className="press flex items-center gap-2 pl-3 py-1 pointer-coarse:py-2.5 rounded-lg text-[13px] text-ash hover:text-moon"><FolderPlus size={14} />Add project</button>
@@ -352,7 +357,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
                   <Server size={12} className="text-tide" /><span className={`absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-basalt ${h.connected ? 'bg-sprout' : 'bg-halo animate-pulse'}`} /></span>}
                 actions={<a href={`#/new?host=${h.id}`} onClick={close} data-tip={`New thread on ${h.name}`} aria-label={`New thread on ${h.name}`} className="press size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Plus size={14} /></a>}>
                 <p className="pl-3 pb-0.5 label text-[9.5px] text-tide/80">remote</p>
-                {list.length ? list.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} />)
+                {list.length ? list.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)
                   : <p className="pl-3 py-1 text-[12.5px] text-ash">{h.connected ? 'No threads here yet' : 'Connecting…'}</p>}
               </Section>
             </div>

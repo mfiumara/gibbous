@@ -22,7 +22,7 @@ func loginURL(next: String = "") -> URL {
   return c.url!
 }
 
-final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
+final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate, WKDownloadDelegate {
   var window: NSWindow!
   var web: WKWebView!
 
@@ -67,16 +67,46 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
   func applicationShouldHandleReopen(_ s: NSApplication, hasVisibleWindows: Bool) -> Bool { window.makeKeyAndOrderFront(nil); return true }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { false }
 
-  // The server may still be starting (launchd); keep retrying instead of showing an error page.
+  // The server may still be starting (launchd); keep retrying instead of showing an error page. Only for "can't reach
+  // the server" errors: a download or an editor link also ends a navigation with an error, and reloading the whole
+  // app for those threw away what you were doing.
   func webView(_ w: WKWebView, didFailProvisionalNavigation nav: WKNavigation!, withError e: Error) {
+    let err = e as NSError
+    let unreachable: Set<Int> = [NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorTimedOut, NSURLErrorCannotFindHost, NSURLErrorNotConnectedToInternet]
+    guard err.domain == NSURLErrorDomain, unreachable.contains(err.code) else { return }
     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { w.load(URLRequest(url: loginURL())) }
   }
 
-  // Gibbous pages stay in the window; everything else opens in the default browser.
+  // Gibbous pages stay in the window; web links open in the default browser, app links (vscode://, cursor://,
+  // mailto:) in their app, and downloads (<a download>, attachments) save to ~/Downloads instead of replacing the app.
   func webView(_ w: WKWebView, decidePolicyFor a: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-    if let u = a.request.url, u.host != base.host, u.scheme == "http" || u.scheme == "https" { NSWorkspace.shared.open(u); return decisionHandler(.cancel) }
+    if a.shouldPerformDownload { return decisionHandler(.download) }
+    if let u = a.request.url, let s = u.scheme?.lowercased() {
+      if (s == "http" || s == "https") && u.host != base.host { NSWorkspace.shared.open(u); return decisionHandler(.cancel) }
+      if !["http", "https", "about", "blob", "data"].contains(s) { NSWorkspace.shared.open(u); return decisionHandler(.cancel) }
+    }
     decisionHandler(.allow)
   }
+  func webView(_ w: WKWebView, decidePolicyFor r: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+    let attachment = ((r.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? "").lowercased().hasPrefix("attachment")
+    decisionHandler(attachment || !r.canShowMIMEType ? .download : .allow)
+  }
+  func webView(_ w: WKWebView, navigationAction a: WKNavigationAction, didBecome d: WKDownload) { d.delegate = self }
+  func webView(_ w: WKWebView, navigationResponse r: WKNavigationResponse, didBecome d: WKDownload) { d.delegate = self }
+  func download(_ d: WKDownload, decideDestinationUsing r: URLResponse, suggestedFilename name: String, completionHandler: @escaping (URL?) -> Void) {
+    let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+    let stem = (name as NSString).deletingPathExtension, ext = (name as NSString).pathExtension
+    var url = dir.appendingPathComponent(name), n = 1
+    while FileManager.default.fileExists(atPath: url.path) { n += 1; url = dir.appendingPathComponent(ext.isEmpty ? "\(stem) \(n)" : "\(stem) \(n).\(ext)") }
+    downloads[ObjectIdentifier(d)] = url
+    completionHandler(url)
+  }
+  var downloads: [ObjectIdentifier: URL] = [:]
+  func downloadDidFinish(_ d: WKDownload) {
+    // Bounce the Dock's Downloads stack, like Safari does.
+    if let url = downloads.removeValue(forKey: ObjectIdentifier(d)) { DistributedNotificationCenter.default().post(name: .init("com.apple.DownloadFileFinished"), object: url.path) }
+  }
+  func download(_ d: WKDownload, didFailWithError e: Error, resumeData: Data?) { downloads.removeValue(forKey: ObjectIdentifier(d)) }
   func webView(_ w: WKWebView, createWebViewWith c: WKWebViewConfiguration, for a: WKNavigationAction, windowFeatures f: WKWindowFeatures) -> WKWebView? {
     if let u = a.request.url { NSWorkspace.shared.open(u) }
     return nil
