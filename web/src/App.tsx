@@ -3,7 +3,7 @@ import { X, Search, CornerDownLeft, Copy } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
-import { useRoute, Moon, Kbd, Modal, TooltipHost, MoonLoader, go, parse, sourceLabel, applyPrefs } from './ui';
+import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, parse, sourceLabel, applyPrefs } from './ui';
 import { Sidebar } from './Sidebar';
 import { Home, AddProjectDialog } from './Home';
 import { ThreadView } from './thread/ThreadView';
@@ -144,6 +144,7 @@ export function App() {
       </Modal>
       <Toasts />
       <TooltipHost />
+      <MediaViewer />
     </div>
   );
 }

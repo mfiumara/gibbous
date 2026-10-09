@@ -254,7 +254,7 @@ export function ThreadView({ id }: { id: string }) {
               <p>{thread.worktree ? <>Working in <span className="font-mono text-moon/80">{thread.worktree.branch}</span>, a fresh worktree off <span className="font-mono">{thread.worktree.base}</span>.</> : <>Working in <span className="font-mono text-moon/80">{thread.cwd}</span>.</>}</p>
               <p className="text-ash mt-1">Start typing below.</p>
             </div>}
-            {items.map(it => {
+            {items.map((it, i) => {
               const anim = initial.current.has(it.id) ? 'tl-row' : 'tl-row animate-rise';
               switch (it.kind) {
                 case 'user': {
@@ -262,7 +262,7 @@ export function ThreadView({ id }: { id: string }) {
                   const cp = checkpointFor(it.at, users[idx + 1]?.at, checkpoints?.list ?? []);
                   return <div key={it.id} className={anim}><UserMessage item={it} onEdit={it.rowId != null ? () => setEdit({ rowId: it.rowId, text: it.text }) : undefined} onRevert={cp ? () => revert(cp) : undefined} /></div>;
                 }
-                case 'assistant': return <div key={it.id} className={anim}><AssistantMessage item={it} /></div>;
+                case 'assistant': return <div key={it.id} className={anim}><AssistantMessage item={it} endOfTurn={items[i + 1]?.kind === 'turn'} /></div>;
                 case 'reasoning': return <div key={it.id} className={anim}><ReasoningBlock item={it} /></div>;
                 case 'tool': return <div key={it.id} className={anim}><ToolRow item={it} cwd={thread.cwd} /></div>;
                 case 'subagent': return <div key={it.id} className={anim}><SubagentLine item={it} agents={agents} onOpen={openAgents} /></div>;

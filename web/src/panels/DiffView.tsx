@@ -39,10 +39,10 @@ export function DiffView({ diff, compact, comments, onComment, onRemoveComment }
                     const here = comments?.filter(c => c.file === f.name && c.line === lineNo && l.t !== '@') ?? [];
                     return (
                       <Fragment key={j}>
-                        <tr className={`group/l ${rowCls[l.t]}`}>
+                        <tr className={`group/l ${rowCls[l.t]}`} onClick={onComment && l.t !== '@' && editing !== key && matchMedia('(pointer: coarse)').matches ? () => { setEditing(key); setDraft(''); } : undefined}>
                           {!compact && <td className="relative select-none text-right pr-2 pl-2 text-ash/70 w-10 align-top">
                             {onComment && l.t !== '@' && <button onClick={() => { setEditing(key); setDraft(''); }} aria-label={`Comment on line ${lineNo}`}
-                              className="absolute left-0.5 top-0.5 size-4 grid place-items-center rounded bg-tide text-basalt opacity-0 group-hover/l:opacity-100 focus:opacity-100 transition-opacity"><MessageSquarePlus size={10} /></button>}
+                              className="absolute left-0.5 top-0.5 size-4 grid place-items-center rounded bg-tide text-basalt opacity-0 group-hover/l:opacity-100 focus:opacity-100 transition-opacity pointer-coarse:hidden"><MessageSquarePlus size={10} /></button>}
                             {l.t === '@' ? '' : l.a ?? ''}
                           </td>}
                           {!compact && <td className="select-none text-right pr-2 text-ash/70 w-10 align-top">{l.t === '@' ? '' : l.b ?? ''}</td>}

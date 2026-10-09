@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Download, X } from 'lucide-react';
 import type { ThreadStatus, TaskStatus } from './api';
 import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel } from './moon';
 
@@ -312,6 +313,41 @@ export function TooltipHost() {
   // Keep the whole bubble on screen, however wide the text makes it.
   const x = Math.min(Math.max(tip.x, w / 2 + 8), tip.vw - w / 2 - 8);
   return <div ref={el} className="tip" style={{ left: x, top: tip.y, transform: `translate(-50%, ${tip.below ? '0' : '-100%'})` }}>{tip.text}{tip.kbd && <kbd>{tip.kbd}</kbd>}</div>;
+}
+
+// ── in-app viewer for images and PDFs ──────────────────────────────────
+// Media links must never leave the app: in Gibbous.app a new window opens in the default browser, which has no
+// Gibbous session, so /api/media answered "login required". viewMedia() shows it right here instead.
+export const viewMedia = (src: string, name = '', download?: string) => dispatchEvent(new CustomEvent('gibbous:view', { detail: { src, name, download } }));
+export function MediaViewer() {
+  const [v, setV] = useState<{ src: string; name: string; download?: string } | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setV((e as CustomEvent).detail);
+    addEventListener('gibbous:view', on);
+    return () => removeEventListener('gibbous:view', on);
+  }, []);
+  useEffect(() => {
+    if (!v) return;
+    // Capture phase, so Esc closes the viewer first instead of also backing out of the thread.
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setV(null); } };
+    addEventListener('keydown', k, true);
+    return () => removeEventListener('keydown', k, true);
+  }, [v]);
+  if (!v) return null;
+  const pdf = /\.pdf$/i.test(v.name || v.src.split('?')[0]);
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={v.name || 'Image'} onClick={() => setV(null)}
+      className="fixed inset-0 z-[80] flex flex-col bg-black/90 animate-fade pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <div className="flex items-center gap-1 h-12 px-3 flex-none text-[13px] text-moon/90" onClick={e => e.stopPropagation()}>
+        <span className="flex-1 min-w-0 truncate font-mono text-[12px]">{v.name}</span>
+        {v.download && <a href={v.download} download={v.name} aria-label="Download" data-tip="Download" className="press size-9 flex-none grid place-items-center rounded-lg hover:bg-white/10"><Download size={16} /></a>}
+        <button onClick={() => setV(null)} aria-label="Close" data-tip="Close" data-kbd="esc" className="press size-9 flex-none grid place-items-center rounded-lg hover:bg-white/10"><X size={18} /></button>
+      </div>
+      <div className="flex-1 min-h-0 grid place-items-center p-3 pt-0">
+        {pdf ? <iframe src={v.src} title={v.name} onClick={e => e.stopPropagation()} className="w-full h-full max-w-5xl rounded-lg bg-white" />
+          : <img src={v.src} alt={v.name} onClick={e => e.stopPropagation()} className="max-w-full max-h-full object-contain rounded-lg animate-pop" />}
+      </div>
+    </div>, document.body);
 }
 
 // Polled data: keep the old reference when nothing changed, so a poll doesn't re-render (and re-parse) everything.

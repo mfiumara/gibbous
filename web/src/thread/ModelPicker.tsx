@@ -30,7 +30,7 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
     <div className="relative min-w-0">
       <button onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" disabled={!sid} data-tip="Model for this thread"
         className="press inline-flex items-center gap-1.5 h-8 px-2 rounded-lg text-[12px] text-dust hover:text-moon hover:bg-ridge disabled:opacity-40 min-w-0">
-        <span className="font-mono truncate max-w-36 sm:max-w-52">{info?.model ?? 'model'}</span>
+        <span className="font-mono truncate min-w-0 max-w-36 sm:max-w-52">{info?.model ?? 'model'}</span>
         {info?.reasoning_effort && <span className="label text-[9px] text-ash hidden sm:inline">{info.reasoning_effort}</span>}
         {info?.fast && <Zap size={11} className="text-halo flex-none" />}
         <ChevronDown size={11} className="flex-none" />

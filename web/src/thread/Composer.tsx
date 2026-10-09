@@ -205,13 +205,14 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
           aria-label="Message"
           className="grow-text block w-full resize-none bg-transparent placeholder:text-ash focus:outline-none" />
         </div>
-        <div className="flex items-center gap-1 px-2 pb-2">
+        {/* Round buttons never shrink (they went oval on a phone); the model name is what gives way. */}
+        <div className="flex items-center gap-1 px-2 pb-2 min-w-0">
           <input ref={fileInput} type="file" multiple hidden onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
           <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
-          <button aria-label="Attach files" data-tip="Attach files" onClick={() => fileInput.current?.click()} className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge"><Paperclip size={16} /></button>
-          <button aria-label="Take a photo" onClick={() => cameraInput.current?.click()} className="hidden pointer-coarse:grid press size-8 place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge"><Camera size={16} /></button>
-          <div className="relative">
-            <button aria-label="Send mode" data-tip="Side question or background task" aria-expanded={modeMenu} onClick={() => setModeMenu(!modeMenu)} className={`press size-8 grid place-items-center rounded-lg hover:bg-ridge ${mode !== 'send' ? 'text-tide' : 'text-dust hover:text-moon'}`}><Layers size={15} /></button>
+          <button aria-label="Attach files" data-tip="Attach files" onClick={() => fileInput.current?.click()} className="press size-8 flex-none grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge"><Paperclip size={16} /></button>
+          <button aria-label="Take a photo" onClick={() => cameraInput.current?.click()} className="hidden pointer-coarse:grid press size-8 flex-none place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge"><Camera size={16} /></button>
+          <div className="relative flex-none">
+            <button aria-label="Send mode" data-tip="Side question or background task" aria-expanded={modeMenu} onClick={() => setModeMenu(!modeMenu)} className={`press size-8 flex-none grid place-items-center rounded-lg hover:bg-ridge ${mode !== 'send' ? 'text-tide' : 'text-dust hover:text-moon'}`}><Layers size={15} /></button>
             <Menu open={modeMenu} onClose={() => setModeMenu(false)} align="left" side="top">
               <MenuItem icon={<ArrowUp />} onClick={() => { setMode('send'); setModeMenu(false); }}>{running ? 'Queue for after this turn' : 'Send as the next turn'}</MenuItem>
               {running && <MenuItem icon={<Navigation />} onClick={() => { setMode('steer'); setModeMenu(false); ta.current?.focus(); }}>Steer the running turn now</MenuItem>}
@@ -225,12 +226,12 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
           <span className="ml-auto" />
           {(usage?.context_percent != null || compacting) && <ContextMeter usage={usage} compacting={compacting} />}
           {canDictate && <button onClick={listen} aria-label={listening ? 'Stop dictation' : 'Dictate'} aria-pressed={listening} data-tip={listening ? 'Listening… click to stop' : 'Dictate'}
-            className={`press relative size-8 grid place-items-center rounded-full ${listening ? 'bg-oxide/15 text-oxide' : 'text-dust hover:text-moon hover:bg-ridge'}`}>
+            className={`press relative size-8 flex-none grid place-items-center rounded-full ${listening ? 'bg-oxide/15 text-oxide' : 'text-dust hover:text-moon hover:bg-ridge'}`}>
             {listening && <span className="absolute inset-0 rounded-full border border-oxide/60 animate-pulse" />}<Mic size={16} />
           </button>}
-          {running && <button onClick={stop} aria-label="Stop" data-tip="Stop" data-kbd="⌘." className="press size-8 grid place-items-center rounded-full border border-line text-moon hover:bg-ridge animate-pop"><Square size={11} fill="currentColor" /></button>}
+          {running && <button onClick={stop} aria-label="Stop" data-tip="Stop" data-kbd="⌘." className="press size-8 flex-none grid place-items-center rounded-full border border-line text-moon hover:bg-ridge animate-pop"><Square size={11} fill="currentColor" /></button>}
           <button onClick={submit} disabled={!sid || busy || (!text.trim() && !files.length)} aria-label="Send" data-tip="Send" data-kbd="↵"
-            className="press size-8 grid place-items-center rounded-full bg-moon text-basalt disabled:opacity-25 shadow-[inset_0_1px_0_rgb(255_255_255/.35)] hover:shadow-[inset_0_1px_0_rgb(255_255_255/.35),0_0_0_4px_color-mix(in_srgb,var(--color-moon)_14%,transparent)]"><ArrowUp size={17} strokeWidth={2.5} /></button>
+            className="press size-8 flex-none grid place-items-center rounded-full bg-moon text-basalt disabled:opacity-25 shadow-[inset_0_1px_0_rgb(255_255_255/.35)] hover:shadow-[inset_0_1px_0_rgb(255_255_255/.35),0_0_0_4px_color-mix(in_srgb,var(--color-moon)_14%,transparent)]"><ArrowUp size={17} strokeWidth={2.5} /></button>
         </div>
       </div>
     </div>

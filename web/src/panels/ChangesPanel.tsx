@@ -30,7 +30,7 @@ function GitBar({ thread, info, reload }: { thread: Thread; info: GitInfo; reloa
           {info.branches.map(b => <MenuItem key={b} icon={b === info.branch ? <CheckCircle2 className="text-tide" /> : <GitBranch />} onClick={() => b !== info.branch && act('switch', { branch: b })}><span className="font-mono text-[12px]">{b}</span></MenuItem>)}
         </Menu>
       </div>
-      {info.base && <span className="font-mono text-[11px] text-ash" data-tip={`Compared with ${info.base}`}>{info.ahead > 0 && <span className="text-sprout">↑{info.ahead}</span>} {info.behind > 0 && <span className="text-halo">↓{info.behind}</span>}{!info.ahead && !info.behind && `= ${info.base}`}</span>}
+      {info.base && <span className="font-mono text-[11px] text-ash whitespace-nowrap truncate min-w-0" data-tip={`Compared with ${info.base}`}>{info.ahead > 0 && <span className="text-sprout">↑{info.ahead}</span>} {info.behind > 0 && <span className="text-halo">↓{info.behind}</span>}{!info.ahead && !info.behind && `= ${info.base}`}</span>}
       <span className="flex-1" />
       <IconButton label={info.base ? `Rebase onto ${info.base}` : 'Pull and rebase'} onClick={() => act('sync')}><ArrowDownUp size={14} /></IconButton>
       <IconButton label="Stash changes" disabled={!info.dirty} onClick={() => act('stash')}><Archive size={14} /></IconButton>
@@ -140,7 +140,7 @@ export function ChangesPanel({ thread, refreshKey }: { thread: Thread; refreshKe
           ))}
         </ul>
         <div className="flex-1 min-h-0 overflow-y-auto p-3">
-          <p className="text-[11.5px] text-ash mb-2">Hover a line and click <span className="text-tide">+</span> to leave a comment for the agent.</p>
+          <p className="text-[11.5px] text-ash mb-2"><span className="pointer-coarse:hidden">Hover a line and click <span className="text-tide">+</span></span><span className="hidden pointer-coarse:inline">Tap a line</span> to leave a comment for the agent.</p>
           <DiffView diff={diff} comments={comments} onComment={c => setComments(cs => [...cs, { ...c, id: `${Date.now()}` }])} onRemoveComment={id => setComments(cs => cs.filter(c => c.id !== id))} />
         </div>
         {comments.length > 0 && <div className="flex items-center gap-2 px-3 py-2 border-t border-tide/30 bg-tide/[0.06] animate-rise">

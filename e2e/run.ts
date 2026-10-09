@@ -110,6 +110,13 @@ try {
     await visit(phone, hash, text);
     const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     if (overflow > 1) failures.push(`${hash} scrolls sideways on a phone (${overflow}px)`);
+    // Square/round controls (size-N) squeezed by a crowded flex row turn into ovals.
+    const squished = await phone.evaluate(() => [...document.querySelectorAll<HTMLElement>('[class*="size-"]')].flatMap(el => {
+      if (!/(^|\s)(pointer-coarse:)?size-\d/.test(String(el.className)) || el.closest('svg')) return [];
+      const r = el.getBoundingClientRect();
+      return r.width && r.height && Math.abs(r.width - r.height) > 1.5 ? [`${el.getAttribute('aria-label') ?? el.tagName} ${Math.round(r.width)}x${Math.round(r.height)}`] : [];
+    }));
+    if (squished.length) failures.push(`${hash} squeezes square controls on a phone: ${squished.join(', ')}`);
   }
   // iOS zooms the page into any field rendered under 16px on focus; the density zoom counts toward that size.
   await visit(phone, '#/', 'e2e');
