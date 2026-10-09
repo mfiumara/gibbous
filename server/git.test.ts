@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileLines, safeJoin, slug, listFiles, currentBranch, changes, addWorktree, ciState, prBadge } from './git.ts';
-import { prTargets } from './prs.ts';
+import { liveBranch, prTargets } from './prs.ts';
 import { execFileSync } from 'node:child_process';
 
 test('fileLines ignores the final newline', () => {
@@ -61,12 +61,25 @@ test('prBadge maps gh pr list rows', () => {
   assert.equal(prBadge({ ...row, state: 'CLOSED', isDraft: true }).state, 'closed');
 });
 
-test('prTargets groups live local worktree threads by project checkout', () => {
+test('prTargets groups local worktree threads, archived included, by project checkout', () => {
   const t = (id: string, extra: object) => ({ id, cwd: `/wt/${id}`, status: 'idle', worktree: { path: `/wt/${id}`, branch: `b-${id}`, base: 'main' }, ...extra }) as any;
   const got = prTargets([
     t('a', { projectId: 'p' }), t('b', { projectId: 'p' }), t('c', {}),
     t('archived', { projectId: 'p', status: 'archived' }), t('remote', { projectId: 'p', host: 'h' }),
     { id: 'plain', cwd: '/x', status: 'idle', projectId: 'p' } as any,
   ], [{ id: 'p', path: '/repo' }] as any);
-  assert.deepEqual([...got], [['/repo', [{ id: 'a', branch: 'b-a' }, { id: 'b', branch: 'b-b' }]], ['/wt/c', [{ id: 'c', branch: 'b-c' }]]]);
+  const row = (id: string) => ({ id, branch: `b-${id}`, path: `/wt/${id}` });
+  assert.deepEqual([...got], [['/repo', [row('a'), row('b'), row('archived')]], ['/wt/c', [row('c')]]]);
+});
+
+test('liveBranch follows a renamed worktree branch, falls back when detached or gone', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gib-live-'));
+  const sh = (...a: string[]) => execFileSync('git', a, { cwd: dir });
+  sh('init', '-q', '-b', 'gibbous/orig'); sh('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'x');
+  sh('branch', '-m', 'feature/renamed');
+  assert.equal(await liveBranch(dir, 'gibbous/orig'), 'feature/renamed');
+  sh('checkout', '-q', '--detach');
+  assert.equal(await liveBranch(dir, 'gibbous/orig'), 'gibbous/orig');
+  assert.equal(await liveBranch(path.join(dir, 'missing'), 'gibbous/orig'), 'gibbous/orig');
+  fs.rmSync(dir, { recursive: true, force: true });
 });

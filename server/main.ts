@@ -22,7 +22,7 @@ import { redact, tail } from './diagnostics.ts';
 import { watchBuild } from './build.ts';
 import { listSubagents } from './subagents.ts';
 import { openingMessage } from './titles.ts';
-import { prBadges, refreshPrs } from './prs.ts';
+import { liveBranch, prBadges, refreshPrs } from './prs.ts';
 
 const PORT = Number(process.env.GIBBOUS_PORT ?? 7878);
 const DIST = path.resolve(import.meta.dirname, '../web/dist');
@@ -291,7 +291,7 @@ route('POST', '/api/threads/:id/pr', async (p, b) => {
   const t = thr(p.id);
   if (!t.worktree) throw new HttpError(400, 'PRs need a worktree thread');
   await g.commitAll(t.cwd, String(b.message || t.title));
-  const url = await g.pushAndPr(t.cwd, t.worktree.branch, t.worktree.base, t.title, String(b.body ?? '🤖 Made with Gibbous on Hermes'));
+  const url = await g.pushAndPr(t.cwd, await liveBranch(t.cwd, t.worktree.branch), t.worktree.base, t.title, String(b.body ?? '🤖 Made with Gibbous on Hermes'));
   pollPrs();
   return { url };
 });
