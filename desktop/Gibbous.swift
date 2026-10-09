@@ -112,7 +112,10 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
   func shellScript() -> String {
     let titlebar = max(0, Int((window.frame.height - window.contentLayoutRect.height).rounded()))
     let fs = window.styleMask.contains(.fullScreen)
-    return "(() => { const d = document.documentElement; d.dataset.shell = 'mac'; d.style.setProperty('--titlebar', '\(titlebar)px'); \(fs ? "d.dataset.fullscreen = ''" : "delete d.dataset.fullscreen"); })()"
+    // At document start WebKit has no <html> element yet (documentElement is null), so setting attributes directly threw
+    // and the page never knew it was in the app. Leave the values on window (main.tsx applies them before the first
+    // render) and also set them as soon as <html> exists.
+    return "(() => { window.__gibbousShell = { titlebar: \(titlebar), fullscreen: \(fs) }; const apply = () => { const d = document.documentElement; if (!d) return false; d.dataset.shell = 'mac'; d.style.setProperty('--titlebar', '\(titlebar)px'); \(fs ? "d.dataset.fullscreen = ''" : "delete d.dataset.fullscreen"); return true; }; if (!apply()) new MutationObserver((_, o) => { if (apply()) o.disconnect(); }).observe(document, { childList: true }); })()"
   }
   func installShellScript() {
     let u = web.configuration.userContentController

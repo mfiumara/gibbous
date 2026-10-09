@@ -14,7 +14,17 @@ function toggleSidebar() {
   localStorage.setItem('gibbous.macSidebar', off ? 'off' : 'on');
 }
 
+// The app leaves its shell values on window (desktop/Gibbous.swift shellScript): apply them before the first render, in
+// case its document-start script ran before <html> existed.
+function applyShellValues() {
+  const s = (window as any).__gibbousShell as { titlebar: number; fullscreen: boolean } | undefined, d = document.documentElement;
+  if (!s) return;
+  d.dataset.shell = 'mac'; d.style.setProperty('--titlebar', `${s.titlebar}px`);
+  if (s.fullscreen) d.dataset.fullscreen = ''; else delete d.dataset.fullscreen;
+}
+
 export function installMacShell() {
+  applyShellValues();
   if (document.documentElement.dataset.shell !== 'mac' || !(window as any).webkit?.messageHandlers?.gibbousWindow) return;
   if (localStorage.getItem('gibbous.macSidebar') === 'off') document.documentElement.dataset.sidebar = 'off';
 

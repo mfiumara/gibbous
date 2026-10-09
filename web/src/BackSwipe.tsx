@@ -87,7 +87,7 @@ export function BackSwipe({ screen, render }: { screen: RefObject<HTMLDivElement
           if (uRef.current) uRef.current.style.visibility = 'hidden';
           quiet(); go(was.parent);
           // The copy was already on screen: the real one's mount animations (rows rising in) would replay. Skip them.
-          for (const a of document.getAnimations()) { const t = (a.effect as KeyframeEffect | null)?.target; if (t && s?.contains(t)) a.finish(); }
+          for (const a of document.getAnimations()) { const t = (a.effect as KeyframeEffect | null)?.target; if (t && s?.contains(t) && Number.isFinite(a.effect?.getComputedTiming().endTime as number)) a.finish(); } // looping ones (the running moon) can't finish
         }
         paint(null); setUnder(null);
       };

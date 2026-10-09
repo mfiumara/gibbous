@@ -5,7 +5,7 @@ import type { Route } from './ui';
 import { transitionFor } from './screens';
 
 let quietUntil = 0, last = 0;
-let running: { skipTransition(): void; finished: Promise<void> } | null = null;
+let running: { skipTransition(): void; finished: Promise<void>; ready?: Promise<void>; updateCallbackDone?: Promise<void> } | null = null;
 
 // The next route change happens without an animation and is painted synchronously: the drawer slides itself away,
 // and a finished back-swipe has already moved the screen where the new one goes.
@@ -24,5 +24,7 @@ export function screenChange(from: Route, to: Route, commit: (sync: boolean) => 
   if (!kind) { running?.skipTransition(); commit(hush); return; }
   root.dataset.vt = kind; // picks the keyframes in styles.css
   const vt = running = start.call(document, () => commit(true))!;
+  // Skipping a transition (a newer navigation) rejects ready/updateCallbackDone: expected, never an error.
+  vt.ready?.catch(() => {}); vt.updateCallbackDone?.catch(() => {});
   vt.finished.catch(() => {}).finally(() => { if (running === vt) { running = null; delete root.dataset.vt; } });
 }
