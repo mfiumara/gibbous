@@ -6,7 +6,7 @@ import { EventEmitter } from 'node:events';
 import { spawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import { HermesClient, restGet, type Backend } from './hermes.ts';
+import { HermesClient, restGet, isStaleSession, type Backend } from './hermes.ts';
 import { state, save, newId, type Thread, type Task, type Project, type ThreadRole, type Playbook, type PlanDraft } from './store.ts';
 import { BUILTIN_PLAYBOOKS, reviewPrompt, workerPrompt, extractPlanJson } from './playbooks.ts';
 import { parseCron } from './cron.ts';
@@ -322,12 +322,12 @@ export class Orchestrator extends EventEmitter {
     return added;
   }
 
-  // Call a session method; if Hermes reaped the live session (4007), re-attach once and retry.
+  // Call a session method; if Hermes reaped the live session, re-attach once and retry.
   async withLive<T>(t: Thread, fn: (sid: string) => Promise<T>): Promise<T> {
     try {
       return await fn(await this.attach(t));
     } catch (e: any) {
-      if (e?.code !== 4007) throw e;
+      if (!isStaleSession(e)) throw e;
       const stale = this.live.get(t.sessionId);
       this.live.delete(t.sessionId);
       if (stale) this.byLive.delete(stale);

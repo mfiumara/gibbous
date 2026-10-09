@@ -55,6 +55,13 @@ export function upstreamUrl(b: Backend) {
 
 export interface RpcError { code: number; message: string; data?: unknown }
 
+// Hermes reaped the live (runtime) session id: re-attach via session.resume on the stored id.
+// Session-scoped calls answer 4001 "session not found" for a dead runtime id; resume answers 4007.
+export const isStaleSession = (e: unknown) => {
+  const r = e as Partial<RpcError> | undefined;
+  return r?.code === 4007 || (r?.code === 4001 && /session not found/.test(String(r.message ?? '')));
+};
+
 // A JSON-RPC client for Gibbous's own use (orchestration, notifications). Browsers get raw pipes instead.
 // Emits: 'ready', 'down', 'event' (params: {type, session_id, payload}), 'request' (frame), 'cancel'.
 export class HermesClient extends EventEmitter {
