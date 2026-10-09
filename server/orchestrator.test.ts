@@ -70,3 +70,14 @@ test('a turn that ended while Gibbous was down is caught up on restart', async (
   await until('task in review', () => task.status === 'review');
   assert.equal(orch.thread(task.threadId!)!.status, 'idle');
 });
+
+test('a send after Hermes reaped the live session re-attaches instead of failing', async () => {
+  const t = await orch.createThread({ title: 'Plain chat', cwd: repo });
+  const dead = await orch.attach(t);
+  fake.reap(dead); // Hermes now answers 4001 "session not found" for the old runtime id
+  await orch.send(t, 'still there?');
+  assert.notEqual(orch.liveId(t), dead);
+  assert.equal(t.error, undefined);
+  await until('turn finished', () => t.lastText === 'done');
+  assert.equal(t.status, 'idle');
+});

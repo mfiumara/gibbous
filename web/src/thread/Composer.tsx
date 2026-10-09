@@ -3,7 +3,7 @@ import { ArrowUp, Navigation, Square, Paperclip, CornerDownLeft, Layers, Message
 import { canDictate, dictate, handsFree, setHandsFree } from '../voice';
 import { Menu, MenuItem, MoonLoader, useDraft } from '../ui';
 import { useAttachments, AttachmentChips, filesFrom, takeHandoff } from '../attachments';
-import { useRpc, type RpcError } from '../rpc';
+import { useRpc, isStaleSession, type RpcError } from '../rpc';
 import { useCompletions } from './completions';
 import { ModelPicker, ApprovalChip, ContextMeter } from './ModelPicker';
 import { SubagentChip } from './Subagents';
@@ -21,7 +21,7 @@ interface Props {
   placeholder?: string;
   insert?: { text: string; n: number }; // text to append (e.g. an @file mention from the Files panel)
   dropped?: { files: File[]; n: number }; // files dropped anywhere on the thread
-  onStale(): void; // Hermes reaped the live session (4007): the view re-attaches
+  onStale(): void; // Hermes reaped the live session: the view re-attaches
   onEditLast?(): void; // ↑ in an empty composer
   todos?: Record<string, unknown>[];
   onSide?(taskId: string, mode: 'btw' | 'background', text: string): void;
@@ -136,7 +136,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
       setText(''); setFiles([]); completions.clear();
       if (edit) onCancelEdit();
     } catch (e) {
-      if ((e as RpcError).code === 4007) { onStale(); toast({ title: 'Reconnected to the session', body: 'Send your message again.' }); }
+      if (isStaleSession(e)) { onStale(); toast({ title: 'Reconnected to the session', body: 'Send your message again.' }); }
       else toastError(e);
     } finally {
       setBusy(false);

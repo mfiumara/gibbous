@@ -207,7 +207,7 @@ route('PATCH', '/api/threads/:id', (p, b) => {
   save(); orch.changed('thread', t); return t;
 });
 route('POST', '/api/threads/:id/attach', async p => ({ session_id: await orch.withLive(need(orch.thread(p.id), 'thread'), async sid => {
-  await orch.hc.call('session.status', { session_id: sid }); // probes for a reaped live id (4007)
+  await orch.cl(orch.thread(p.id)!).call('session.status', { session_id: sid }); // probes for a reaped live id, on the thread's own host
   return sid;
 }) }));
 route('POST', '/api/threads/:id/send', async (p, b) => { await orch.send(need(orch.thread(p.id), 'thread'), String(b.text)); return { ok: true }; });
