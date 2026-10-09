@@ -137,7 +137,7 @@ export function App() {
     <div className="h-full flex overflow-hidden">
       <SkyMoon />
       <Sidebar route={route} onAddProject={() => setAdding(true)} />
-      <main className="flex-1 min-w-0 h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <main className="flex-1 min-w-0 h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] kb-flush">
         <HealthBanner />
         {/* .vt-screen is the only part that moves on navigation (screenTransition.ts); BackSwipe draws the screen
             a back gesture returns to underneath it. */}
