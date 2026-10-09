@@ -32,6 +32,7 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
     config.userContentController.add(self, name: "gibbousBadge")
     config.preferences.setValue(true, forKey: "developerExtrasEnabled")
     config.preferences.isElementFullscreenEnabled = true  // the video player's full-screen button
+    if #available(macOS 14.0, *) { config.allowsInlinePredictions = false }  // no grey word guesses in the prompt box
     web = WKWebView(frame: .zero, configuration: config)
     web.navigationDelegate = self
     web.uiDelegate = self

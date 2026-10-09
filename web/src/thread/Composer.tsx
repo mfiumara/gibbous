@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Navigation, Square, Paperclip, CornerDownLeft, Layers, MessageCircleQuestion, Mic, Headphones, Camera, Clock } from 'lucide-react';
 import { canDictate, dictate, handsFree, setHandsFree } from '../voice';
-import { Menu, MenuItem, MoonLoader, useDraft } from '../ui';
+import { Menu, MenuItem, MoonLoader, useDraft, NO_PREDICT } from '../ui';
 import { useAttachments, AttachmentChips, filesFrom, takeHandoff } from '../attachments';
 import { useRpc, isStaleSession, type RpcError } from '../rpc';
 import { useCompletions } from './completions';
@@ -194,7 +194,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
         {waiting && <p className="flex items-center gap-2 px-3 pt-2 text-[12.5px] text-halo animate-fade" role="status"><MoonLoader size={14} label="Waiting" />Waiting for the connection, sends automatically<button onClick={() => setWaiting(false)} className="press ml-auto text-dust hover:text-moon">Cancel</button></p>}
         <AttachmentChips files={files} onRemove={att.remove} />
         <div className="grow-wrap" data-value={text}>
-        <textarea ref={ta} value={text} rows={1} onChange={e => setText(e.target.value)} onKeyDown={onKey}
+        <textarea ref={ta} value={text} rows={1} onChange={e => setText(e.target.value)} onKeyDown={onKey} {...NO_PREDICT}
           onPaste={e => {
             // Screenshots and copied images attach; copied text (even with a file icon, e.g. from Finder) stays text.
             const fs = filesFrom(e.clipboardData);

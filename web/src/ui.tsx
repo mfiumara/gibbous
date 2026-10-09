@@ -377,6 +377,10 @@ export function MediaViewer() {
     </div>, document.body);
 }
 
+// Prompt boxes: no grey inline word predictions (macOS/WebKit "inline predictive text"), autocorrect or browser
+// autofill. They guessed at prompts and Tab/→ accepted the guess. Gibbous's own /, @ and ; popups are unaffected.
+export const NO_PREDICT = { autoComplete: 'off', autoCorrect: 'off', writingsuggestions: 'false' } as Record<string, string>;
+
 // Polled data: keep the old reference when nothing changed, so a poll doesn't re-render (and re-parse) everything.
 export const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
 

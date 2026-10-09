@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Menu, MessageSquareShare, Trash2, RefreshCw, ArrowUp } from 'lucide-react';
 import { api, type Thread } from '../api';
 import { useStore, toastError } from '../store';
-import { Button, IconButton, Moon, go, sourceLabel, useDraft, sameJson } from '../ui';
+import { Button, IconButton, Moon, go, sourceLabel, useDraft, sameJson, NO_PREDICT } from '../ui';
 import { fromStored, type StoredRow, type Item } from './timeline';
 import { Markdown, ToolRow, ReasoningBlock, UserMessage } from './Items';
 
@@ -108,7 +108,7 @@ export function ExternalThread({ thread }: { thread: Thread }) {
       <div className="flex-none px-3 pb-3 pt-1">
         {canReply ? (
           <div className="mx-auto max-w-3xl surface rounded-2xl">
-            <textarea value={reply} onChange={e => setReply(e.target.value)} rows={1} aria-label={`Reply in this ${label} conversation`}
+            <textarea value={reply} onChange={e => setReply(e.target.value)} rows={1} {...NO_PREDICT} aria-label={`Reply in this ${label} conversation`}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer: coarse)').matches) { e.preventDefault(); send(); } }}
               placeholder={`Message Hermes in this ${label} conversation`} className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] placeholder:text-ash focus:outline-none" />
             <div className="flex items-center gap-2 px-3 pb-2.5">

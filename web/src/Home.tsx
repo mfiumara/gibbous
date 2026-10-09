@@ -4,7 +4,7 @@ import { api, type Project, type Thread } from './api';
 import { useStore, toastError, NONE } from './store';
 import { useAttachments, AttachmentChips, filesFrom, handOff } from './attachments';
 import { useCompletions } from './thread/completions';
-import { Button, IconButton, Modal, Moon, Switch, inputCls, go, ago, sourceLabel, useDraft } from './ui';
+import { Button, IconButton, Modal, Moon, Switch, inputCls, go, ago, sourceLabel, useDraft, NO_PREDICT } from './ui';
 
 // The old single shared Home draft held already-sent text (its clear was dropped on unmount).
 localStorage.removeItem('gibbous.draft.home');
@@ -112,7 +112,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
             className="relative surface moonlit rounded-2xl">
             {completions.list('top-full mt-2 [--origin:top]')}
             <AttachmentChips files={att.files} onRemove={att.remove} />
-            <textarea ref={ta} value={text} onChange={e => setText(e.target.value)} rows={3}
+            <textarea ref={ta} value={text} onChange={e => setText(e.target.value)} rows={3} {...NO_PREDICT}
               onPaste={e => { const fs = filesFrom(e.clipboardData), t = e.clipboardData.getData('text/plain'); if (fs.length && (!t || fs.some(f => f.type.startsWith('image/')))) { e.preventDefault(); att.add(fs); } }}
               onKeyDown={e => { if (completions.onKey(e)) return; if (e.key === 'Escape') { e.preventDefault(); ta.current?.blur(); return; } if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || (!e.shiftKey && !matchMedia('(pointer: coarse)').matches))) { e.preventDefault(); start(); } }}
               placeholder="Describe the task"
