@@ -4,10 +4,13 @@ import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread } from 
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type PrBadge } from './api';
 import { EDGE, axis, progress, settle } from './drawer';
-import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
+import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, routeNow, type Route } from './ui';
+import { parentOf } from './screens';
+import { quiet } from './screenTransition';
 
 const roleTag: Partial<Record<Thread['role'], string>> = { reviewer: 'review', planner: 'plan', coordinator: 'lead', worker: 'task' };
-const close = () => useStore.setState({ sidebar: false });
+// Navigating from the open drawer: the drawer slides away itself, so the screen change gets no transition on top.
+const close = () => { if (useStore.getState().sidebar) quiet(); useStore.setState({ sidebar: false }); };
 
 const rowCls = (active: boolean) =>
   `press group relative flex items-center gap-2.5 rounded-lg text-[13.5px] ${active ? 'bg-ridge text-moon shadow-[inset_0_1px_0_var(--surface-hi)]' : 'text-dust hover:text-moon hover:bg-ridge/55'}`;
@@ -190,7 +193,8 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
       if (innerWidth >= 1024 || e.touches.length > 1) { g = null; return; }
       const t = e.touches[0], open = useStore.getState().sidebar;
       const onDrawer = !!navRef.current?.contains(e.target as Node) || e.target === scrimRef.current;
-      if (open ? !onDrawer : t.clientX > EDGE || inScroller(e.target)) { g = null; return; }
+      // Inside a thread / board / section the closed-drawer edge drag is the back-swipe (BackSwipe.tsx).
+      if (open ? !onDrawer : t.clientX > EDGE || inScroller(e.target) || parentOf(routeNow())) { g = null; return; }
       g = { x0: t.clientX, y0: t.clientY, t0: e.timeStamp, open, lock: null, w: navRef.current?.offsetWidth || 276, lastX: t.clientX, lastT: e.timeStamp, vx: 0 };
     };
     const move = (e: TouchEvent) => {
