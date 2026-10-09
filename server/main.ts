@@ -22,6 +22,7 @@ import { redact, tail } from './diagnostics.ts';
 import { watchBuild } from './build.ts';
 import { listSubagents } from './subagents.ts';
 import { openingMessage } from './titles.ts';
+import { prBadges, refreshPrs } from './prs.ts';
 
 const PORT = Number(process.env.GIBBOUS_PORT ?? 7878);
 const DIST = path.resolve(import.meta.dirname, '../web/dist');
@@ -148,7 +149,7 @@ function publicState() {
     requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
-    vapidPublicKey: vapidPublicKey(), build: webBuild(),
+    vapidPublicKey: vapidPublicKey(), build: webBuild(), prs: prBadges(),
   };
 }
 
@@ -290,7 +291,9 @@ route('POST', '/api/threads/:id/pr', async (p, b) => {
   const t = thr(p.id);
   if (!t.worktree) throw new HttpError(400, 'PRs need a worktree thread');
   await g.commitAll(t.cwd, String(b.message || t.title));
-  return { url: await g.pushAndPr(t.cwd, t.worktree.branch, t.worktree.base, t.title, String(b.body ?? '🤖 Made with Gibbous on Hermes')) };
+  const url = await g.pushAndPr(t.cwd, t.worktree.branch, t.worktree.base, t.title, String(b.body ?? '🤖 Made with Gibbous on Hermes'));
+  pollPrs();
+  return { url };
 });
 route('GET', '/api/projects/:id/scripts/detect', p => g.detectScripts(need(orch.project(p.id), 'project').path));
 route('POST', '/api/threads/:id/file', (p, b) => {
@@ -623,6 +626,11 @@ const broadcast = (kind: string, data: unknown) => {
   for (const c of clients) if (c.readyState === WebSocket.OPEN) c.send(frame);
 };
 orch.on('change', ({ kind, data }) => broadcast(kind, kind === 'requests' ? [...orch.requests.values()] : data));
+
+// Sidebar PR + CI badges: poll gh every minute, push only when something changed.
+const pollPrs = () => refreshPrs(b => broadcast('prs', b)).catch(e => console.error('[prs]', e));
+setTimeout(pollPrs, 3000);
+setInterval(pollPrs, 60_000);
 notifications.on('notify', n => broadcast('notify', n));
 hc.on('ready', () => { broadcast('hermes', { ready: true }); pollHealth(true); }); // after `hermes update`, serve restarts
 hc.on('down', () => broadcast('hermes', { ready: false }));

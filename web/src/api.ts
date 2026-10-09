@@ -1,9 +1,9 @@
 // Gibbous REST + shared types (straight from the server's store, so they never drift).
 import type { Project, Thread, Task, Settings, ThreadStatus, TaskStatus, Playbook, PlanDraft, Schedule, Usage, Host } from '../../server/store.ts';
 import type { OpenRequest } from '../../server/orchestrator.ts';
-import type { FileChange } from '../../server/git.ts';
+import type { FileChange, PrBadge } from '../../server/git.ts';
 
-export type { Project, Thread, Task, Settings, ThreadStatus, TaskStatus, OpenRequest, FileChange, Playbook, PlanDraft, Schedule, Usage, Host };
+export type { Project, Thread, Task, Settings, ThreadStatus, TaskStatus, OpenRequest, FileChange, PrBadge, Playbook, PlanDraft, Schedule, Usage, Host };
 
 export class ApiError extends Error { status: number; constructor(status: number, msg: string) { super(msg); this.status = status; } }
 

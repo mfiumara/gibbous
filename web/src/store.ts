@@ -1,6 +1,6 @@
 // App state: a mirror of the server's Gibbous state, kept fresh by gibbous.event frames.
 import { create } from 'zustand';
-import { api, ApiError, type Project, type Thread, type Task, type Settings, type OpenRequest, type Playbook, type PlanDraft, type Schedule, type Host } from './api';
+import { api, ApiError, type PrBadge, type Project, type Thread, type Task, type Settings, type OpenRequest, type Playbook, type PlanDraft, type Schedule, type Host } from './api';
 import { rpc } from './rpc';
 
 interface Toast { id: number; title: string; body?: string; url?: string; tone?: 'error' | 'info'; action?: { label: string; run(): void } }
@@ -12,6 +12,7 @@ interface S {
   settings?: Settings; hermesReady: boolean; hermes?: { ready: boolean; version?: string; updateAvailable?: boolean; gatewayRunning?: boolean }; gatewayReplies?: boolean;
   hosts: (Host & { connected: boolean })[]; tailnetUrl: string | null; tailnetLogin: string | null; vapidPublicKey: string;
   build?: string | null; // web build the server serves now (see LOADED_BUILD)
+  prs: Record<string, PrBadge>; // thread id → its GitHub PR (worktree threads only)
   toasts: Toast[];
   seen: Record<string, number>;   // thread id → when you last looked (per device)
   markSeen(id: string): void;
@@ -31,7 +32,7 @@ const upsert = <T extends { id: string }>(list: T[], item: T, front = false) => 
 let toastId = 0;
 export const useStore = create<S>((set, get) => ({
   loaded: false, authed: null, connected: false,
-  projects: [], threads: [], tasks: [], requests: [], playbooks: [], plans: [], schedules: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '',
+  projects: [], threads: [], tasks: [], requests: [], playbooks: [], plans: [], schedules: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {},
   toasts: [], sidebar: false, palette: false,
   // First run: everything counts as seen, so the sidebar doesn't light up all at once.
   seen: JSON.parse(localStorage.getItem('gibbous.seen') ?? 'null') ?? { '*': Date.now() },
@@ -107,6 +108,7 @@ rpc.onGibbous = (kind, data) => {
     case 'schedule': useStore.setState({ schedules: upsert(s.schedules, data) }); break;
     case 'playbooks': useStore.setState({ playbooks: data }); break;
     case 'hosts': useStore.setState({ hosts: data }); break;
+    case 'prs': useStore.setState({ prs: data }); break;
     case 'settings': useStore.setState({ settings: data }); break;
     case 'hermes': useStore.setState({ hermesReady: data.ready }); break;
     case 'health': useStore.setState({ hermes: { ...s.hermes, ready: s.hermesReady, ...data } }); break;

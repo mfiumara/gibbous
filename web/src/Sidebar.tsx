@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Inbox, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical } from 'lucide-react';
+import { Plus, Inbox, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread } from './store';
-import { api, type Thread } from './api';
-import { Moon, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
+import { api, type Thread, type PrBadge } from './api';
+import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 
 const roleTag: Partial<Record<Thread['role'], string>> = { reviewer: 'review', planner: 'plan', coordinator: 'lead', worker: 'task' };
 const close = () => useStore.setState({ sidebar: false });
@@ -10,12 +10,46 @@ const close = () => useStore.setState({ sidebar: false });
 const rowCls = (active: boolean) =>
   `press group relative flex items-center gap-2.5 rounded-lg text-[13.5px] ${active ? 'bg-ridge text-moon shadow-[inset_0_1px_0_var(--surface-hi)]' : 'text-dust hover:text-moon hover:bg-ridge/55'}`;
 
+// A worktree thread's PR under its title: state glyph + number, CI result, diff size. Clicking it opens GitHub.
+const prLook: Record<PrBadge['state'], { Icon: typeof GitPullRequest; cls: string; word?: string }> = {
+  open: { Icon: GitPullRequest, cls: 'text-sprout' }, draft: { Icon: GitPullRequestDraft, cls: 'text-ash', word: 'draft' },
+  merged: { Icon: GitMerge, cls: 'text-[#b8a6e0]', word: 'merged' }, closed: { Icon: GitPullRequestClosed, cls: 'text-ash', word: 'closed' },
+};
+const ciLook = { pass: { cls: 'text-sprout', word: 'passed' }, fail: { cls: 'text-oxide', word: 'failing' }, pending: { cls: 'text-halo', word: 'running' } };
+const kNum = (n: number) => n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
+function PrLine({ pr }: { pr: PrBadge }) {
+  const { Icon, cls, word } = prLook[pr.state];
+  const live = pr.state === 'open' || pr.state === 'draft';
+  const ci = live && pr.ci ? ciLook[pr.ci] : null;
+  const open = (e: React.MouseEvent | React.KeyboardEvent) => { e.preventDefault(); e.stopPropagation(); window.open(pr.url, '_blank', 'noopener'); };
+  return (
+    <span role="link" tabIndex={-1} onClick={open} data-tip={`Pull request #${pr.number} · ${word ?? 'open'}${ci ? ` · checks ${ci.word}` : ''}\nOpens on GitHub`}
+      className="basis-full flex items-center gap-1.5 pl-[19px] h-4 text-[11px] leading-none text-ash tabular-nums cursor-pointer hover:[&_.pr-n]:text-dust">
+      <Icon size={10} strokeWidth={2.4} className={`flex-none ${cls}`} aria-hidden />
+      <span className="pr-n transition-colors">{pr.number}</span>
+      {word && <><span aria-hidden className="opacity-50">·</span><span className={cls}>{word}</span></>}
+      {ci && <><span aria-hidden className="opacity-50">·</span>
+        <span className={`inline-flex items-center gap-1 ${ci.cls}`}>
+          {pr.ci === 'pending' ? <MoonLoader size={9} label="Checks running" />
+            : <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                {pr.ci === 'pass' ? <path d="M1.2 4.3 3.2 6.2 6.8 1.9" /> : <path d="M1.6 1.6l4.8 4.8M6.4 1.6 1.6 6.4" />}</svg>}
+          {ci.word}</span></>}
+      <span className="ml-auto pl-2 flex gap-1 text-[10.5px] group-hover:opacity-0 transition-opacity">
+        {pr.additions > 0 && <span className="text-sprout/85">+{kNum(pr.additions)}</span>}
+        {pr.deletions > 0 && <span className="text-oxide/85">−{kNum(pr.deletions)}</span>}
+      </span>
+    </span>
+  );
+}
+
 // Bulk select: when on, rows become checkboxes and a bar offers archive/delete for the selection.
 const SelectCtx = createContext<{ on: boolean; ids: Set<string>; toggle(id: string): void }>({ on: false, ids: new Set(), toggle: () => {} });
 
 function ThreadLink({ t, active }: { t: Thread; active: boolean }) {
   const sel = useContext(SelectCtx);
   const unread = useStore(s => !active && isUnread(t, s.seen));
+  const pr = useStore(s => s.prs[t.id]);
   const archived = t.status === 'archived';
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -42,13 +76,14 @@ function ThreadLink({ t, active }: { t: Thread; active: boolean }) {
       <a href={`#/t/${t.id}`} onClick={e => { if (longPressed.current) { e.preventDefault(); longPressed.current = false; return; } close(); }}
         onDoubleClick={e => { e.preventDefault(); setRenaming(true); }} onTouchStart={touchStart} onTouchEnd={touchEnd} onTouchMove={touchEnd}
         aria-current={active ? 'page' : undefined}
-        className={`${rowCls(active)} pl-3 pr-2 py-[5px] pointer-coarse:py-2 select-none [-webkit-touch-callout:none]`}>
+        className={`${rowCls(active)} pl-3 pr-2 py-[5px] pointer-coarse:py-2 select-none [-webkit-touch-callout:none] ${pr ? 'flex-wrap gap-y-[3px]' : ''}`}>
         <Moon thread={t.status} size={9} />
         <span className={`truncate flex-1 ${unread ? 'font-bold text-moon' : ''}`}>{t.title}</span>
         {unread && <span className="size-1.5 rounded-full bg-tide flex-none"><span className="sr-only">unread</span></span>}
         {t.pinned && <Pin size={11} className="text-ash flex-none" aria-label="pinned" />}
         {roleTag[t.role] && <span className="label text-[9px] text-ash">{roleTag[t.role]}</span>}
         <span className="text-[11px] text-ash group-hover:opacity-0 transition-opacity">{ago(t.updatedAt)}</span>
+        {pr && <PrLine pr={pr} />}
       </a>
       <button onClick={toggleArchive} aria-label={archived ? `Unarchive ${t.title}` : `Archive ${t.title}`} data-tip={archived ? 'Unarchive' : 'Archive'}
         className="absolute right-1.5 top-1/2 -translate-y-1/2 size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-line/60 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity pointer-coarse:hidden">

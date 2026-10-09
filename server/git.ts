@@ -210,6 +210,35 @@ export async function prStatus(dir: string, branch: string): Promise<PrStatus | 
   };
 }
 
+// The sidebar's one-line PR summary: number, state, CI rollup and diff size.
+export type CiState = 'pass' | 'fail' | 'pending';
+export interface PrBadge { number: number; url: string; state: 'open' | 'draft' | 'merged' | 'closed'; ci: CiState | null; additions: number; deletions: number }
+
+const CI_FAIL = /^(failure|error|timed_out|cancelled|action_required|startup_failure)$/;
+export function ciState(rollup: any[] | undefined): CiState | null {
+  if (!rollup?.length) return null;
+  const s = rollup.map(c => ({ done: !c.status || String(c.status).toUpperCase() === 'COMPLETED', result: String(c.conclusion || c.state || '').toLowerCase() }));
+  if (s.some(c => CI_FAIL.test(c.result))) return 'fail';
+  if (s.some(c => !c.done || /^(pending|expected|queued|in_progress)$/.test(c.result))) return 'pending';
+  return 'pass';
+}
+
+export function prBadge(j: any): PrBadge {
+  const st = String(j.state).toUpperCase();
+  return {
+    number: j.number, url: j.url, additions: j.additions ?? 0, deletions: j.deletions ?? 0, ci: ciState(j.statusCheckRollup),
+    state: st === 'MERGED' ? 'merged' : st === 'CLOSED' ? 'closed' : j.isDraft ? 'draft' : 'open',
+  };
+}
+
+// Recent PRs of a repo by head branch (newest wins). One gh call covers every worktree thread of a project.
+export async function prsByBranch(dir: string): Promise<Map<string, PrBadge>> {
+  const out = await run('gh', ['pr', 'list', '--state', 'all', '--limit', '60', '--json', 'number,url,state,isDraft,headRefName,additions,deletions,statusCheckRollup'], dir);
+  const m = new Map<string, PrBadge>();
+  for (const j of JSON.parse(out || '[]')) if (!m.has(j.headRefName)) m.set(j.headRefName, prBadge(j));
+  return m;
+}
+
 // Logs of the failing GitHub Actions jobs for a branch, trimmed for an agent prompt.
 export async function failingCiLogs(dir: string, branch: string): Promise<string> {
   const runs = JSON.parse(await run('gh', ['run', 'list', '--branch', branch, '--limit', '5', '--json', 'databaseId,conclusion,name'], dir).catch(() => '[]'));

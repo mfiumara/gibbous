@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileLines, safeJoin, slug, listFiles, currentBranch, changes, addWorktree } from './git.ts';
+import { fileLines, safeJoin, slug, listFiles, currentBranch, changes, addWorktree, ciState, prBadge } from './git.ts';
+import { prTargets } from './prs.ts';
 import { execFileSync } from 'node:child_process';
 
 test('fileLines ignores the final newline', () => {
@@ -39,4 +40,33 @@ test('a repository with no commits yet: branch, changes and a clear worktree err
     assert.deepEqual((await changes(d)).map(c => c.path), ['a.txt']);
     await assert.rejects(addWorktree(d, path.join(d, '..', 'wt'), 'x', 'main'), /no commits yet/);
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test('ciState rolls GitHub checks up to one result', () => {
+  const run = (status: string, conclusion = '') => ({ __typename: 'CheckRun', status, conclusion });
+  assert.equal(ciState([]), null);
+  assert.equal(ciState([run('COMPLETED', 'SUCCESS'), run('COMPLETED', 'SKIPPED'), run('COMPLETED', 'NEUTRAL')]), 'pass');
+  assert.equal(ciState([run('COMPLETED', 'SUCCESS'), run('IN_PROGRESS')]), 'pending');
+  assert.equal(ciState([run('QUEUED'), run('COMPLETED', 'FAILURE')]), 'fail');           // a failure wins over running jobs
+  assert.equal(ciState([{ __typename: 'StatusContext', state: 'PENDING' }]), 'pending');  // commit statuses have no `status`
+  assert.equal(ciState([{ __typename: 'StatusContext', state: 'ERROR' }]), 'fail');
+  assert.equal(ciState([run('COMPLETED', 'CANCELLED')]), 'fail');
+});
+
+test('prBadge maps gh pr list rows', () => {
+  const row = { number: 7, url: 'https://github.com/o/r/pull/7', state: 'OPEN', isDraft: false, additions: 379, deletions: 75, statusCheckRollup: [] };
+  assert.deepEqual(prBadge(row), { number: 7, url: row.url, state: 'open', ci: null, additions: 379, deletions: 75 });
+  assert.equal(prBadge({ ...row, isDraft: true }).state, 'draft');
+  assert.equal(prBadge({ ...row, state: 'MERGED' }).state, 'merged');
+  assert.equal(prBadge({ ...row, state: 'CLOSED', isDraft: true }).state, 'closed');
+});
+
+test('prTargets groups live local worktree threads by project checkout', () => {
+  const t = (id: string, extra: object) => ({ id, cwd: `/wt/${id}`, status: 'idle', worktree: { path: `/wt/${id}`, branch: `b-${id}`, base: 'main' }, ...extra }) as any;
+  const got = prTargets([
+    t('a', { projectId: 'p' }), t('b', { projectId: 'p' }), t('c', {}),
+    t('archived', { projectId: 'p', status: 'archived' }), t('remote', { projectId: 'p', host: 'h' }),
+    { id: 'plain', cwd: '/x', status: 'idle', projectId: 'p' } as any,
+  ], [{ id: 'p', path: '/repo' }] as any);
+  assert.deepEqual([...got], [['/repo', [{ id: 'a', branch: 'b-a' }, { id: 'b', branch: 'b-b' }]], ['/wt/c', [{ id: 'c', branch: 'b-c' }]]]);
 });
