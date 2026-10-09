@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Menu, MessageSquareShare, Trash2, RefreshCw, ArrowUp } from 'lucide-react';
 import { api, type Thread } from '../api';
 import { useStore, toastError } from '../store';
-import { Button, IconButton, Moon, go, sourceLabel, useDraft } from '../ui';
+import { Button, IconButton, Moon, go, sourceLabel, useDraft, sameJson } from '../ui';
 import { fromStored, type StoredRow, type Item } from './timeline';
 import { Markdown, ToolRow, ReasoningBlock, UserMessage } from './Items';
 
@@ -22,13 +22,14 @@ export function ExternalThread({ thread }: { thread: Thread }) {
   const [busy, setBusy] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const keepFromBottom = useRef<number | null>(null); // older pages land above: hold the reading position
   const label = sourceLabel(thread.source);
   const canReply = useStore(s => !!s.gatewayReplies) && !thread.host && MESSAGING_SOURCES.has(thread.source ?? ''); // the gateway key is this Mac's
   const [reply, setReply] = useDraft(`x:${thread.id}`);
   const [pending, setPending] = useState<string | null>(null);
 
   const refresh = useCallback(() => api.get<Page>(`/api/threads/${thread.id}/transcript`).then(p => {
-    setRows(p.messages); setHasMore(p.pagination.returned >= 500); setLoading(false);
+    setRows(r => sameJson(r, p.messages) ? r : p.messages); setHasMore(p.pagination.returned >= 500); setLoading(false);
   }).catch(e => { setLoading(false); toastError(e); }), [thread.id]);
 
   // New messages land in Hermes' store as the Discord conversation goes on: poll while visible.
@@ -39,12 +40,16 @@ export function ExternalThread({ thread }: { thread: Thread }) {
     return () => clearInterval(h);
   }, [refresh]);
 
-  useLayoutEffect(() => { const el = scroller.current; if (el && stick.current) el.scrollTop = el.scrollHeight; }, [rows, loading]);
+  useLayoutEffect(() => {
+    const el = scroller.current; if (!el) return;
+    if (keepFromBottom.current != null) { el.scrollTop = el.scrollHeight - keepFromBottom.current; keepFromBottom.current = null; }
+    else if (stick.current) el.scrollTop = el.scrollHeight;
+  }, [rows, older, loading]);
 
   const loadOlder = async () => {
     stick.current = false;
     const p = await api.get<Page>(`/api/threads/${thread.id}/transcript?offset=${rows.length + older.length}`).catch(toastError);
-    if (p) { setOlder(o => [...p.messages, ...o]); setHasMore(p.pagination.returned >= 500); }
+    if (p) { const el = scroller.current; if (el) keepFromBottom.current = el.scrollHeight - el.scrollTop; setOlder(o => [...p.messages, ...o]); setHasMore(p.pagination.returned >= 500); }
   };
   const cont = async () => {
     setBusy(true);

@@ -11,6 +11,9 @@ const LANG: Record<string, string> = { ts: 'typescript', tsx: 'typescript', js: 
 export const EDITORS: Record<string, (p: string) => string> = {
   'VS Code': p => `vscode://file${p}`, Cursor: p => `cursor://file${p}`, Zed: p => `zed://file${p}`, Windsurf: p => `windsurf://file${p}`,
 };
+// Inside Gibbous.app a location change to vscode:// failed as a navigation and the app reloaded itself; window.open
+// goes through the app's new-window hook, which hands any URL to macOS.
+export const openInEditor = (absPath: string) => { const u = editorUrl(absPath); if ((window as any).webkit?.messageHandlers?.gibbousNotify) window.open(u); else location.href = u; };
 export const editorUrl = (absPath: string) => (EDITORS[localStorage.getItem('gibbous.editor') ?? 'VS Code'] ?? EDITORS['VS Code'])(absPath);
 
 export function FilesPanel({ thread, onMention }: { thread: Thread; onMention(path: string): void }) {
@@ -44,7 +47,7 @@ export function FilesPanel({ thread, onMention }: { thread: Thread; onMention(pa
           <span className="font-mono text-[12px] truncate flex-1">{open.path}</span>
           {editing == null ? <>
             {!open.tooLarge && <IconButton label="Edit" onClick={() => setEditing(open.content ?? '')}><Pencil size={14} /></IconButton>}
-            {open.abs && <IconButton label={`Open in ${localStorage.getItem('gibbous.editor') ?? 'VS Code'}`} onClick={() => { location.href = editorUrl(open.abs!); }}><SquareArrowOutUpRight size={14} /></IconButton>}
+            {open.abs && <IconButton label={`Open in ${localStorage.getItem('gibbous.editor') ?? 'VS Code'}`} onClick={() => openInEditor(open.abs!)}><SquareArrowOutUpRight size={14} /></IconButton>}
             <IconButton label="Mention in message" onClick={() => onMention(open.path)}><AtSign size={14} /></IconButton>
           </> : <>
             <Button size="sm" onClick={() => setEditing(null)}><X size={12} />Cancel</Button>

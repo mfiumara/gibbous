@@ -1,11 +1,11 @@
 // Subagents: a count chip in the composer, one quiet line per subagent in the timeline, and a side panel that pages
 // through each subagent's own transcript (swipe / two-finger scroll / ← → / the tabs).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Square, Send, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../api';
 import { useRpc } from '../rpc';
 import { toastError } from '../store';
-import { IconButton, MoonLoader, Skeleton, inputCls, fmtTokens, fmtDuration } from '../ui';
+import { IconButton, MoonLoader, Skeleton, inputCls, fmtTokens, fmtDuration, sameJson } from '../ui';
 import { fromStored, type Item, type StoredRow } from './timeline';
 import { AssistantMessage, ToolRow, ReasoningBlock, Markdown } from './Items';
 import { mergeAgents, agentCounts, agentName, isLive, type Agent, type AgentState, type StoredSub, type LiveSub } from './agents';
@@ -14,7 +14,7 @@ import { mergeAgents, agentCounts, agentName, isLive, type Agent, type AgentStat
 export function useSubagents(threadId: string, items: Item[], running: boolean): Agent[] {
   const [stored, setStored] = useState<StoredSub[]>([]);
   const live = useMemo(() => items.filter((i): i is LiveSub => i.kind === 'subagent'), [items]);
-  const load = useCallback(() => api.get<{ subagents: StoredSub[] }>(`/api/threads/${threadId}/subagents`).then(r => setStored(r.subagents), () => {}), [threadId]);
+  const load = useCallback(() => api.get<{ subagents: StoredSub[] }>(`/api/threads/${threadId}/subagents`).then(r => setStored(s => sameJson(s, r.subagents) ? s : r.subagents), () => {}), [threadId]);
   useEffect(() => { setStored([]); load(); }, [load]);
   // New subagents appear as the parent delegates: refresh when live events arrive, and poll while any is working.
   useEffect(() => { if (live.length) load(); }, [live.length, load]);
@@ -141,7 +141,7 @@ function AgentPage({ a, name, sid, active }: { a: Agent; name: string; sid?: str
   const load = useCallback(() => {
     if (!a.sessionId) { setItems([]); return; }
     api.get<{ messages: StoredRow[] }>(`/api/sessions/${encodeURIComponent(a.sessionId)}/transcript`)
-      .then(r => setItems(fromStored(r.messages).filter(it => it.kind !== 'user' || it.text.trim() !== a.goal.trim())), () => setItems(x => x ?? []));
+      .then(r => { const next = fromStored(r.messages).filter(it => it.kind !== 'user' || it.text.trim() !== a.goal.trim()); setItems(x => x && sameJson(x, next) ? x : next); }, () => setItems(x => x ?? []));
   }, [a.sessionId, a.goal]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -149,7 +149,8 @@ function AgentPage({ a, name, sid, active }: { a: Agent; name: string; sid?: str
     const t = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 3000);
     return () => clearInterval(t);
   }, [active, live, load]);
-  useEffect(() => { const el = scroller.current; if (el && follow.current) el.scrollTop = el.scrollHeight; }, [items]);
+  // Before paint: pinning in an effect showed each new batch unscrolled for a frame, then jumped.
+  useLayoutEffect(() => { const el = scroller.current; if (el && follow.current) el.scrollTop = el.scrollHeight; }, [items]);
 
   const elapsed = a.startedAt ? (a.endedAt ?? Date.now()) - a.startedAt : undefined;
   return (

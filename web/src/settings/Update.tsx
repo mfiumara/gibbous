@@ -1,6 +1,6 @@
 // Updating Hermes from Gibbous: check, show what's new, apply, follow the log. The backend restarts itself;
 // Gibbous reconnects on its own (threads reattach, running turns resume or are reported).
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowUpCircle, RefreshCw, CheckCircle2, GitCommit, XCircle } from 'lucide-react';
 import { api, hermes } from '../api';
 import { useStore, toastError } from '../store';
@@ -19,7 +19,7 @@ export function UpdateTab() {
   const log = useRef<HTMLPreElement>(null);
   const load = (force = false) => { setCheck(undefined); hermes.get<Check>(`hermes/update/check${force ? '?force=true' : ''}`).then(setCheck, toastError); };
   useEffect(() => { load(); }, []);
-  useEffect(() => { log.current?.scrollTo(0, log.current.scrollHeight); }, [status?.lines?.length]);
+  useLayoutEffect(() => { log.current?.scrollTo(0, log.current.scrollHeight); }, [status?.lines?.length]);
 
   const apply = async () => {
     if (!confirm('Update Hermes now? Running turns may be interrupted while the backend restarts.')) return;

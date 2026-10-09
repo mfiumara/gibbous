@@ -314,6 +314,9 @@ export function TooltipHost() {
   return <div ref={el} className="tip" style={{ left: x, top: tip.y, transform: `translate(-50%, ${tip.below ? '0' : '-100%'})` }}>{tip.text}{tip.kbd && <kbd>{tip.kbd}</kbd>}</div>;
 }
 
+// Polled data: keep the old reference when nothing changed, so a poll doesn't re-render (and re-parse) everything.
+export const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
 // ── formatting ──────────────────────────────────────────────────────────
 const SOURCES: Record<string, string> = {
   discord: 'Discord', telegram: 'Telegram', slack: 'Slack', whatsapp: 'WhatsApp', signal: 'Signal', matrix: 'Matrix',

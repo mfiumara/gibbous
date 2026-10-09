@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 import { WifiOff, ArrowUpCircle, RotateCw, X } from 'lucide-react';
 import { MoonLoader } from './ui';
 import { useStore, useStaleBuild } from './store';
+import { useShallow } from 'zustand/react/shallow';
 
 export function HealthBanner() {
-  const { connected, hermesReady, hermes } = useStore();
+  const { connected, hermesReady, hermes } = useStore(useShallow(s => ({ connected: s.connected, hermesReady: s.hermesReady, hermes: s.hermes })));
   const stale = useStaleBuild();
   const [hidden, setHidden] = useState<string | null>(() => sessionStorage.getItem('gibbous.bannerHidden'));
   // A new Gibbous build: reload on its own while you're away (drafts live in localStorage); in front of you, ask.

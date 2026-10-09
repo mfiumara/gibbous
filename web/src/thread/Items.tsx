@@ -1,4 +1,4 @@
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useDeferredValue, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -23,8 +23,12 @@ function CopyButton({ text, className = '' }: { text: string; className?: string
 
 const nodeText = (n: any): string => typeof n === 'string' ? n : Array.isArray(n) ? n.map(nodeText).join('') : n?.props ? nodeText(n.props.children) : '';
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
-  return <div className="prose-moon"><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, { detect: false, ignoreMissing: true }]]}
+// Streaming re-parses the whole message on every delta. Deferred, React parses at low priority and drops stale
+// passes, so a long reply streaming in never blocks scrolling or typing.
+const MD_PLUGINS = { remark: [remarkGfm], rehype: [[rehypeHighlight, { detect: false, ignoreMissing: true }]] as any };
+export const Markdown = memo(function Markdown({ text: live }: { text: string }) {
+  const text = useDeferredValue(live);
+  return <div className="prose-moon"><ReactMarkdown remarkPlugins={MD_PLUGINS.remark} rehypePlugins={MD_PLUGINS.rehype}
     components={{
       a: ({ node: _n, ...p }) => <a {...p} target="_blank" rel="noreferrer" />,
       img: ({ node: _n, src, alt }) => <img src={imageSrc(String(src ?? ''))} alt={alt ?? ''} loading="lazy" />,
@@ -59,7 +63,9 @@ const splitMedia = (text: string) => {
   return { media, rest };
 };
 
-export function AssistantMessage({ item }: { item: Extract<Item, { kind: 'assistant' }> }) {
+// Rows are memoized on their item: the reducer keeps unchanged items identical, so a streaming delta or a poll
+// re-renders only the row that changed instead of the whole timeline.
+export const AssistantMessage = memo(function AssistantMessage({ item }: { item: Extract<Item, { kind: 'assistant' }> }) {
   const { media, rest } = item.streaming ? { media: [], rest: item.text } : splitMedia(item.text);
   return (
     <div className={`group/msg relative ${item.streaming ? 'caret' : ''}`}>
@@ -69,7 +75,7 @@ export function AssistantMessage({ item }: { item: Extract<Item, { kind: 'assist
         {canSpeak && <button aria-label="Read aloud" data-tip="Read aloud" onClick={() => speak(item.text)} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Volume2 size={13} /></button>}</div>}
     </div>
   );
-}
+});
 
 const toolIcon = (name: string) => {
   if (/terminal|shell|process|exec/.test(name)) return Terminal;
@@ -105,7 +111,7 @@ function resultImages(r: unknown): string[] {
   return [...found].slice(0, 6);
 }
 
-export function ToolRow({ item, cwd }: { item: Extract<Item, { kind: 'tool' }>; cwd?: string }) {
+export const ToolRow = memo(function ToolRow({ item, cwd }: { item: Extract<Item, { kind: 'tool' }>; cwd?: string }) {
   const [open, setOpen] = useState(false);
   // Hermes' lazy-loading `tool_call` wraps the real calls: show what it actually ran.
   const inner = item.name === 'tool_call' && Array.isArray(item.args?.calls) ? item.args.calls as { name?: string; arguments?: Record<string, unknown> }[] : undefined;
@@ -146,9 +152,9 @@ export function ToolRow({ item, cwd }: { item: Extract<Item, { kind: 'tool' }>; 
       )}
     </div>
   );
-}
+});
 
-export function ReasoningBlock({ item }: { item: Extract<Item, { kind: 'reasoning' }> }) {
+export const ReasoningBlock = memo(function ReasoningBlock({ item }: { item: Extract<Item, { kind: 'reasoning' }> }) {
   const [open, setOpen] = useState(false);
   const first = item.text.trim().split('\n')[0];
   return (
@@ -160,9 +166,9 @@ export function ReasoningBlock({ item }: { item: Extract<Item, { kind: 'reasonin
       {open && <div className="ml-6 text-[13px] text-dust italic whitespace-pre-wrap border-l border-line pl-3 animate-rise">{item.text}</div>}
     </div>
   );
-}
+});
 
-export function SideCard({ item }: { item: Extract<Item, { kind: 'side' }> }) {
+export const SideCard = memo(function SideCard({ item }: { item: Extract<Item, { kind: 'side' }> }) {
   return (
     <div className="rounded-xl border border-tide/25 bg-tide/[0.04] p-3.5 space-y-1.5">
       <p className="label text-tide">{item.mode === 'btw' ? 'Side question' : 'Background task'}{item.text == null ? ' · working…' : ''}</p>
@@ -170,7 +176,7 @@ export function SideCard({ item }: { item: Extract<Item, { kind: 'side' }> }) {
       {item.text != null ? <div className="text-sm"><Markdown text={item.text} /></div> : <div className="space-y-1.5 pt-1"><div className="skeleton h-3 w-3/4" /><div className="skeleton h-3 w-1/2" /></div>}
     </div>
   );
-}
+});
 
 // User text with attachments: `@image:/path` lines become thumbnails, `@file:` references become chips.
 function UserBody({ text }: { text: string }) {

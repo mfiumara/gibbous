@@ -41,6 +41,10 @@ const report = (error: string) => { if (!found.some(f => f.error === error)) fou
 page.on('pageerror', e => report(`pageerror: ${e.message}`));
 page.on('console', m => { if (m.type() === 'error' && !/blocked by monkey|Failed to load resource|favicon/.test(m.text())) report(`console: ${m.text().slice(0, 300)}`); });
 page.on('dialog', d => d.dismiss().catch(() => {}));
+// A crashed web process is the worst finding: say where, instead of dying on the next wait.
+let crashed = false;
+page.on('crash', () => { crashed = true; report('page crashed (web process died)'); });
+page.on('close', () => { if (!crashed) report('page closed'); crashed = true; });
 // Network: GETs are fine; writes only to Gibbous's own throwaway state; Hermes REST writes are refused.
 await page.route('**/*', r => {
   const req = r.request(), u = new URL(req.url());
@@ -70,7 +74,8 @@ async function act(p: Page) {
   const r = rand();
   if (r < .08) { trail.push('key Escape'); return p.keyboard.press('Escape'); }
   if (r < .12) { const k = pick(['Meta+k', 'Meta+n', 'Meta+.', 'Meta+\\', 'Meta+f', '?', 'ArrowDown', 'Enter', 'Tab']); trail.push(`key ${k}`); return p.keyboard.press(k); }
-  const targets = await p.$$('button:not([disabled]), a[href^="#"], [role=menuitem], [role=radio], [role=switch], input:not([type=file]):not([disabled]), textarea:not([disabled]), select:not([disabled])');
+  // "Open in VS Code" navigates to vscode://, which headless WebKit answers by closing the page.
+  const targets = await p.$$('button:not([disabled]):not([aria-label^="Open in "]), a[href^="#"], [role=menuitem], [role=radio], [role=switch], input:not([type=file]):not([disabled]), textarea:not([disabled]), select:not([disabled])');
   const visible = [];
   for (const t of targets) if (await t.isVisible().catch(() => false)) visible.push(t);
   if (!visible.length) return;
@@ -86,10 +91,11 @@ try {
   for (const s of screens) {
     screen = s; trail = [`open ${s}`];
     await page.evaluate(h => { location.hash = h; }, s).catch(() => {});
-    await page.waitForTimeout(900);
-    for (let i = 0; i < ROUNDS; i++) {
+    await page.waitForTimeout(900).catch(() => {});
+    if (crashed) break;
+    for (let i = 0; i < ROUNDS && !crashed; i++) {
       await act(page).catch(() => {});
-      await page.waitForTimeout(120);
+      await page.waitForTimeout(120).catch(() => {});
       if (await page.evaluate(() => document.body.innerText.includes('This screen hit an error')).catch(() => false)) {
         report(`error screen: ${await page.evaluate(() => document.querySelector('pre')?.textContent?.slice(0, 300) ?? '')}`);
         await page.evaluate(() => { location.hash = '/'; }); break;

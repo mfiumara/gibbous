@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Menu, Folder, Paperclip, ArrowUp, CornerLeftUp, GitBranch, ChevronDown, Server } from 'lucide-react';
 import { api, type Project, type Thread } from './api';
 import { useStore, toastError, NONE } from './store';
@@ -51,7 +51,14 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
     addEventListener('hashchange', f);
     return () => removeEventListener('hashchange', f);
   }, []);
-  useEffect(() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 360) + 'px'; } }, [text]);
+  // Autosize before paint (an effect drew the old height for a frame on every new line), and keep the page's scroll
+  // position: the momentary height:auto collapse otherwise clamps it and the page jumps while you type.
+  useLayoutEffect(() => {
+    const el = ta.current; if (!el) return;
+    const sc = el.closest<HTMLElement>('.overflow-y-auto'), top = sc?.scrollTop;
+    el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 360) + 'px';
+    if (sc && top != null) sc.scrollTop = top;
+  }, [text]);
 
   const isRepo = !!project?.baseBranch;
   // A repository with no commits has no branches yet, and a worktree needs something to branch from.
