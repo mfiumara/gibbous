@@ -2,11 +2,11 @@ import { memo, useDeferredValue, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { ChevronRight, FileText, FilePen, Terminal, Search, Globe, Bot, Wrench, Brain, ListTodo, Pencil, Image, Code2, Copy, Check, History, Paperclip, Volume2, Download } from 'lucide-react';
+import { ChevronRight, FileText, FilePen, Terminal, Search, Globe, Bot, Wrench, Brain, ListTodo, Pencil, Image, Code2, Copy, Check, History, Paperclip, Volume2, Download, Maximize2 } from 'lucide-react';
 import { canSpeak, speak } from '../voice';
 import { parseUserText, type Item } from './timeline';
 import { DiffView } from '../panels/DiffView';
-import { Moon, viewMedia } from '../ui';
+import { Moon, viewMedia, saveMedia } from '../ui';
 
 // Local file paths (attachments, generated images) load through the authenticated image route.
 export const imageSrc = (src: string) => /^(https?:|data:|blob:)/.test(src) ? src : `/api/image?path=${encodeURIComponent(src.replace(/^file:\/\//, ''))}`;
@@ -48,15 +48,17 @@ export const Markdown = memo(function Markdown({ text: live }: { text: string })
 const mediaUrl = (p: string, download = false) => `/api/media?path=${encodeURIComponent(p)}${download ? '&download=1' : ''}`;
 export function MediaCard({ path: p }: { path: string }) {
   const name = p.split('/').pop() ?? p, ext = name.split('.').pop()?.toLowerCase() ?? '';
-  const download = <a href={mediaUrl(p, true)} download={name} aria-label={`Download ${name}`} data-tip="Download" className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Download size={15} /></a>;
-  if (/^(png|jpe?g|gif|webp|svg)$/.test(ext)) return <button onClick={() => viewMedia(mediaUrl(p), name, mediaUrl(p, true))} aria-label={`View ${name}`} className="block w-fit cursor-zoom-in"><img src={mediaUrl(p)} alt={name} loading="lazy" className="max-h-80 rounded-xl border border-line object-contain" /></button>;
-  if (/^(mp4|mov|m4v|webm)$/.test(ext)) return <div className="space-y-1"><video src={mediaUrl(p)} controls playsInline preload="metadata" className="max-h-96 w-full max-w-xl rounded-xl border border-line bg-well" /><p className="flex items-center gap-1 text-[12px] text-ash font-mono"><span className="truncate">{name}</span>{download}</p></div>;
+  const download = <button onClick={() => saveMedia(p)} aria-label={`Download ${name}`} data-tip="Download" className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Download size={15} /></button>;
+  if (/^(png|jpe?g|gif|webp|svg)$/.test(ext)) return <button onClick={() => viewMedia(mediaUrl(p), name)} aria-label={`View ${name}`} className="block w-fit cursor-zoom-in"><img src={mediaUrl(p)} alt={name} loading="lazy" className="max-h-80 rounded-xl border border-line object-contain" /></button>;
+  if (/^(mp4|mov|m4v|webm)$/.test(ext)) return <div className="space-y-1 max-w-xl"><video src={mediaUrl(p)} controls playsInline preload="metadata" className="max-h-96 w-full rounded-xl border border-line bg-well" />
+    <p className="flex items-center gap-1 text-[12px] text-ash font-mono"><span className="truncate flex-1">{name}</span>
+      <button onClick={() => viewMedia(mediaUrl(p), name)} aria-label={`Full screen ${name}`} data-tip="Full screen" className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Maximize2 size={14} /></button>{download}</p></div>;
   if (/^(mp3|m4a|wav|ogg)$/.test(ext)) return <div className="flex items-center gap-2"><audio src={mediaUrl(p)} controls className="w-full max-w-md" />{download}</div>;
   return (
     <div className="flex items-center gap-3 w-fit max-w-full tile rounded-xl pl-3 pr-1 py-1.5">
       <FileText size={16} className="text-dust flex-none" />
       {/* PDFs open in the in-app viewer; other files download (a new window would land in a browser that isn't signed in). */}
-      <a href={ext === 'pdf' ? mediaUrl(p) : mediaUrl(p, true)} download={ext === 'pdf' ? undefined : name} onClick={ext === 'pdf' ? e => { e.preventDefault(); viewMedia(mediaUrl(p), name, mediaUrl(p, true)); } : undefined} className="min-w-0 hover:underline"><span className="block truncate text-[13.5px] text-moon">{name}</span><span className="block truncate text-[11.5px] text-ash font-mono">{p.replace(/^\/Users\/[^/]+/, '~')}</span></a>
+      <a href={mediaUrl(p)} onClick={e => { e.preventDefault(); if (ext === 'pdf') viewMedia(mediaUrl(p), name); else saveMedia(p); }} className="min-w-0 hover:underline"><span className="block truncate text-[13.5px] text-moon">{name}</span><span className="block truncate text-[11.5px] text-ash font-mono">{p.replace(/^\/Users\/[^/]+/, '~')}</span></a>
       {download}
     </div>
   );

@@ -31,6 +31,7 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
     config.userContentController.add(self, name: "gibbousNotify")
     config.userContentController.add(self, name: "gibbousBadge")
     config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+    config.preferences.isElementFullscreenEnabled = true  // the video player's full-screen button
     web = WKWebView(frame: .zero, configuration: config)
     web.navigationDelegate = self
     web.uiDelegate = self
@@ -81,6 +82,8 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
   // mailto:) in their app, and downloads (<a download>, attachments) save to ~/Downloads instead of replacing the app.
   func webView(_ w: WKWebView, decidePolicyFor a: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
     if a.shouldPerformDownload { return decisionHandler(.download) }
+    // A file route opened as a page would replace the app with no way back: save it instead.
+    if a.targetFrame?.isMainFrame != false, let u = a.request.url, u.host == base.host, ["/api/media", "/api/image"].contains(u.path) { return decisionHandler(.download) }
     if let u = a.request.url, let s = u.scheme?.lowercased() {
       if (s == "http" || s == "https") && u.host != base.host { NSWorkspace.shared.open(u); return decisionHandler(.cancel) }
       if !["http", "https", "about", "blob", "data"].contains(s) { NSWorkspace.shared.open(u); return decisionHandler(.cancel) }
@@ -158,11 +161,14 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
     sub("Gibbous", [item("Hide Gibbous", #selector(NSApplication.hide(_:)), "h"), .separator(), item("Quit Gibbous", #selector(NSApplication.terminate(_:)), "q")])
     sub("Edit", [item("Undo", Selector(("undo:")), "z"), item("Redo", Selector(("redo:")), "z", [.command, .shift]), .separator(),
                  item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"), item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a")])
-    sub("View", [item("Reload", #selector(reload), "r"), item("Toggle Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])])
+    sub("View", [item("Back", #selector(goBack), "["), item("Home", #selector(goHome), "h", [.command, .shift]), .separator(), item("Reload", #selector(reload), "r"), item("Toggle Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])])
     sub("Window", [item("Minimize", #selector(NSWindow.miniaturize(_:)), "m"), item("Close", #selector(NSWindow.performClose(_:)), "w")])
     NSApp.mainMenu = main
   }
-  @objc func reload() { web.reload() }
+  // Reload always lands back in the app: reloading a stray page (a file, an error) would keep you stuck on it.
+  @objc func reload() { if web.url?.path.hasPrefix("/api/") == true { goHome() } else { web.reload() } }
+  @objc func goBack() { if web.canGoBack { web.goBack() } else { goHome() } }
+  @objc func goHome() { web.load(URLRequest(url: loginURL())) }
 
   // ── menu bar + Dock badge: how many agents wait on you ──────────────────
   var status: NSStatusItem!

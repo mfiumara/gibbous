@@ -442,6 +442,18 @@ route('PATCH', '/api/settings', (_, b) => {
   save(); orch.changed('settings', s); return s;
 });
 
+// Gibbous.app's web view can't save a download by itself (it navigated to the file instead, with no way back), and
+// this server runs on the same Mac: copy the file into ~/Downloads, never overwriting.
+route('POST', '/api/media/save', (_, b) => {
+  const src = mediaPath(String(b.path ?? '')), dir = path.join(os.homedir(), 'Downloads');
+  const ext = path.extname(src), stem = path.basename(src, ext);
+  let dest = path.join(dir, path.basename(src));
+  for (let n = 2; fs.existsSync(dest); n++) dest = path.join(dir, `${stem} ${n}${ext}`);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(src, dest, fs.constants.COPYFILE_EXCL);
+  return { saved: dest };
+});
+route('POST', '/api/media/reveal', (_, b) => { execFile('open', ['-R', mediaPath(String(b.path ?? ''))]); return { ok: true }; });
 route('POST', '/api/push/subscribe', (_, b) => { subscribe(b); return { ok: true }; });
 route('POST', '/api/push/test', () => { notify({ kind: 'input', title: 'Gibbous', body: 'Notifications work.', url: '/', test: true }); return { ok: true }; });
 
@@ -482,11 +494,16 @@ function serveImage(u: URL, res: http.ServerResponse) {
 const MEDIA_MIME: Record<string, string> = { ...IMAGE_MIME, '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.m4v': 'video/mp4',
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
   '.csv': 'text/csv; charset=utf-8', '.json': 'application/json', '.zip': 'application/zip' };
-function serveMedia(u: URL, req: http.IncomingMessage, res: http.ServerResponse) {
-  const p = path.resolve(u.searchParams.get('path') ?? '');
+// A file the agent handed over (MEDIA:): inside your home folder, not in a hidden folder other than ~/.hermes.
+function mediaPath(raw: string) {
+  const p = path.resolve(raw);
   const rel = path.relative(process.env.HOME!, p);
   const hidden = rel.split(path.sep).some(seg => seg.startsWith('.') && seg !== '.hermes');
   if (rel.startsWith('..') || path.isAbsolute(rel) || hidden || !fs.existsSync(p) || !fs.statSync(p).isFile()) throw new HttpError(404, 'file not found');
+  return p;
+}
+function serveMedia(u: URL, req: http.IncomingMessage, res: http.ServerResponse) {
+  const p = mediaPath(u.searchParams.get('path') ?? '');
   const size = fs.statSync(p).size, type = MEDIA_MIME[path.extname(p).toLowerCase()] ?? 'application/octet-stream';
   const disposition = `${u.searchParams.has('download') ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(path.basename(p))}`;
   // Only media renders inline; anything else (HTML, SVG-as-file…) downloads, so nothing from disk runs in the app's origin.

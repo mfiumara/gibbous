@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, X } from 'lucide-react';
-import type { ThreadStatus, TaskStatus } from './api';
+import { api, type ThreadStatus, type TaskStatus } from './api';
+import { useStore, toastError } from './store';
 import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel } from './moon';
 
 // ── routing (hash-based so the PWA works from any path) ────────────────
@@ -315,12 +316,36 @@ export function TooltipHost() {
   return <div ref={el} className="tip" style={{ left: x, top: tip.y, transform: `translate(-50%, ${tip.below ? '0' : '-100%'})` }}>{tip.text}{tip.kbd && <kbd>{tip.kbd}</kbd>}</div>;
 }
 
-// ── in-app viewer for images and PDFs ──────────────────────────────────
+// ── in-app viewer for images, videos and PDFs ──────────────────────────
 // Media links must never leave the app: in Gibbous.app a new window opens in the default browser, which has no
 // Gibbous session, so /api/media answered "login required". viewMedia() shows it right here instead.
-export const viewMedia = (src: string, name = '', download?: string) => dispatchEvent(new CustomEvent('gibbous:view', { detail: { src, name, download } }));
+export const viewMedia = (src: string, name = '') => dispatchEvent(new CustomEvent('gibbous:view', { detail: { src, name } }));
+const mediaFile = (src: string) => { try { return new URL(src, location.origin).searchParams.get('path') ?? undefined; } catch { return undefined; } };
+const inMacApp = () => !!(window as any).webkit?.messageHandlers?.gibbousNotify;
+
+// Save a file the agent made. A plain <a download> navigated Gibbous.app (and an iPhone home-screen app) to the file
+// itself, with no way back. The Mac app asks this Mac's server to copy it into ~/Downloads; phones get the share
+// sheet (Save to Files / Photos); browsers download normally.
+export async function saveMedia(filePath: string) {
+  const name = filePath.split('/').pop() || 'file', url = `/api/media?path=${encodeURIComponent(filePath)}`;
+  const toast = useStore.getState().toast;
+  try {
+    if (inMacApp()) {
+      const r = await api.post<{ saved: string }>('/api/media/save', { path: filePath });
+      toast({ title: 'Saved to Downloads', body: r.saved.split('/').pop(), action: { label: 'Show', run: () => { api.post('/api/media/reveal', { path: r.saved }).catch(toastError); } } });
+      return;
+    }
+    if (matchMedia('(pointer: coarse)').matches && navigator.canShare) {
+      const blob = await fetch(url).then(r => { if (!r.ok) throw new Error(`couldn't load ${name}`); return r.blob(); });
+      const file = new File([blob], name, { type: blob.type });
+      if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }).catch(() => {}); return; }
+    }
+    const a = document.createElement('a'); a.href = `${url}&download=1`; a.download = name; a.click();
+  } catch (e) { toastError(e); }
+}
+
 export function MediaViewer() {
-  const [v, setV] = useState<{ src: string; name: string; download?: string } | null>(null);
+  const [v, setV] = useState<{ src: string; name: string } | null>(null);
   useEffect(() => {
     const on = (e: Event) => setV((e as CustomEvent).detail);
     addEventListener('gibbous:view', on);
@@ -334,18 +359,20 @@ export function MediaViewer() {
     return () => removeEventListener('keydown', k, true);
   }, [v]);
   if (!v) return null;
-  const pdf = /\.pdf$/i.test(v.name || v.src.split('?')[0]);
+  const file = mediaFile(v.src), ext = (v.name || file || '').split('.').pop()?.toLowerCase() ?? '';
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={v.name || 'Image'} onClick={() => setV(null)}
+    <div role="dialog" aria-modal="true" aria-label={v.name || 'Media'} onClick={() => setV(null)}
       className="fixed inset-0 z-[80] flex flex-col bg-black/90 animate-fade pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-      <div className="flex items-center gap-1 h-12 px-3 flex-none text-[13px] text-moon/90" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-1 h-12 px-3 flex-none text-[13px] text-moon/90" onClick={stop}>
         <span className="flex-1 min-w-0 truncate font-mono text-[12px]">{v.name}</span>
-        {v.download && <a href={v.download} download={v.name} aria-label="Download" data-tip="Download" className="press size-9 flex-none grid place-items-center rounded-lg hover:bg-white/10"><Download size={16} /></a>}
+        {file && <button onClick={() => saveMedia(file)} aria-label="Download" data-tip="Download" className="press size-9 flex-none grid place-items-center rounded-lg hover:bg-white/10"><Download size={16} /></button>}
         <button onClick={() => setV(null)} aria-label="Close" data-tip="Close" data-kbd="esc" className="press size-9 flex-none grid place-items-center rounded-lg hover:bg-white/10"><X size={18} /></button>
       </div>
       <div className="flex-1 min-h-0 grid place-items-center p-3 pt-0">
-        {pdf ? <iframe src={v.src} title={v.name} onClick={e => e.stopPropagation()} className="w-full h-full max-w-5xl rounded-lg bg-white" />
-          : <img src={v.src} alt={v.name} onClick={e => e.stopPropagation()} className="max-w-full max-h-full object-contain rounded-lg animate-pop" />}
+        {ext === 'pdf' ? <iframe src={v.src} title={v.name} onClick={stop} className="w-full h-full max-w-5xl rounded-lg bg-white" />
+          : /^(mp4|mov|m4v|webm)$/.test(ext) ? <video src={v.src} controls autoPlay playsInline onClick={stop} className="max-w-full max-h-full rounded-lg bg-black" />
+          : <img src={v.src} alt={v.name} onClick={stop} className="max-w-full max-h-full object-contain rounded-lg animate-pop" />}
       </div>
     </div>, document.body);
 }
