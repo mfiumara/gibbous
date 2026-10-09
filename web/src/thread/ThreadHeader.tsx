@@ -38,7 +38,7 @@ export function ThreadHeader({ thread, tl, panels, panel, setPanel, onBranch, on
     deleteWithUndo(thread, removeWorktree);
   };
   return (<>
-    <header className="relative z-20 flex items-center gap-2 px-3 h-12 border-b border-line flex-none bg-basalt/85">
+    <header data-drag-window className="relative z-20 flex items-center gap-2 px-3 h-12 border-b border-line flex-none bg-basalt/85">
       <IconButton label="Open sidebar" className="lg:hidden" onClick={() => useStore.setState({ sidebar: true })}><MenuIcon size={17} /></IconButton>
       <Moon thread={thread.status} size={11} />
       <Title thread={thread} />

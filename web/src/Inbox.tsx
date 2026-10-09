@@ -10,7 +10,7 @@ import type { SessionListRow, ForeignSessionRow } from './hermes/contract';
 
 // `back` (phones only) swaps the drawer button for a back link, for pages that drill into a list.
 const Header = ({ title, children, back }: { title: string; children?: React.ReactNode; back?: { href: string; label: string } }) => (
-  <header className="flex items-center gap-2 px-3 h-12 border-b border-line flex-none">
+  <header data-drag-window className="flex items-center gap-2 px-3 h-12 border-b border-line flex-none">
     {back && <a href={back.href} aria-label={`Back to ${back.label}`} className="md:hidden press inline-grid place-items-center size-8 -ml-1 rounded-lg text-tide"><ChevronLeft size={20} /></a>}
     <span className={back ? 'hidden md:contents' : 'contents'}><IconButton label="Open sidebar" className="lg:hidden" onClick={() => useStore.setState({ sidebar: true })}><Menu size={17} /></IconButton></span>
     <h1 className="font-bold">{title}</h1>{children}

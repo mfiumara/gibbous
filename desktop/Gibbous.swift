@@ -12,58 +12,142 @@ final class Window: NSWindow {
   override func cancelOperation(_ sender: Any?) {}
 }
 
+// The page, minus the browser: no pinch zoom, swipes or link previews, and a context menu without Reload/Back/
+// Inspect. Remembers the last mouse-down so a drag the page asks for (gibbousWindow {drag}) can start from it.
+final class Web: WKWebView {
+  var lastMouseDown: NSEvent?
+  override func mouseDown(with e: NSEvent) { lastMouseDown = e; super.mouseDown(with: e) }
+  static let browserItems: Set<String> = ["Reload", "GoBack", "GoForward", "InspectElement", "OpenLinkInNewWindow", "DownloadLinkedFile",
+    "OpenImageInNewWindow", "DownloadImage", "OpenFrameInNewWindow", "OpenMediaInNewWindow", "DownloadMedia"].reduce(into: []) { $0.insert("WKMenuItemIdentifier" + $1) }
+  override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+    super.willOpenMenu(menu, with: event)
+    if event.modifierFlags.contains(.option) { return }  // ⌥-right-click keeps the full menu (Inspect Element) for debugging
+    menu.items.filter { Web.browserItems.contains($0.identifier?.rawValue ?? "") }.forEach(menu.removeItem)
+    // Tidy the separators left behind; an empty menu (chrome, no selection) simply doesn't open.
+    var prevSep = true
+    for i in menu.items { if i.isSeparatorItem && prevSep { menu.removeItem(i) } else { prevSep = i.isSeparatorItem } }
+    if menu.items.last?.isSeparatorItem == true { menu.removeItem(menu.items.last!) }
+  }
+}
+
+// A saved route must look like one the server's /login?next= accepts, or it would land on home anyway.
+func isRoute(_ h: String) -> Bool { h.range(of: #"^#/[\w/?=&%.~-]*$"#, options: .regularExpression) != nil }
+
 let base = URL(string: ProcessInfo.processInfo.environment["GIBBOUS_URL"] ?? "http://127.0.0.1:7878")!
 
 func loginURL(next: String = "") -> URL {
   let secret = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gibbous/secret.json")
   let token = (try? JSONSerialization.jsonObject(with: Data(contentsOf: secret))) .flatMap { ($0 as? [String: Any])?["accessToken"] as? String } ?? ""
   var c = URLComponents(url: base.appendingPathComponent("login"), resolvingAgainstBaseURL: false)!
-  c.queryItems = [URLQueryItem(name: "token", value: token), URLQueryItem(name: "next", value: next)]
+  // Encoded by hand: URLComponents leaves & and = in values, which would split a route like #/search?q=a&b.
+  let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+  let enc = { (v: String) in v.addingPercentEncoding(withAllowedCharacters: safe) ?? "" }
+  c.percentEncodedQuery = "token=\(enc(token))&next=\(enc(next))"
   return c.url!
 }
 
-final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate, WKDownloadDelegate {
+final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate, WKDownloadDelegate {
   var window: NSWindow!
-  var web: WKWebView!
+  var web: Web!
+  let defaults = UserDefaults.standard
 
   func applicationDidFinishLaunching(_ n: Notification) {
     let config = WKWebViewConfiguration()
     config.userContentController.add(self, name: "gibbousNotify")
     config.userContentController.add(self, name: "gibbousBadge")
+    config.userContentController.add(self, name: "gibbousWindow")
     config.preferences.setValue(true, forKey: "developerExtrasEnabled")
     config.preferences.isElementFullscreenEnabled = true  // the video player's full-screen button
     if #available(macOS 14.0, *) { config.allowsInlinePredictions = false }  // no grey word guesses in the prompt box
-    web = WKWebView(frame: .zero, configuration: config)
+    web = Web(frame: .zero, configuration: config)
     web.navigationDelegate = self
     web.uiDelegate = self
-    web.setValue(false, forKey: "drawsBackground") // no white flash before the page paints
+    web.setValue(false, forKey: "drawsBackground") // no white flash before the page paints; the sidebar shows the glass below
+    web.allowsMagnification = false
+    web.allowsLinkPreview = false
+    web.allowsBackForwardNavigationGestures = false
 
-    window = Window(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 920), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+    // Like Notes/Finder: the content runs under the title bar and the traffic lights sit in the sidebar. The page
+    // reserves the strip itself ([data-shell=mac] in styles.css, height from --titlebar) and drops it in full screen.
+    window = Window(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 920), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
     window.title = "Gibbous"
+    window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
+    if #available(macOS 11.0, *) { window.titlebarSeparatorStyle = .none }
+    window.tabbingMode = .disallowed  // no “Show Tab Bar”: one window
+    window.delegate = self
     window.appearance = NSAppearance(named: .darkAqua)
     window.backgroundColor = NSColor(red: 0x16 / 255, green: 0x18 / 255, blue: 0x1d / 255, alpha: 1)
-    // The page gets exactly the visible content area: pinned below the (transparent) title bar, so no window state
-    // (zoomed, full screen) can extend it under the title strip and clip the top and bottom of the app.
-    let box = NSView()
-    window.contentView = box
-    box.addSubview(web)
+    // Sidebar glass behind the whole page: the page is transparent over the sidebar and paints the main pane solid.
+    let glass = NSVisualEffectView()
+    glass.material = .sidebar
+    glass.blendingMode = .behindWindow
+    glass.state = .followsWindowActiveState
+    window.contentView = glass
+    glass.addSubview(web)
     web.translatesAutoresizingMaskIntoConstraints = false
-    let visible = window.contentLayoutGuide as! NSLayoutGuide
     NSLayoutConstraint.activate([
-      web.topAnchor.constraint(equalTo: visible.topAnchor), web.bottomAnchor.constraint(equalTo: box.bottomAnchor),
-      web.leadingAnchor.constraint(equalTo: box.leadingAnchor), web.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+      web.topAnchor.constraint(equalTo: glass.topAnchor), web.bottomAnchor.constraint(equalTo: glass.bottomAnchor),
+      web.leadingAnchor.constraint(equalTo: glass.leadingAnchor), web.trailingAnchor.constraint(equalTo: glass.trailingAnchor),
     ])
+    installShellScript()
     window.setFrameAutosaveName("GibbousMain")
     if !window.setFrameUsingName("GibbousMain") { window.center() }
     window.makeKeyAndOrderFront(nil)
+    if defaults.bool(forKey: "fullScreen") { DispatchQueue.main.async { if !self.window.styleMask.contains(.fullScreen) { self.window.toggleFullScreen(nil) } } }
 
     buildMenu()
     buildStatusItem()
     registerHotKey()
     UNUserNotificationCenter.current().delegate = self
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
-    web.load(URLRequest(url: loginURL()))
+    web.load(URLRequest(url: loginURL(next: lastRoute)))
+  }
+
+  // Where you were: the page reports every route change, and launch (or a reconnect) reopens it.
+  var lastRoute: String { let r = defaults.string(forKey: "route") ?? ""; return isRoute(r) ? r : "" }
+
+  // ── shell ⇄ page ─────────────────────────────────────────────────────────
+  // Runs before any page script on every load (reloads too), so the first paint already has the title-bar inset.
+  func shellScript() -> String {
+    let titlebar = max(0, Int((window.frame.height - window.contentLayoutRect.height).rounded()))
+    let fs = window.styleMask.contains(.fullScreen)
+    return "(() => { const d = document.documentElement; d.dataset.shell = 'mac'; d.style.setProperty('--titlebar', '\(titlebar)px'); \(fs ? "d.dataset.fullscreen = ''" : "delete d.dataset.fullscreen"); })()"
+  }
+  func installShellScript() {
+    let u = web.configuration.userContentController
+    u.removeAllUserScripts()
+    u.addUserScript(WKUserScript(source: shellScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+  }
+  // Full screen hides the traffic lights, so the page drops the strip; “will” so it moves with the transition.
+  func fullScreen(_ on: Bool) {
+    web.evaluateJavaScript(on ? "document.documentElement.dataset.fullscreen = ''" : "delete document.documentElement.dataset.fullscreen")
+  }
+  func windowWillEnterFullScreen(_ n: Notification) { fullScreen(true) }
+  func windowWillExitFullScreen(_ n: Notification) { fullScreen(false) }
+  func windowDidEnterFullScreen(_ n: Notification) { defaults.set(true, forKey: "fullScreen"); installShellScript() }
+  func windowDidExitFullScreen(_ n: Notification) { defaults.set(false, forKey: "fullScreen"); installShellScript() }
+
+  // window.webkit.messageHandlers.gibbousWindow.postMessage({drag} | {theme} | {route}) from web/src/macBridge.ts
+  func windowMessage(_ d: [String: Any]) {
+    if d["drag"] != nil { dragOrZoom() }
+    if let t = d["theme"] as? String { window.appearance = NSAppearance(named: t == "light" ? .aqua : .darkAqua) }
+    if let r = d["route"] as? String, isRoute(r) { defaults.set(r, forKey: "route") }
+  }
+  // Empty header space acts as a title bar: drag moves the window, a double-click does what System Settings says
+  // (Desktop & Dock → “Double-click a window's title bar to”). The page only asks when the press wasn't on a control.
+  func dragOrZoom() {
+    guard let e = web.lastMouseDown, e.type == .leftMouseDown, ProcessInfo.processInfo.systemUptime - e.timestamp < 1,
+          !window.styleMask.contains(.fullScreen) else { return }
+    if e.clickCount == 2 {
+      switch defaults.string(forKey: "AppleActionOnDoubleClick") {
+      case "Minimize": window.miniaturize(nil)
+      case "None": break
+      default: window.zoom(nil)
+      }
+    } else if e.clickCount == 1, NSEvent.pressedMouseButtons & 1 != 0 {  // released already: it was a click, not a drag
+      window.performDrag(with: e)
+    }
   }
 
   func applicationShouldHandleReopen(_ s: NSApplication, hasVisibleWindows: Bool) -> Bool { window.makeKeyAndOrderFront(nil); return true }
@@ -76,7 +160,7 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
     let err = e as NSError
     let unreachable: Set<Int> = [NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorTimedOut, NSURLErrorCannotFindHost, NSURLErrorNotConnectedToInternet]
     guard err.domain == NSURLErrorDomain, unreachable.contains(err.code) else { return }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { w.load(URLRequest(url: loginURL())) }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { w.load(URLRequest(url: loginURL(next: self.lastRoute))) }
   }
 
   // Gibbous pages stay in the window; web links open in the default browser, app links (vscode://, cursor://,
@@ -139,6 +223,7 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
   func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
     if m.name == "gibbousBadge" { setBadge((m.body as? Int) ?? 0); return }
     guard let d = m.body as? [String: Any] else { return }
+    if m.name == "gibbousWindow" { windowMessage(d); return }
     let content = UNMutableNotificationContent()
     content.title = d["title"] as? String ?? "Gibbous"
     content.body = d["body"] as? String ?? ""
@@ -155,21 +240,47 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
   }
   func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification, withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) { done([.banner, .sound]) }
 
+  // Menu commands that drive the page go through window.gibbousMenu (web/src/macBridge.ts). Their shortcuts are the
+  // page's own: WebKit offers a key to the page first and only hands it to the menu when the page didn't take it,
+  // so ⌘N/⌘K/⌘\ still run exactly once (macBridge.ts also skips a command whose key the page just handled).
   func buildMenu() {
     let main = NSMenu()
-    func sub(_ title: String, _ items: [NSMenuItem]) { let i = NSMenuItem(); let m = NSMenu(title: title); items.forEach(m.addItem); i.submenu = m; main.addItem(i) }
+    @discardableResult func sub(_ title: String, _ items: [NSMenuItem]) -> NSMenu { let i = NSMenuItem(); let m = NSMenu(title: title); items.forEach(m.addItem); i.submenu = m; main.addItem(i); return m }
     func item(_ t: String, _ s: Selector?, _ k: String, _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem { let i = NSMenuItem(title: t, action: s, keyEquivalent: k); i.keyEquivalentModifierMask = mods; return i }
-    sub("Gibbous", [item("Hide Gibbous", #selector(NSApplication.hide(_:)), "h"), .separator(), item("Quit Gibbous", #selector(NSApplication.terminate(_:)), "q")])
+    func page(_ t: String, _ cmd: String, _ k: String = "", _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem { let i = item(t, #selector(pageCommand(_:)), k, mods); i.representedObject = cmd; i.target = self; return i }
+    sub("Gibbous", [item("About Gibbous", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""), .separator(), page("Settings…", "settings", ","), .separator(),
+                    item("Hide Gibbous", #selector(NSApplication.hide(_:)), "h"), item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+                    item("Show All", #selector(NSApplication.unhideAllApplications(_:)), ""), .separator(), item("Quit Gibbous", #selector(NSApplication.terminate(_:)), "q")])
+    sub("File", [page("New Thread", "new", "n"), .separator(), item("Close Window", #selector(NSWindow.performClose(_:)), "w")])
     sub("Edit", [item("Undo", Selector(("undo:")), "z"), item("Redo", Selector(("redo:")), "z", [.command, .shift]), .separator(),
-                 item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"), item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a")])
-    sub("View", [item("Back", #selector(goBack), "["), item("Home", #selector(goHome), "h", [.command, .shift]), .separator(), item("Reload", #selector(reload), "r"), item("Toggle Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])])
-    sub("Window", [item("Minimize", #selector(NSWindow.miniaturize(_:)), "m"), item("Close", #selector(NSWindow.performClose(_:)), "w")])
+                 item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"), item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"),
+                 .separator(), page("Find in Thread…", "find", "f")])
+    sub("View", [page("Toggle Sidebar", "sidebar", "s", [.command, .control]), page("Toggle Side Panel", "panel", "\\"), .separator(),
+                 item("Reload", #selector(reload), "r"), .separator(), item("Toggle Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])])
+    sub("Go", [item("Back", #selector(goBack), "["), item("Home", #selector(goHome), "h", [.command, .shift]), page("Inbox", "inbox", "i", [.command, .shift]), .separator(),
+               page("Search or Jump To…", "palette", "k")])
+    sub("Thread", [page("Stop the Running Turn", "stop", "."), page("Allow the Pending Approval", "approve", "a", [.command, .shift])])
+    NSApp.windowsMenu = sub("Window", [item("Minimize", #selector(NSWindow.miniaturize(_:)), "m"), item("Zoom", #selector(NSWindow.zoom(_:)), ""), .separator(),
+                                      item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:)), "")])
+    NSApp.helpMenu = sub("Help", [page("Keyboard Shortcuts", "help", "/")])
     NSApp.mainMenu = main
+  }
+  @objc func pageCommand(_ sender: NSMenuItem) { run(sender.representedObject as? String ?? "") }
+  // Pages from an older build have no gibbousMenu yet: routes still work by hash, thread commands by their event.
+  func run(_ cmd: String) {
+    let hash = ["new": "#/new", "settings": "#/settings", "inbox": "#/inbox"][cmd]
+    let fallback = hash.map { "location.hash = '\($0)'" } ?? "dispatchEvent(new CustomEvent('gibbous:\(cmd)'))"
+    web.evaluateJavaScript("window.gibbousMenu ? window.gibbousMenu('\(cmd)') : \(fallback)")
+  }
+  func applicationDockMenu(_ s: NSApplication) -> NSMenu? {
+    let m = NSMenu()
+    for (t, a) in [("New Thread", #selector(newThread)), ("Inbox", #selector(openInbox))] { let i = NSMenuItem(title: t, action: a, keyEquivalent: ""); i.target = self; m.addItem(i) }
+    return m
   }
   // Reload always lands back in the app: reloading a stray page (a file, an error) would keep you stuck on it.
   @objc func reload() { if web.url?.path.hasPrefix("/api/") == true { goHome() } else { web.reload() } }
   @objc func goBack() { if web.canGoBack { web.goBack() } else { goHome() } }
-  @objc func goHome() { web.load(URLRequest(url: loginURL())) }
+  @objc func goHome() { defaults.removeObject(forKey: "route"); web.load(URLRequest(url: loginURL())) }
 
   // ── menu bar + Dock badge: how many agents wait on you ──────────────────
   var status: NSStatusItem!
@@ -194,8 +305,8 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDele
     status.button?.title = n > 0 ? "◐ \(n)" : "◐"
   }
   @objc func showWindow() { NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil) }
-  @objc func newThread() { showWindow(); web.evaluateJavaScript("location.hash = '#/new'") }
-  @objc func openInbox() { showWindow(); web.evaluateJavaScript("location.hash = '#/inbox'") }
+  @objc func newThread() { showWindow(); run("new") }
+  @objc func openInbox() { showWindow(); run("inbox") }
   @objc func toggleLogin(_ item: NSMenuItem) {
     do {
       if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister(); item.state = .off }

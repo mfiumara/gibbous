@@ -296,9 +296,9 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
 
   return <>
     <div ref={scrimRef} onClick={close} className={`fixed inset-0 z-40 bg-black/50 lg:hidden transition-opacity duration-300 ${sidebar ? 'opacity-100 backdrop-blur-[2px]' : 'opacity-0 pointer-events-none'}`} />
-    <nav ref={navRef} aria-label="Threads" style={{ '--sb-w': `${width.w}px` } as React.CSSProperties}
+    <nav ref={navRef} aria-label="Threads" data-drag-window="self" style={{ '--sb-w': `${width.w}px` } as React.CSSProperties}
       className={`fixed lg:relative inset-y-0 left-0 z-50 w-[276px] lg:w-[var(--sb-w)] max-w-[85vw] flex-none flex flex-col pt-[env(safe-area-inset-top)] bg-crater lg:bg-transparent edge-r transition-transform duration-300 [transition-timing-function:var(--ease-out)] lg:translate-x-0 ${sidebar ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
-      <div className="flex items-center gap-2.5 px-4 h-12 flex-none">
+      <div data-drag-window className="flex items-center gap-2.5 px-4 h-12 flex-none">
         <TonightMoon size={18} />
         <span className="font-label text-[12.5px] tracking-[0.2em] lowercase text-moon/90">gibbous</span>
         {status && <span className="ml-auto flex items-center gap-1.5 rounded-full border border-line px-2 h-5 text-[10.5px] text-dust animate-fade"><span className={`size-1.5 rounded-full ${status.cls}`} />{status.text}</span>}
