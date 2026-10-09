@@ -82,7 +82,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
 
   return (
     <div className="relative h-full flex flex-col overflow-hidden">
-      <header className="relative flex items-center h-12 px-3 lg:hidden"><IconButton label="Open sidebar" onClick={() => useStore.setState({ sidebar: true })}><Menu size={17} /></IconButton></header>
+      <header data-drag-window className="relative flex items-center h-12 px-3 lg:hidden"><IconButton label="Open sidebar" onClick={() => useStore.setState({ sidebar: true })}><Menu size={17} /></IconButton></header>
       <div className="relative flex-1 overflow-y-auto overflow-x-hidden grid grid-cols-[minmax(0,1fr)] place-items-center px-4 pb-[10vh]">
         <div className="w-full min-w-0 max-w-2xl space-y-6 animate-rise">
           <h1 className="text-[32px] sm:text-[38px] leading-[1.08] font-bold tracking-[-.02em]">What should Hermes work on?</h1>

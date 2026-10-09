@@ -297,3 +297,19 @@
 .grow-wrap > textarea, .grow-wrap::after { grid-area: 1 / 1; max-height: 40vh; scrollbar-gutter: stable; } /* same wrap width with or without a scrollbar */
 .grow-wrap > textarea { overflow-y: auto; }
 .grow-text, .grow-wrap::after { padding: .875rem 1rem .25rem; font: inherit; font-size: 15px; line-height: 1.625; letter-spacing: inherit; border: 0; }
+
+/* ── Gibbous.app (desktop/Gibbous.swift) ────────────────────────────────
+   The window's content runs under its title bar: the app sets data-shell="mac" and --titlebar (in window points)
+   before any script runs, and data-fullscreen while the traffic lights are hidden. Divided by the density zoom so
+   the strip is always exactly the title bar. */
+[data-shell="mac"] { --tb: calc(var(--titlebar, 28px) / var(--zoom, 1)); }
+[data-shell="mac"][data-fullscreen] { --tb: 0px; }
+/* The traffic lights sit in the sidebar's top strip; main keeps the same strip so headers line up across the window. */
+[data-shell="mac"] nav[aria-label="Threads"], [data-shell="mac"] main { padding-top: var(--tb); }
+/* Sidebar glass: the page is see-through to the app's NSVisualEffectView, and only the main pane is painted. Its
+   basalt sits under the sky moon (z -1), so tonight's moon still shows over it. Login/loading keep the solid page. */
+[data-shell="mac"] body:has(main) { background: transparent; }
+[data-shell="mac"] main { position: relative; }
+[data-shell="mac"] main::before { content: ""; position: absolute; inset: 0; z-index: -2; background: var(--color-basalt); pointer-events: none; }
+/* View → Toggle Sidebar (⌃⌘S) on wide windows; narrow ones use the drawer. */
+@media (min-width: 64rem) { [data-shell="mac"][data-sidebar="off"] nav[aria-label="Threads"] { display: none; } }

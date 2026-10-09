@@ -6,9 +6,11 @@ import { rpc } from './rpc';
 import { useStore } from './store';
 import { applyPrefs } from './ui';
 import { healViewportOnBlur } from './viewport';
+import { installMacShell } from './macBridge';
 
 applyPrefs();
 healViewportOnBlur();
+installMacShell();
 // A newer build was deployed while this tab was open and one of its chunks is gone: reload once onto the new build.
 const reloadOnce = () => {
   if (Date.now() - Number(sessionStorage.getItem('gibbous.reloadedAt') ?? 0) < 30_000) return false;

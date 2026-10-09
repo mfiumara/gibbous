@@ -55,7 +55,7 @@ export function Board({ projectId }: { projectId: string }) {
 
   return (
     <div className="h-full flex flex-col">
-      <header className="flex items-center gap-2 px-3 h-12 border-b border-line flex-none">
+      <header data-drag-window className="flex items-center gap-2 px-3 h-12 border-b border-line flex-none">
         <IconButton label="Open sidebar" className="lg:hidden" onClick={() => useStore.setState({ sidebar: true })}><Menu size={17} /></IconButton>
         <h1 className="font-bold truncate">{project.name}</h1>
         <span className="hidden sm:inline label">{working}/{settings?.maxConcurrent ?? 3} working</span>

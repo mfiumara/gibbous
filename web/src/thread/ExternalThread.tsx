@@ -74,7 +74,7 @@ export function ExternalThread({ thread }: { thread: Thread }) {
 
   return (
     <div className="flex flex-col h-full min-w-0">
-      <header className="flex items-center gap-2 px-3 h-12 border-b border-line flex-none">
+      <header data-drag-window className="flex items-center gap-2 px-3 h-12 border-b border-line flex-none">
         <IconButton label="Open sidebar" className="lg:hidden" onClick={() => useStore.setState({ sidebar: true })}><Menu size={17} /></IconButton>
         <span className="label rounded bg-ridge px-1.5 py-0.5 text-moon/80">{label}</span>
         <h1 className="font-bold truncate min-w-0">{thread.title}</h1>

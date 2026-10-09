@@ -124,7 +124,7 @@ export function App() {
     <div className="h-full flex overflow-hidden">
       <SkyMoon />
       <Sidebar route={route} onAddProject={() => setAdding(true)} />
-      <main className="flex-1 min-w-0 h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <main data-drag-window="self" className="flex-1 min-w-0 h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         <HealthBanner />
         <div className="flex-1 min-h-0"><Boundary key={location.hash}><Suspense fallback={<div className="h-full grid place-items-center"><MoonLoader size={40} /></div>}>
           {route.name === 'thread' ? <ThreadRoute key={route.id} id={route.id} /> :
