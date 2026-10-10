@@ -31,8 +31,8 @@ export function JobEditor({ draft, onClose, onDone }: { draft: Draft; onClose():
         <Field label="Name"><input className={inputCls} value={d.name} onChange={e => setD({ ...d, name: e.target.value })} placeholder="Morning inbox summary" autoFocus /></Field>
         <Field label="When" hint={'"every weekday 9am", "every 2h", "in 30m", or cron "0 9 * * 1-5"'}><input className={inputCls + ' font-mono'} value={d.schedule} onChange={e => setD({ ...d, schedule: e.target.value })} /></Field>
       </div>
-      <Field label="What Hermes should do"><textarea className={inputCls + ' min-h-28'} value={d.prompt} onChange={e => setD({ ...d, prompt: e.target.value })} placeholder="Summarise unread email from the last 24h and list anything that needs a reply." /></Field>
-      <Field label="Deliver to" hint="Local keeps it in Hermes history.">
+      <Field label="What the agent should do"><textarea className={inputCls + ' min-h-28'} value={d.prompt} onChange={e => setD({ ...d, prompt: e.target.value })} placeholder="Summarise unread email from the last 24h and list anything that needs a reply." /></Field>
+      <Field label="Deliver to" hint="Local keeps it under Sessions.">
         <div className="flex flex-wrap gap-1.5">
           {[{ id: 'local', name: 'Local only' }, { id: 'origin', name: 'Where it was created' }, ...targets].map(t => (
             <button key={t.id} onClick={() => toggleTarget(t.id)} aria-pressed={deliverSet.has(t.id)} className={`press h-7 px-2.5 rounded-md border text-[12.5px] ${deliverSet.has(t.id) ? 'border-tide/60 bg-tide/10 text-moon' : 'border-line text-dust'}`}>{t.name}</button>

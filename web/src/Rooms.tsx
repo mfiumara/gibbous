@@ -117,8 +117,8 @@ function DesktopBots() {
   if (!bots.length && !rooms.length) return null;
   return (
     <section className="mx-auto max-w-2xl px-4 pb-8 space-y-3">
-      <div><h2 className="font-bold text-[15px] flex items-center gap-2"><Bot size={15} className="text-dust" />Bots from the Hermes desktop app</h2>
-        <p className="text-[13px] text-dust">Read-only. Edit them in the Hermes desktop app.</p></div>
+      <div><h2 className="font-bold text-[15px] flex items-center gap-2"><Bot size={15} className="text-dust" />Bots from the desktop app</h2>
+        <p className="text-[13px] text-dust">Read-only. Edit them in the desktop app.</p></div>
       <ul className="grid sm:grid-cols-2 gap-2">{bots.map(p => <BotChip key={p.name} p={p} />)}</ul>
       {rooms.length > 0 && <ul className="space-y-1.5">{rooms.map(r => (
         <li key={r.name}><button onClick={() => setOpen(r)} className="press tile w-full flex items-center gap-3 rounded-xl px-4 py-2.5 text-left">
@@ -144,7 +144,7 @@ export function RoomsView({ id }: { id?: string }) {
     <div className="h-full flex flex-col">
       <PageHeader title="Rooms"><span className="ml-auto"><Button size="sm" tone="primary" onClick={() => setCreating(true)}><Plus size={14} />New room</Button></span></PageHeader>
       {rooms && !rooms.length ? <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-sm px-4 pt-16 pb-10 text-center space-y-4"><p className="font-bold">No rooms yet</p><p className="text-sm text-dust">Group chats between your Hermes profiles.</p><Button tone="primary" onClick={() => setCreating(true)}>Create a room</Button></div>
+          <div className="mx-auto max-w-sm px-4 pt-16 pb-10 text-center space-y-4"><p className="font-bold">No rooms yet</p><p className="text-sm text-dust">Group chats between your agent profiles.</p><Button tone="primary" onClick={() => setCreating(true)}>Create a room</Button></div>
           <DesktopBots /></div>
         : <div className="flex-1 overflow-y-auto"><ul className="mx-auto max-w-2xl p-4 space-y-2">{(rooms ?? []).map(r => (
           <li key={r.room_id}><a href={`#/rooms/${r.room_id}`} className="press tile flex items-center gap-3 rounded-xl px-4 py-3">

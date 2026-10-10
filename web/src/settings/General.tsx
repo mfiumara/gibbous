@@ -22,16 +22,16 @@ export function GeneralTab() {
   const modelValue = settings.model ? `${settings.provider}\u0000${settings.model}` : '';
   return <>
     <Section title="Agents">
-      <Field label="Model for new threads" hint={`Hermes default: ${current.model ?? '…'}${current.provider ? ` (${current.provider})` : ''}.`}>
+      <Field label="Model for new threads" hint={`Default: ${current.model ?? '…'}${current.provider ? ` (${current.provider})` : ''}.`}>
         <select className={inputCls} value={modelValue} onChange={e => { const [provider, model] = e.target.value ? e.target.value.split('\u0000') : ['', '']; patch({ provider, model }); }}>
-          <option value="">Use Hermes default</option>
+          <option value="">Use the default model</option>
           {providers.map(p => <optgroup key={p.slug} label={p.name}>{p.models!.slice(0, 60).map(m => <option key={m} value={`${p.slug}\u0000${m}`}>{m}</option>)}</optgroup>)}
         </select>
       </Field>
     </Section>
     <Section title="Approvals" description="Your Hermes profile setting; it applies to the CLI and Discord too.">
       {approvals && <Segmented label="Approval mode" value={approvals} onChange={setMode} options={[
-        { value: 'manual', label: 'Ask every time' }, { value: 'smart', label: 'Smart', tip: 'Hermes judges which commands are risky' }, { value: 'off', label: 'Never ask' },
+        { value: 'manual', label: 'Ask every time' }, { value: 'smart', label: 'Smart', tip: 'The agent judges which commands are risky' }, { value: 'off', label: 'Never ask' },
       ]} />}
     </Section>
     <Snippets />
@@ -46,7 +46,20 @@ export function GeneralTab() {
           onBlur={e => patch({ monthlyBudgetUsd: Number(e.target.value) || 0 })} /></span>
       </Row>
     </Section>
+    <About />
   </>;
+}
+
+// The one place that names the backend: Gibbous is a UI for Hermes, which runs the agents and keeps the sessions.
+function About() {
+  const version = useStore(s => s.hermes?.version), update = useStore(s => s.hermes?.updateAvailable);
+  return (
+    <Section title="About">
+      <Row title={`Runs on Hermes${version ? ` · ${/^\d/.test(version) ? `v${version}` : version}` : ''}`} description="Hermes by Nous Research runs the agents and keeps every session; Gibbous is the window onto it.">
+        <a href="#/settings/update" className="press text-[13px] text-tide hover:underline whitespace-nowrap">{update ? 'Update available' : 'Check for updates'}</a>
+      </Row>
+    </Section>
+  );
 }
 
 const patch = (b: Record<string, unknown>) => api.patch('/api/settings', b).catch(toastError);

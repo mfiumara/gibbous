@@ -57,7 +57,7 @@ export function ExternalThread({ thread }: { thread: Thread }) {
     catch (e) { toastError(e); setBusy(false); }
   };
   const remove = async () => {
-    if (!confirm(`Remove this conversation from Gibbous's sidebar? It stays in ${label} and in Hermes.`)) return;
+    if (!confirm(`Remove this conversation from Gibbous's sidebar? It stays in ${label} and under Sessions.`)) return;
     await api.del(`/api/threads/${thread.id}`).catch(toastError);
     go('/');
   };
@@ -104,13 +104,13 @@ export function ExternalThread({ thread }: { thread: Thread }) {
         </div>
       </div>
 
-      {pending && <p className="mx-auto max-w-3xl w-full px-4 pb-2 flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} />Hermes is answering through the {label} gateway…</p>}
+      {pending && <p className="mx-auto max-w-3xl w-full px-4 pb-2 flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} />The agent is answering through {label}…</p>}
       <div className="flex-none px-3 pb-3 pt-1">
         {canReply ? (
           <div className="mx-auto max-w-3xl surface rounded-2xl">
             <textarea value={reply} onChange={e => setReply(e.target.value)} rows={1} {...NO_PREDICT} aria-label={`Reply in this ${label} conversation`}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !matchMedia('(pointer: coarse)').matches) { e.preventDefault(); send(); } }}
-              placeholder={`Message Hermes in this ${label} conversation`} className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] placeholder:text-ash focus:outline-none" />
+              placeholder={`Reply in this ${label} conversation`} className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] placeholder:text-ash focus:outline-none" />
             <div className="flex items-center gap-2 px-3 pb-2.5">
               <span className="flex-1 sm:hidden" />
               <p className="hidden sm:block text-[11.5px] text-ash flex-1">Runs in the {label} gateway, so it's the same conversation; the reply is added here, not posted as a {label} message.</p>

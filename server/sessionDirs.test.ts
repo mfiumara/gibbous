@@ -19,6 +19,7 @@ test('folders map to their repository, worktrees to the main checkout', () => {
   assert.deepEqual(folderOf(plain, home), { root: plain, repo: false, exists: true });
   assert.deepEqual(folderOf(home, home), { root: home, repo: false, exists: true });
   assert.deepEqual(folderOf(path.join(home, 'repo-worktrees', 'old'), home), { root: repo, repo: true, exists: true });
+  assert.deepEqual(folderOf(path.join(repo, '.worktrees', 'old'), home), { root: repo, repo: true, exists: true });
   assert.deepEqual(folderOf(path.join(home, 'gone'), home), { root: path.join(home, 'gone'), repo: false, exists: false });
   fs.rmSync(home, { recursive: true, force: true });
 });

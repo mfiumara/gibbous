@@ -42,7 +42,7 @@ export function RequestCard({ r, showThread }: { r: OpenRequest; showThread?: bo
   }
 
   return shell(<HelpCircle size={17} className="text-halo flex-none mt-0.5" />, <>
-    <p className="text-sm">Hermes asked for <code className="font-mono">{r.method}</code>, which Gibbous can't answer.</p>
+    <p className="text-sm">The agent asked for <code className="font-mono">{r.method}</code>, which Gibbous can't answer.</p>
     <Button size="sm" tone="danger" onClick={() => answer(r, {})}>Dismiss</Button>
   </>);
 }

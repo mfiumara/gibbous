@@ -80,7 +80,7 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
 }
 
 const MODE_TEXT: Record<string, string> = {
-  smart: 'Smart: Hermes asks before commands it judges risky (rm -rf, force-push, installs…) and runs the rest.',
+  smart: 'Smart: asks before commands it judges risky (rm -rf, force-push, installs…) and runs the rest.',
   manual: 'Ask every time: every shell command waits for your OK.',
   off: 'Never ask: commands run without approval.',
 };
@@ -108,14 +108,14 @@ const fmtK = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`
 
 // The plain-text tip (screen readers, and the fallback): how much of the window is used, compaction and caching.
 export function contextTip(u: Usage | undefined, compacting?: boolean) {
-  if (compacting) return 'Compacting · Hermes is summarizing earlier conversation to free up the context window.';
+  if (compacting) return 'Compacting · summarizing earlier conversation to free up the context window.';
   const pct = u?.context_percent;
   if (pct == null) return 'Context window: no usage reported yet.';
   const lines = [`Context window · ${pct}% used`];
   if (u?.context_used != null && u?.context_max) lines.push(`${u.context_estimated ? '≈' : ''}${fmtK(u.context_used)} of ${fmtK(u.context_max)} tokens · ${fmtK(Math.max(0, u.context_max - u.context_used))} left`);
   if (u?.compressions) lines.push(`Compacted ${u.compressions}× this session`);
   if (u?.cache_hit_pct != null) lines.push(`Prompt cache hits ${Math.round(u.cache_hit_pct)}%`);
-  if (pct > 80) lines.push('Nearly full: Hermes will compact older turns soon.');
+  if (pct > 80) lines.push('Nearly full: older turns will be compacted soon.');
   return lines.join('\n');
 }
 
@@ -140,7 +140,7 @@ function ContextCard({ usage: u, compacting }: { usage?: Usage; compacting?: boo
           {rows.map(([k, v]) => <div key={k} className="contents"><dt className="text-dust">{k}</dt><dd className="text-right font-mono tabular-nums text-moon">{v}</dd></div>)}
         </dl>
       )}
-      {!compacting && pct != null && pct > 80 && <p className="mt-3 text-[11.5px] text-oxide text-center">Nearly full: Hermes will compact older turns soon.</p>}
+      {!compacting && pct != null && pct > 80 && <p className="mt-3 text-[11.5px] text-oxide text-center">Nearly full: older turns will be compacted soon.</p>}
       {pct == null && !compacting && <p className="mt-2 text-[12px] text-dust">No usage reported yet.</p>}
     </div>
   );

@@ -20,7 +20,7 @@ interface Detail {
 
 const base = (slug: string) => `/api/kanban/boards/${encodeURIComponent(slug)}/tasks`;
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
-const HOW: Record<BoardMatch['how'], string> = { linked: 'linked by hand', workdir: 'board workdir is this project', 'hermes-project': 'board is scoped to this Hermes project', inside: 'board workdir is inside this project' };
+const HOW: Record<BoardMatch['how'], string> = { linked: 'linked by hand', workdir: 'board workdir is this project', 'hermes-project': 'board is scoped to a project with this folder', inside: 'board workdir is inside this project' };
 
 // Re-run `fn` every `ms` while the tab is visible (the caller loads once itself); a tab coming back refreshes at once.
 function usePoll(fn: () => void, ms: number, on = true) {
@@ -62,7 +62,7 @@ export function KanbanIndex() {
   const live = boards?.boards.filter(b => !b.archived) ?? [];
   return (
     <div className="h-full flex flex-col">
-      <Header><h1 className="font-bold">Kanban</h1><span className="label text-ash hidden sm:inline">Hermes boards</span></Header>
+      <Header><h1 className="font-bold">Kanban</h1><span className="label text-ash hidden sm:inline">All boards</span></Header>
       {err ? <Empty title="Hermes kanban isn't available"><p className="select-text">{err}</p></Empty>
         : !boards ? <div className="grid place-items-center flex-1"><MoonLoader size={40} label="Loading boards" /></div>
         : !live.length ? <Empty title="No kanban boards yet"><p>Create one with <code className="font-mono">hermes kanban boards create</code>.</p></Empty>
@@ -125,8 +125,8 @@ function LinkBoard({ project, boards, onLinked }: { project: Project; boards: Bo
   const link = (slug: string) => api.patch(`/api/projects/${project.id}`, { kanbanBoard: slug }).then(onLinked, toastError);
   const live = boards.boards.filter(b => !b.archived);
   return <div className="flex-1 overflow-y-auto"><div className="mx-auto max-w-lg p-6 space-y-4 animate-rise">
-    <p className="font-bold text-[15px]">No Hermes board for {project.name}</p>
-    <p className="text-sm text-dust">Gibbous shows a project's work from Hermes' kanban. A board matches when its default workdir is this project's folder (or inside it). <span className="font-mono text-[12px] select-text">{project.path}</span></p>
+    <p className="font-bold text-[15px]">No board for {project.name}</p>
+    <p className="text-sm text-dust">Gibbous shows a project's work from the agent's kanban. A board matches when its default workdir is this project's folder (or inside it). <span className="font-mono text-[12px] select-text">{project.path}</span></p>
     {live.length ? <>
       <p className="label">Link an existing board</p>
       <ul data-vim-list className="space-y-1.5">{live.map(b => <li key={b.slug}>
@@ -189,7 +189,7 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
             <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); setQ(''); (e.target as HTMLElement).blur(); } }} placeholder="Filter cards" aria-label="Filter cards" className="bg-transparent text-[13px] w-full focus:outline-none placeholder:text-ash" {...NO_PREDICT} /></label>
           <IconButton label={archived ? 'Hide archived' : 'Show archived'} aria-pressed={archived} className={archived ? 'text-tide' : ''} onClick={() => setArchived(!archived)}><Archive size={16} /></IconButton>
           {project && <span className="relative">
-            <IconButton label="Linked Hermes board" aria-expanded={linkMenu} onClick={() => setLinkMenu(!linkMenu)}><Link2 size={16} /></IconButton>
+            <IconButton label="Linked board" aria-expanded={linkMenu} onClick={() => setLinkMenu(!linkMenu)}><Link2 size={16} /></IconButton>
             <Menu open={linkMenu} onClose={() => setLinkMenu(false)} align="right">
               <p className="px-2.5 pt-1 pb-1.5 text-[11.5px] text-ash">{match ? `Matched: ${HOW[match.how]}` : ''}</p>
               {boards.boards.filter(b => !b.archived && b.slug !== board.slug).map(b => <MenuItem key={b.slug} icon={<BoardIcon b={b} />} onClick={() => relink(b.slug)}>Show {b.name} instead</MenuItem>)}
@@ -308,7 +308,7 @@ function TaskSheet({ slug, id, assignees, onClose, onChanged, onOpen }: { slug: 
                 <input autoFocus className={inputCls + ' py-1.5'} value={blocking} onChange={e => setBlocking(e.target.value)} placeholder="Why is it blocked? (optional)" {...NO_PREDICT}
                   onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setBlocking(null); } }} />
                 <Button size="sm" tone="halo" disabled={busy}>Block</Button></form>)}
-          {t.status !== 'archived' && <Button size="sm" tone="danger" disabled={busy} onClick={() => confirm(`Archive “${t.title}”? It leaves the board (Hermes keeps it under Archived).`) && act('archive').then(ok => ok && onClose())}><Trash2 size={13} />Archive</Button>}
+          {t.status !== 'archived' && <Button size="sm" tone="danger" disabled={busy} onClick={() => confirm(`Archive “${t.title}”? It leaves the board (it stays under Archived).`) && act('archive').then(ok => ok && onClose())}><Trash2 size={13} />Archive</Button>}
         </div>
 
         <div className="space-y-2">
@@ -351,7 +351,7 @@ function CreateTask({ slug, open, assignees, onClose, onCreated }: { slug: strin
     } catch (e) { toastError(e); } finally { setBusy(false); }
   };
   return (
-    <Modal open={open} onClose={onClose} title="New Hermes task" wide bottom>
+    <Modal open={open} onClose={onClose} title="New task" wide bottom>
       <Field label="Title"><input autoFocus className={inputCls} value={d.title} onChange={e => setD({ ...d, title: e.target.value })} {...NO_PREDICT} /></Field>
       <Field label="Details" hint="What done looks like; the assignee's agent reads this."><textarea className={inputCls + ' min-h-32'} value={d.body} onChange={e => setD({ ...d, body: e.target.value })} {...NO_PREDICT}
         onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && d.title.trim()) { e.preventDefault(); save(); } }} /></Field>
@@ -372,7 +372,7 @@ function ProjectSettings({ project, open, onClose }: { project: Project; open: b
   const [setup, setSetup] = useState(project.setupScript ?? '');
   const [scripts, setScripts] = useState(project.scripts ?? []);
   const save = async () => { await api.patch(`/api/projects/${project.id}`, { name, baseBranch: baseBranch || undefined, setupScript: setup || undefined, scripts: scripts.filter(s => s.name.trim() && s.command.trim()) }).catch(toastError); onClose(); };
-  const remove = async () => { if (!confirm(`Remove ${project.name} from Gibbous? Files, threads and its Hermes board stay.`)) return; await api.del(`/api/projects/${project.id}`).catch(toastError); go('/'); };
+  const remove = async () => { if (!confirm(`Remove ${project.name} from Gibbous? Files, threads and its board stay.`)) return; await api.del(`/api/projects/${project.id}`).catch(toastError); go('/'); };
   const detect = async () => {
     const found = await api.get<{ name: string; command: string }[]>(`/api/projects/${project.id}/scripts/detect`).catch(toastError);
     if (found) setScripts(s => [...s, ...found.filter(f => !s.some(x => x.name === f.name))]);

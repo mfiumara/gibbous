@@ -23,7 +23,7 @@ function AddLogin({ open, onClose, onDone }: { open: boolean; onClose(): void; o
         <Field label="Email or username"><input className={inputCls} value={f.identifier} onChange={e => setF({ ...f, identifier: e.target.value })} autoComplete="off" /></Field>
         <Field label="Password"><input type="password" className={inputCls} value={f.password} onChange={e => setF({ ...f, password: e.target.value })} autoComplete="new-password" /></Field>
       </div>
-      <Field label="2FA secret (optional)" hint="The base32 TOTP secret, so Hermes can produce codes."><input className={inputCls + ' font-mono'} value={f.otp} onChange={e => setF({ ...f, otp: e.target.value })} autoComplete="off" /></Field>
+      <Field label="2FA secret (optional)" hint="The base32 TOTP secret, so the agent can produce codes."><input className={inputCls + ' font-mono'} value={f.otp} onChange={e => setF({ ...f, otp: e.target.value })} autoComplete="off" /></Field>
       <div className="flex justify-end gap-2"><Button onClick={onClose}>Cancel</Button><Button tone="primary" disabled={!f.origin || !f.identifier || !f.password} onClick={save}>Save login</Button></div>
     </Modal>
   );
@@ -61,7 +61,7 @@ export function VaultTab() {
   useEffect(() => { load(); }, []);
   const unlock = () => rpc.call('vault.unlock', { name: unlocking!.name, password: pw }).then(() => { setUnlocking(null); setPw(''); load(); }, toastError);
   return <>
-    <Section title="Vault" description="Hermes fills these in the browser without seeing them."
+    <Section title="Vault" description="The agent fills these in the browser without seeing them."
       aside={<div className="flex gap-2"><Button onClick={() => rpc.call('vault.lock', {}).then(load, toastError)}><Lock size={13} />Lock all</Button><Button tone="primary" onClick={() => setAdding(true)}><Plus size={14} />Save a login</Button></div>}>
       {!items ? <Skeleton className="h-24" /> : !items.length ? <p className="text-sm text-dust">Nothing saved yet{sources.some(s => s.needs_unlock && !s.unlocked) ? ', or your password manager is locked' : ''}.</p> : <ul className="divide-y divide-line">{items.map(i => { const I = icon[i.kind]; return (
         <li key={i.id} className="py-2.5 flex items-center gap-3 text-sm">

@@ -29,7 +29,7 @@ export function AutomationsView() {
   const [, tick] = useState(0);
   useEffect(() => { const h = setInterval(() => { tick(x => x + 1); load(); }, 60_000); return () => clearInterval(h); }, []);
 
-  const target = (deliver?: string) => !deliver || deliver === 'local' ? 'Hermes history' : deliver === 'origin' ? 'the chat it came from'
+  const target = (deliver?: string) => !deliver || deliver === 'local' ? 'Sessions' : deliver === 'origin' ? 'the chat it came from'
     : deliver.split(',').map(d => targets.find(t => t.id === d)?.name ?? d.split(':')[0].replace(/^./, c => c.toUpperCase())).join(', ');
 
   const rows = useMemo<Row[]>(() => [
@@ -53,7 +53,7 @@ export function AutomationsView() {
   const act = (j: Job, a: 'pause' | 'resume' | 'trigger') => hermes.post(`cron/jobs/${j.id}/${a}`).then(() => { toast({ title: a === 'trigger' ? `Running ${j.name ?? j.id} now` : a === 'pause' ? `Paused ${j.name ?? j.id}` : `Resumed ${j.name ?? j.id}` }); load(); }, toastError);
   const edit = (j: Job) => hermes.get<Job>(`cron/jobs/${j.id}`).then(full => setEditing({ id: j.id, name: full.name ?? '', schedule: sched(full), prompt: full.prompt ?? '', deliver: full.deliver ?? 'local', skills: (full.skills ?? []).join(', ') }), toastError);
 
-  const Kind = (_: { r: Row }) => <span className="label inline-flex items-center gap-1 text-ash" data-tip="Hermes scheduled job"><Bot size={11} />hermes</span>;
+  const Kind = (_: { r: Row }) => <span className="label inline-flex items-center gap-1 text-ash" data-tip="Scheduled job"><Bot size={11} />scheduled</span>;
   const dot = (r: Row) => ({ ok: 'bg-sprout', failed: 'bg-oxide', paused: 'bg-ash', never: 'bg-tide/60' })[r.status];
 
   const actions = (r: Row) => <>

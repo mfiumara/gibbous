@@ -55,7 +55,8 @@ try {
   const page = await open(1440, 900);
   await visit(page, '#/', 'e2e');
   await visit(page, '#/inbox', 'Inbox');
-  await visit(page, '#/sessions', 'sessions');
+  await visit(page, '#/sessions/gibbous', 'Threads you started here'); // Sessions, sorted by the tool that ran them
+  if (await page.evaluate(() => /Hermes history|Message Hermes/.test(document.body.innerText))) failures.push('#/sessions: old "Hermes history" copy is back');
   await visit(page, '#/import', 'Bring your sessions in'); // the import picker (read-only until you press Import)
   await visit(page, '#/rooms', 'Rooms');
   await visit(page, '#/automations', 'New job');
@@ -67,7 +68,7 @@ try {
 
   // Kanban: the index lists Hermes' boards; a project without a board offers to link one (nothing is linked here).
   await visit(page, '#/kanban', 'Kanban');
-  await visit(page, `#/board/${project.id}`, 'No Hermes board for e2e');
+  await visit(page, `#/board/${project.id}`, 'No board for e2e');
   const kb = await (await fetch(`${BASE}/api/kanban/boards`, { headers: { Cookie: `gibbous_auth=${token}` } })).json();
   assert.ok(Array.isArray(kb.boards) && typeof kb.matches === 'object', `kanban boards: ${JSON.stringify(kb).slice(0, 200)}`);
   assert.equal(kb.matches[project.id], undefined);
@@ -126,7 +127,7 @@ try {
 
   // Phone: home, the kanban screens and settings fit the viewport without horizontal scroll.
   const phone = await open(390, 844);
-  for (const [hash, text] of [['#/', 'e2e'], ['#/kanban', 'Kanban'], [`#/board/${project.id}`, 'No Hermes board'], ['#/settings/phone', 'Phone'], ['#/import', 'Bring your sessions in']]) {
+  for (const [hash, text] of [['#/', 'e2e'], ['#/kanban', 'Kanban'], [`#/board/${project.id}`, 'No board for'], ['#/sessions/codex', 'Codex'], ['#/settings/phone', 'Phone'], ['#/import', 'Bring your sessions in']]) {
     await visit(phone, hash, text);
     const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     if (overflow > 1) failures.push(`${hash} scrolls sideways on a phone (${overflow}px)`);

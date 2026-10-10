@@ -18,7 +18,7 @@ function Data() {
   };
   const copy = () => diag && navigator.clipboard.writeText(diag).then(() => useStore.getState().toast({ title: 'Debug bundle copied' }), toastError);
   return <>
-    <Section title="Import sessions" description="Bring Hermes, Claude Code and Codex sessions in as threads, grouped by project folder."
+    <Section title="Import sessions" description="Bring sessions from the agent CLI, Paseo, messaging apps, Claude Code and Codex in as threads, grouped by tool and project folder."
       aside={<a href="#/import" className="press inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[13px] hover:bg-ridge"><History size={13} />Import sessions…</a>} />
     <Section title="Backup" description={`Projects, threads and settings in one file. Conversations themselves live in Hermes.${bytes ? ` Current state: ${(bytes / 1024).toFixed(0)} KB.` : ''}`}
       aside={<div className="flex gap-2">

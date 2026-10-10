@@ -272,7 +272,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
             const text = e.clipboardData.getData('text/plain');
             if (fs.length && (!text || fs.some(f => f.type.startsWith('image/')))) { e.preventDefault(); addFiles(fs); }
           }}
-          placeholder={placeholder ?? (mode === 'btw' ? 'Ask something on the side…' : mode === 'background' ? 'Describe the background task…' : mode === 'steer' ? 'Steer the running turn…' : running ? (touch ? 'Queue a follow-up…' : 'Queue a follow-up — sends when this turn finishes') : touch ? 'Message Hermes' : 'Message Hermes — / for commands, @ for files')}
+          placeholder={placeholder ?? (mode === 'btw' ? 'Ask something on the side…' : mode === 'background' ? 'Describe the background task…' : mode === 'steer' ? 'Steer the running turn…' : running ? (touch ? 'Queue a follow-up…' : 'Queue a follow-up — sends when this turn finishes') : touch ? 'Message the agent' : 'Message the agent — / for commands, @ for files')}
           aria-label="Message"
           className="grow-text block w-full resize-none bg-transparent placeholder:text-ash focus:outline-none" />
         </div>
