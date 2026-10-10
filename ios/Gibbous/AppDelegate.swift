@@ -40,7 +40,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
 
   // A notification arriving while Gibbous is open: the page already shows its own in-app toast.
   func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification, withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
-    done([])
+    // Banners while the app is open too, except a push about the thread already on screen.
+    let url = n.request.content.userInfo["url"] as? String ?? ""
+    let path = { (s: String) in s.firstIndex(of: "#").map { String(s[$0...]).split(separator: "?").first.map(String.init) ?? "" } ?? "" }
+    let target = path(url)
+    done(target.hasPrefix("#/t/") && target == path(Server.route) ? [] : [.banner, .list, .sound])
   }
   // Tapped (local from gibbousNotify, or an APNs push whose payload carries `url`).
   func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse, withCompletionHandler done: @escaping () -> Void) {

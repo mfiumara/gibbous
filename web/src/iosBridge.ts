@@ -30,6 +30,8 @@ export const shareNative = (p: { url?: string; text?: string; title?: string; fi
 export const openExternal = (url: string) => post('gibbousOpen', { url });
 export const requestPush = () => { setPush({ state: 'asking' }); if (!post('gibbousPush', {})) setPush({ state: 'error', message: "This version of the app can't turn on notifications" }); };
 export const changeServer = () => post('gibbousServer', {});
+// App build 2+ shows notifications as banners while it's open too (earlier builds only in the background).
+export const iosNativeBanners = () => Number(shell()?.build) >= 2;
 export const iosBadge = (count: number) => post('gibbousBadge', { count });
 // Local notification while the app is in the background (the app itself also checks it is).
 export const iosNotify = (n: { title: string; body?: string; url?: string; tag?: string }) => post('gibbousNotify', n);

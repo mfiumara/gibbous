@@ -1,5 +1,5 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Inbox, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react';
+import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type PrBadge } from './api';
@@ -163,7 +163,7 @@ function useSidebarWidth() {
 }
 
 export function Sidebar({ route, onAddProject }: { route: Route; onAddProject(): void }) {
-  const { projects, threads, requests, connected, hermesReady, sidebar, hosts } = useStore(useShallow(s => ({ projects: s.projects, threads: s.threads, requests: s.requests, connected: s.connected, hermesReady: s.hermesReady, sidebar: s.sidebar, hosts: s.hosts })));
+  const { projects, threads, connected, hermesReady, sidebar, hosts } = useStore(useShallow(s => ({ projects: s.projects, threads: s.threads, connected: s.connected, hermesReady: s.hermesReady, sidebar: s.sidebar, hosts: s.hosts })));
   const width = useSidebarWidth();
   // Rows are memoized: a minute tick keeps their "5m" ages current.
   const [minute, setMinute] = useState(0);
@@ -284,7 +284,6 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
     return [...m.entries()];
   }, [visible]);
   const activeId = route.name === 'thread' ? route.id : undefined;
-  const inboxCount = requests.length;
   const status = !connected ? { cls: 'bg-oxide', text: 'Reconnecting' } : !hermesReady ? { cls: 'bg-halo animate-pulse', text: 'Hermes starting' } : null;
 
   const nav = (href: string, icon: React.ReactNode, label: string, active: boolean, badge?: number) => (
@@ -312,7 +311,6 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
         <a href="#/new" onClick={close} className="press flex items-center gap-2.5 px-3 py-1.5 pointer-coarse:py-2.5 rounded-lg text-[13.5px] text-moon hover:bg-ridge/55">
           <Plus size={15} /><span className="flex-1">New thread</span><span className="font-mono text-[10.5px] text-ash pointer-coarse:hidden">⌘N</span>
         </a>
-        {nav('#/inbox', <Inbox size={15} />, 'Inbox', route.name === 'inbox', inboxCount)}
       </div>
 
       {(threads.length > 6 || projects.length > 1) && <div className="px-2 pt-3 flex-none flex items-center gap-1">
