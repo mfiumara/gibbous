@@ -469,10 +469,12 @@ export function MediaViewer() {
         {file && <button onClick={() => saveMedia(file)} aria-label="Download" data-tip="Download" className="press size-9 flex-none grid place-items-center rounded-lg hover:bg-white/10"><Download size={16} /></button>}
         <button onClick={() => setV(null)} aria-label="Close" data-tip="Close" data-kbd="esc" className="press size-9 flex-none grid place-items-center rounded-lg hover:bg-white/10"><X size={18} /></button>
       </div>
-      <div className="flex-1 min-h-0 grid place-items-center p-3 pt-0">
-        {ext === 'pdf' ? <iframe src={v.src} title={v.name} onClick={stop} className="w-full h-full max-w-5xl rounded-lg bg-white" />
-          : /^(mp4|mov|m4v|webm)$/.test(ext) ? <video src={v.src} controls autoPlay playsInline onClick={stop} className="max-w-full max-h-full rounded-lg bg-black" />
-          : <img src={v.src} alt={v.name} onClick={stop} className="max-w-full max-h-full object-contain rounded-lg animate-pop" />}
+      {/* Media sits absolutely in a box of known size: in a grid/flex cell, max-h-full has no definite height to
+          resolve against, so large images showed at full resolution instead of fitting the screen. */}
+      <div className="flex-1 min-h-0 relative mx-3 mb-3">
+        {ext === 'pdf' ? <iframe src={v.src} title={v.name} onClick={stop} className="absolute inset-0 m-auto w-full h-full max-w-5xl rounded-lg bg-white" />
+          : /^(mp4|mov|m4v|webm)$/.test(ext) ? <video src={v.src} controls autoPlay playsInline onClick={stop} className="absolute inset-0 m-auto max-w-full max-h-full rounded-lg bg-black" />
+          : <img src={v.src} alt={v.name} onClick={stop} className="absolute inset-0 m-auto max-w-full max-h-full object-contain rounded-lg animate-pop" />}
       </div>
     </div>, document.body);
 }
