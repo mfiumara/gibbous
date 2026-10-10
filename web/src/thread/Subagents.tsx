@@ -1,7 +1,7 @@
 // Subagents: a count chip on the thread's status line, one quiet line per subagent in the timeline, and a side panel:
 // an overview of all of them (what each is doing or found), then one subagent's own transcript (← → between them).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Square, Send, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Square, Send, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../api';
 import { useRpc } from '../rpc';
 import { toastError } from '../store';
@@ -42,15 +42,20 @@ function summaryLine(agents: Agent[]) {
   return [c.running && `${c.running} working`, c.queued && `${c.queued} queued`, c.done && `${c.done} done`, c.failed && `${c.failed} failed`, c.other && `${c.other} idle`].filter(Boolean).join(' · ');
 }
 
-// Status-line chip, next to the thread's "Waxing…" line: the moon plus "1/7" (working / all). Opens the overview.
-export function SubagentChip({ agents, onOpen }: { agents: Agent[]; onOpen(): void }) {
-  if (!agents.length) return null;
-  const c = agentCounts(agents), active = c.running + c.queued;
+// Under the thread's status line while subagents work: the moon, "2 of 7 working", and what the first one is doing.
+// Nothing at all once they're done (the timeline lines and the Subagents panel still have them).
+export function SubagentCard({ agents, onOpen }: { agents: Agent[]; onOpen(): void }) {
+  const working = agents.filter(isLive);
+  if (!working.length) return null;
+  const now = working.find(a => a.activity) ?? working[0];
   return (
-    <button onClick={onOpen} aria-label={`${agents.length} subagents: ${summaryLine(agents)}`} data-tip={`${summaryLine(agents)}\nClick for the overview.`}
-      className={`press inline-flex items-center gap-1.5 h-6 px-2 -my-1 rounded-full text-[12px] font-mono tabular-nums border flex-none ${active ? 'text-tide border-tide/30 bg-tide/8 hover:bg-tide/15' : 'text-dust border-line hover:text-moon hover:bg-ridge'}`}>
-      {active ? <MoonLoader size={12} label="subagents working" /> : <Bot size={12} />}
-      {active ? `${active}/${agents.length}` : agents.length}
+    <button onClick={onOpen} data-tip="Watch the subagents"
+      className="press mt-2 ml-[17px] w-fit max-w-[calc(100%-17px)] flex items-center gap-2.5 rounded-xl border border-tide/25 bg-tide/[.05] hover:bg-tide/[.09] px-3 py-2 text-left animate-rise">
+      <MoonLoader size={16} label="subagents working" />
+      <span className="min-w-0">
+        <span className="block text-[12.5px] text-moon"><span className="font-mono tabular-nums text-tide">{working.length}/{agents.length}</span> subagent{agents.length > 1 ? 's' : ''} working</span>
+        <span className="block truncate text-[11.5px] text-dust">{agentName(now, agents.indexOf(now))}{now.activity ? <span className="font-mono text-ash"> · {now.activity}</span> : null}</span>
+      </span>
     </button>
   );
 }

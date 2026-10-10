@@ -8,7 +8,7 @@ import { bindQueue, syncWithHermes, onQueuedSent } from './queue';
 import { reduce, checkpointFor, endedLabel, type Timeline, type Item } from './timeline';
 import { getCached, putCached, onCached, fromResume, reconcile, revive } from './cache';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
-import { useSubagents, SubagentLine, SubagentsPanel, SubagentChip } from './Subagents';
+import { useSubagents, SubagentLine, SubagentsPanel, SubagentCard } from './Subagents';
 import { isLive } from './agents';
 import { Composer, type EditTarget } from './Composer';
 import { RequestCard } from './RequestCard';
@@ -321,7 +321,8 @@ export function ThreadView({ id }: { id: string }) {
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
             })}
-            {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span><SubagentChip agents={agents} onOpen={() => openAgents()} />{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
+            {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
+            <SubagentCard agents={agents} onOpen={() => openAgents()} />
             {thread.status === 'error' && !running && thread.error && !tl.items.some(i => i.kind === 'notice') && <p className="text-[13px] text-oxide select-text">{thread.error}</p>}
             {requests.map(r => <div key={r.id} className="animate-rise"><RequestCard r={r} /></div>)}
           </div>
