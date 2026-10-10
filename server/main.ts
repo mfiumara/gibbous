@@ -14,7 +14,8 @@ import * as kanban from './kanban.ts';
 import { gatewayChat, gatewayAvailable } from './gateway.ts';
 import { MESSAGING_SOURCES } from './sources.ts';
 import { attachTerminal } from './pty.ts';
-import { subscribe, vapidPublicKey, notify, notifications } from './push.ts';
+import { subscribe, vapidPublicKey, notify, notifications, registerApns, unregisterApns, apnsStatus } from './push.ts';
+import { parseDevice, validToken } from './apns.ts';
 import * as g from './git.ts';
 import { smoke } from './smoke.ts';
 import { redact, tail } from './diagnostics.ts';
@@ -150,7 +151,7 @@ function publicState() {
     requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
-    vapidPublicKey: vapidPublicKey(), build: webBuild(), prs: prBadges(),
+    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(),
   };
 }
 
@@ -277,7 +278,7 @@ route('GET', '/api/diagnostics', () => {
   const bundle = {
     gibbous: pkg.version, node: process.version, os: `${os.type()} ${os.release()} ${os.arch()}`, uptimeMin: Math.round(process.uptime() / 60),
     hermes: { ready: hc.ready, ...health }, hosts: hostStatus().map(h => ({ name: h.name, connected: h.connected })),
-    counts: { projects: state.projects.length, threads: state.threads.length, pushDevices: state.push.subs.length },
+    counts: { projects: state.projects.length, threads: state.threads.length, pushDevices: state.push.subs.length, apnsDevices: state.push.apns.length },
     stateBytes: fs.statSync(path.join(GIBBOUS_HOME, 'state.json'), { throwIfNoEntry: false })?.size ?? 0,
     settings: state.settings,
     logs: { gibbous: tail(path.join(GIBBOUS_HOME, 'gibbous.log')), hermesServe: tail(path.join(GIBBOUS_HOME, 'hermes-serve.log'), 60) },
@@ -438,7 +439,19 @@ route('POST', '/api/media/save', (_, b) => {
 });
 route('POST', '/api/media/reveal', (_, b) => { execFile('open', ['-R', mediaPath(String(b.path ?? ''))]); return { ok: true }; });
 route('POST', '/api/push/subscribe', (_, b) => { subscribe(b); return { ok: true }; });
-route('POST', '/api/push/test', () => { notify({ kind: 'input', title: 'Gibbous', body: 'Notifications work.', url: '/', test: true }); return { ok: true }; });
+route('POST', '/api/push/test', () => { notify({ kind: 'input', title: 'Gibbous', body: 'Notifications work.', url: '/', test: true }); return { ok: true, apns: apnsStatus() }; });
+// iOS shell device tokens (APNs). Sending needs GIBBOUS_HOME/apns.json; registering works without it.
+route('GET', '/api/push/apns', () => apnsStatus());
+route('POST', '/api/push/apns', (_, b) => {
+  const d = parseDevice(b);
+  if (!d) throw new HttpError(400, "token must be 64-200 hex chars and env 'sandbox' or 'production'");
+  registerApns(d);
+  return { ok: true, configured: apnsStatus().configured };
+});
+route('DELETE', '/api/push/apns', (_, b) => {
+  if (!validToken(b?.token)) throw new HttpError(400, 'token must be 64-200 hex chars');
+  return { ok: true, removed: unregisterApns(b.token) };
+});
 
 route('GET', '/api/fs/ls', (_, __, u) => {
   const dir = path.resolve(u.searchParams.get('path') || process.env.HOME!);

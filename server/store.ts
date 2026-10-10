@@ -86,7 +86,8 @@ export interface Settings {
 export interface State {
   projects: Project[]; threads: Thread[]; hosts: Host[];
   settings: Settings;
-  push: { vapid?: { publicKey: string; privateKey: string }; subs: any[] };
+  // subs: Web Push (PWA/browsers); apns: iOS shell device tokens (apns.ts).
+  push: { vapid?: { publicKey: string; privateKey: string }; subs: any[]; apns: { token: string; env: 'sandbox' | 'production'; at: number }[] };
   budgetAlerted?: string;   // 'YYYY-MM' the monthly budget alert last fired for
 }
 
@@ -109,7 +110,7 @@ export function migrate(raw: any): State {
     })),
     hosts: rest.hosts ?? [],
     settings: { ...defaultSettings(), ...settings, notify: { ...defaultSettings().notify, ...keep(notify, ['input', 'done', 'failure'] as const) } },
-    push: { subs: [], ...rest.push },
+    push: { subs: [], ...rest.push, apns: (Array.isArray(rest.push?.apns) ? rest.push.apns : []).filter((d: any) => typeof d?.token === 'string' && (d.env === 'sandbox' || d.env === 'production')) },
   };
 }
 
