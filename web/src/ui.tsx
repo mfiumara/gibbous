@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { screenChange } from './screenTransition';
-import { Download, X } from 'lucide-react';
+import { Download, X, Check as CheckIcon, Minus } from 'lucide-react';
 import { api, type ThreadStatus, type KanbanStatus } from './api';
 import { useStore, toastError } from './store';
 import { SHEET_QUERY, decide, offset, dismiss } from './sheet';
@@ -10,7 +10,7 @@ import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel }
 // ── routing (hash-based so the PWA works from any path) ────────────────
 export type Route =
   | { name: 'home'; projectId?: string; host?: string } | { name: 'thread'; id: string } | { name: 'board'; projectId: string } | { name: 'kanban'; slug?: string }
-  | { name: 'inbox' } | { name: 'sessions' } | { name: 'search'; q: string } | { name: 'settings'; tab: string } | { name: 'rooms'; id?: string } | { name: 'automations' };
+  | { name: 'inbox' } | { name: 'sessions' } | { name: 'import' } | { name: 'search'; q: string } | { name: 'settings'; tab: string } | { name: 'rooms'; id?: string } | { name: 'automations' };
 
 export function parse(h: string): Route {
   const [path, query = ''] = h.replace(/^#/, '').split('?');
@@ -22,7 +22,7 @@ export function parse(h: string): Route {
   if (a === 'search') return { name: 'search', q: new URLSearchParams(query).get('q') ?? '' };
   if (a === 'settings') return { name: 'settings', tab: b ?? '' }; // '' = the section list (phones); desktop shows General
   if (a === 'rooms') return { name: 'rooms', id: b };
-  if (a === 'inbox' || a === 'sessions' || a === 'automations') return { name: a };
+  if (a === 'inbox' || a === 'sessions' || a === 'automations' || a === 'import') return { name: a };
   return { name: 'home' };
 }
 
@@ -149,6 +149,20 @@ export function Moon({ thread, kanban, size = 10 }: { thread?: ThreadStatus; kan
     style={{ width: size, height: size, ...style[phase] }} />;
 }
 
+// Fills from the left edge to the right; `fraction` 0 = new, .5 = half, 1 = full. (Path is drawn lit-right, then mirrored.)
+export function PhaseMoon({ fraction, color, size = 14 }: { fraction: number; color: string; size?: number }) {
+  const k = Math.min(1, Math.max(0, fraction)), r = 6, c = 7;
+  const rx = r * Math.abs(1 - 2 * k);
+  const lit = k <= 0.005 ? '' : k >= 0.995 ? `M${c} ${c - r}A${r} ${r} 0 1 1 ${c} ${c + r}A${r} ${r} 0 1 1 ${c} ${c - r}Z`
+    : `M${c} ${c - r}A${r} ${r} 0 0 1 ${c} ${c + r}A${rx} ${r} 0 0 ${k > 0.5 ? 1 : 0} ${c} ${c - r}Z`;
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden className="flex-none">
+      <circle cx={c} cy={c} r={r} fill="var(--color-ridge)" stroke="color-mix(in srgb, var(--color-ash) 55%, transparent)" strokeWidth=".75" />
+      {lit && <path d={lit} fill={color} transform="matrix(-1 0 0 1 14 0)" />}
+    </svg>
+  );
+}
+
 // ── controls ────────────────────────────────────────────────────────────
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { tone?: 'primary' | 'ghost' | 'danger' | 'halo'; size?: 'sm' | 'md' | 'lg' };
 const tones = {
@@ -187,6 +201,26 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
         <button key={o.value} role="radio" aria-checked={value === o.value} disabled={o.disabled} data-tip={o.tip} onClick={() => onChange(o.value)}
           className={`press min-w-0 px-2.5 rounded-md text-[12.5px] whitespace-nowrap overflow-hidden text-ellipsis disabled:opacity-40 ${value === o.value ? 'bg-ridge text-moon shadow-[inset_0_1px_0_var(--surface-hi)]' : 'text-dust hover:text-moon'}`}>{o.label}</button>
       ))}
+    </div>
+  );
+}
+
+// Tri-state tick box (a span: the whole row is the control).
+export function Check({ state }: { state: 'all' | 'some' | 'none' | boolean }) {
+  const s = state === true ? 'all' : state === false ? 'none' : state;
+  return <span aria-hidden className={`grid place-items-center size-4 flex-none rounded-[5px] border transition-colors duration-100 ${s === 'none' ? 'border-ash/70 bg-transparent' : 'border-tide bg-tide text-basalt'}`}>
+    {s === 'all' ? <CheckIcon size={11} strokeWidth={3} /> : s === 'some' ? <Minus size={11} strokeWidth={3} /> : null}
+  </span>;
+}
+
+// One focusable checkbox row: Space toggles, Enter runs the primary action (j/k focus [data-vim-item]s, App.tsx).
+export function CheckRow({ checked, onToggle, onEnter, disabled, label, className = '', children }: { checked: 'all' | 'some' | 'none' | boolean; onToggle(): void; onEnter?(): void; disabled?: boolean; label: string; className?: string; children: ReactNode }) {
+  return (
+    <div role="checkbox" aria-checked={checked === 'some' ? 'mixed' : checked === true || checked === 'all'} aria-disabled={disabled || undefined} aria-label={label} tabIndex={disabled ? -1 : 0} data-vim-item={disabled ? undefined : ''}
+      onClick={() => !disabled && onToggle()}
+      onKeyDown={e => { if (e.key === ' ') { e.preventDefault(); if (!disabled) onToggle(); } else if (e.key === 'Enter' && onEnter) { e.preventDefault(); e.stopPropagation(); onEnter(); } }}
+      className={`flex items-center gap-3 rounded-lg px-2 min-h-10 pointer-coarse:min-h-11 outline-none focus-visible:bg-ridge focus-visible:shadow-[inset_0_0_0_1px_var(--color-tide)] ${disabled ? 'opacity-55' : 'hover:bg-ridge/50'} ${className}`}>
+      {children}
     </div>
   );
 }

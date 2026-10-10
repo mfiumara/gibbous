@@ -17,6 +17,7 @@ import { InboxView, SessionsView, Login } from './Inbox';
 const SearchView = lazy(() => import('./Search').then(m => ({ default: m.SearchView })));
 const RoomsView = lazy(() => import('./Rooms').then(m => ({ default: m.RoomsView })));
 const AutomationsView = lazy(() => import('./Automations').then(m => ({ default: m.AutomationsView })));
+const Welcome = lazy(() => import('./Welcome').then(m => ({ default: m.Welcome })));
 const SettingsView = lazy(() => import('./Settings').then(m => ({ default: m.SettingsView })));
 import { SkyMoon } from './SkyMoon';
 import { HealthBanner } from './HealthBanner';
@@ -127,6 +128,8 @@ export function App() {
     (window as any).webkit?.messageHandlers?.gibbousBadge?.postMessage(waiting); // macOS app: Dock + menu-bar count
   }, [waiting]);
 
+  // A fresh Gibbous (no threads, no projects) opens on the import picker until it's used or skipped.
+  const fresh = useStore(s => !s.welcomeDone && !s.threads.length && !s.projects.length);
   const screenRef = useRef<HTMLDivElement>(null);
   const screen = (r: Route) =>
     r.name === 'thread' ? <ThreadRoute key={r.id} id={r.id} /> :
@@ -134,6 +137,8 @@ export function App() {
     r.name === 'kanban' ? (r.slug ? <Kanban key={r.slug} slug={r.slug} /> : <KanbanIndex />) :
     r.name === 'inbox' ? <InboxView /> :
     r.name === 'sessions' ? <SessionsView /> :
+    r.name === 'import' ? <Welcome /> :
+    r.name === 'home' && fresh && !r.projectId && !r.host && !location.hash.startsWith('#/new') ? <Welcome first /> :
     r.name === 'search' ? <SearchView q={r.q} /> :
     r.name === 'settings' ? <SettingsView tab={r.tab} /> :
     r.name === 'rooms' ? <RoomsView id={r.id} /> :
@@ -207,7 +212,7 @@ const SETTINGS: [string, string, string][] = [
   ['appearance', 'Appearance', 'theme night daylight dark light density compact roomy moon animations editor vs code'],
   ['notifications', 'Notifications', 'push alerts needs you finished failures test'],
   ['phone', 'Phone', 'qr sign in link iphone tailnet tailscale install home screen'],
-  ['maintenance', 'Maintenance', 'stuck orphaned worktrees backup restore diagnostics debug bundle'],
+  ['maintenance', 'Maintenance', 'stuck orphaned worktrees backup restore diagnostics debug bundle import sessions'],
   ['usage', 'Usage', 'spend cost tokens insights chart'],
   ['profiles', 'Profiles', 'persona profile default'],
   ['skills', 'Skills', 'skill hub install reload'],
@@ -236,7 +241,7 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
       ...threads.filter(t => t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt)
         .map(t => ({ label: t.title, hint: t.readOnly ? sourceLabel(t.source) : projects.find(p => p.id === t.projectId)?.name ?? 'chat', href: `/t/${t.id}`, status: t.status })),
       ...(projects.length > 1 ? [{ label: 'Filter projects in the sidebar…', hint: 'filter', keywords: 'show hide projects sidebar toggle', stay: true, run: () => setMode('projects') }] : []),
-      { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'hermes board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Hermes history', hint: 'go', href: '/sessions' }, { label: 'Settings', hint: 'go', href: '/settings' },
+      { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'hermes board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Hermes history', hint: 'go', href: '/sessions' }, { label: 'Import sessions…', hint: 'go', href: '/import', keywords: 'bring claude code codex hermes history welcome first run' }, { label: 'Settings', hint: 'go', href: '/settings' },
       ...SETTINGS.map(([id, label, keywords]) => ({ label: `${label} settings`, hint: 'settings', href: `/settings/${id}`, keywords })),
       ...(here ? [
         { label: here.pinned ? 'Unpin this thread' : 'Pin this thread', hint: 'action', run: () => { api.patch(`/api/threads/${here.id}`, { pinned: !here.pinned }).catch(toastError); } },

@@ -56,6 +56,7 @@ try {
   await visit(page, '#/', 'e2e');
   await visit(page, '#/inbox', 'Inbox');
   await visit(page, '#/sessions', 'sessions');
+  await visit(page, '#/import', 'Bring your sessions in'); // the import picker (read-only until you press Import)
   await visit(page, '#/rooms', 'Rooms');
   await visit(page, '#/automations', 'New job');
   await visit(page, '#/search?q=hello', 'hello');
@@ -125,7 +126,7 @@ try {
 
   // Phone: home, the kanban screens and settings fit the viewport without horizontal scroll.
   const phone = await open(390, 844);
-  for (const [hash, text] of [['#/', 'e2e'], ['#/kanban', 'Kanban'], [`#/board/${project.id}`, 'No Hermes board'], ['#/settings/phone', 'Phone']]) {
+  for (const [hash, text] of [['#/', 'e2e'], ['#/kanban', 'Kanban'], [`#/board/${project.id}`, 'No Hermes board'], ['#/settings/phone', 'Phone'], ['#/import', 'Bring your sessions in']]) {
     await visit(phone, hash, text);
     const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     if (overflow > 1) failures.push(`${hash} scrolls sideways on a phone (${overflow}px)`);

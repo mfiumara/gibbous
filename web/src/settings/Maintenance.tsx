@@ -1,6 +1,6 @@
 // Maintenance: orphaned worktrees, backup/restore and the diagnostics bundle.
 import { useEffect, useState } from 'react';
-import { Wrench, Download, Upload, ClipboardCopy } from 'lucide-react';
+import { Wrench, Download, Upload, ClipboardCopy, History } from 'lucide-react';
 import { api } from '../api';
 import { useStore, toastError } from '../store';
 import { Button } from '../ui';
@@ -18,6 +18,8 @@ function Data() {
   };
   const copy = () => diag && navigator.clipboard.writeText(diag).then(() => useStore.getState().toast({ title: 'Debug bundle copied' }), toastError);
   return <>
+    <Section title="Import sessions" description="Bring Hermes, Claude Code and Codex sessions in as threads, grouped by project folder."
+      aside={<a href="#/import" className="press inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[13px] hover:bg-ridge"><History size={13} />Import sessions…</a>} />
     <Section title="Backup" description={`Projects, threads and settings in one file. Conversations themselves live in Hermes.${bytes ? ` Current state: ${(bytes / 1024).toFixed(0)} KB.` : ''}`}
       aside={<div className="flex gap-2">
         <a href="/api/backup" download={`gibbous-backup-${new Date().toLocaleDateString('en-CA')}.json`} className="press inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[13px] hover:bg-ridge"><Download size={13} />Download backup</a>

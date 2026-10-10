@@ -20,6 +20,8 @@ interface S {
   palette: boolean | 'projects'; // 'projects' opens it straight in the project filter
   hiddenProjects: string[];       // projects hidden from the sidebar, per device
   setHiddenProjects(ids: string[]): void;
+  welcomeDone: boolean;           // the first-run import picker was used or skipped (per device)
+  setWelcomeDone(): void;
   load(): Promise<void>;
   toast(t: Omit<Toast, 'id'>): void;
   dismiss(id: number): void;
@@ -38,6 +40,8 @@ export const useStore = create<S>((set, get) => ({
   toasts: [], sidebar: false, palette: false,
   hiddenProjects: JSON.parse(localStorage.getItem('gibbous.hiddenProjects') ?? '[]'),
   setHiddenProjects(ids) { localStorage.setItem('gibbous.hiddenProjects', JSON.stringify(ids)); set({ hiddenProjects: ids }); },
+  welcomeDone: localStorage.getItem('gibbous.welcomeDone') === '1',
+  setWelcomeDone() { localStorage.setItem('gibbous.welcomeDone', '1'); set({ welcomeDone: true }); },
   // First run: everything counts as seen, so the sidebar doesn't light up all at once.
   seen: JSON.parse(localStorage.getItem('gibbous.seen') ?? 'null') ?? { '*': Date.now() },
   markSeen(id) {
