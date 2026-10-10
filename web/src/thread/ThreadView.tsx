@@ -8,7 +8,7 @@ import { bindQueue, syncWithHermes, onQueuedSent } from './queue';
 import { reduce, checkpointFor, endedLabel, type Timeline, type Item } from './timeline';
 import { getCached, putCached, onCached, fromResume, reconcile, revive } from './cache';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
-import { useSubagents, SubagentLine, SubagentsPanel, SubagentCard } from './Subagents';
+import { useSubagents, SubagentsPanel, SubagentGroup } from './Subagents';
 import { isLive } from './agents';
 import { Composer, type EditTarget } from './Composer';
 import { RequestCard } from './RequestCard';
@@ -315,14 +315,22 @@ export function ThreadView({ id }: { id: string }) {
                 case 'assistant': return <div key={it.id} className={anim} data-k={it.id}><AssistantMessage item={it} endOfTurn={items[i + 1]?.kind === 'turn'} /></div>;
                 case 'reasoning': return <div key={it.id} className={anim} data-k={it.id}><ReasoningBlock item={it} /></div>;
                 case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} /></div>;
-                case 'subagent': return <div key={it.id} className={anim} data-k={it.id}><SubagentLine item={it} agents={agents} onOpen={openAgents} /></div>;
+                case 'subagent': {
+                  // A run of subagent rows (one delegation) is one card; the rows after the first render nothing.
+                  if (items[i - 1]?.kind === 'subagent') return null;
+                  let j = i; while (items[j + 1]?.kind === 'subagent') j++;
+                  const ids = new Set(items.slice(i, j + 1).map(x => x.id));
+                  const group = agents.filter(a => a.liveId && ids.has(a.liveId));
+                  return <div key={it.id} className={anim} data-k={it.id}><SubagentGroup agents={group.length ? group : agents} all={agents} onOpen={openAgents} /></div>;
+                }
                 case 'side': return <div key={it.id} className={anim} data-k={it.id}><SideCard item={it} /></div>;
                 case 'turn': return <TurnFooter key={it.id} item={it} />;
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
             })}
             {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
-            <SubagentCard agents={agents} onOpen={() => openAgents()} />
+            {/* Working subagents whose card isn't already right above (stored-only, or the delegation scrolled up). */}
+            {agents.some(isLive) && items.at(-1)?.kind !== 'subagent' && <div className="mt-2"><SubagentGroup agents={agents} all={agents} onOpen={openAgents} /></div>}
             {thread.status === 'error' && !running && thread.error && !tl.items.some(i => i.kind === 'notice') && <p className="text-[13px] text-oxide select-text">{thread.error}</p>}
             {requests.map(r => <div key={r.id} className="animate-rise"><RequestCard r={r} /></div>)}
           </div>

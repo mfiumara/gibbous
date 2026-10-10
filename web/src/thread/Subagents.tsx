@@ -29,12 +29,15 @@ export function useSubagents(threadId: string, items: Item[], running: boolean):
 }
 
 // ── small pieces ──────────────────────────────────────────────────────
-const tone: Record<AgentState, string> = { running: 'bg-tide', queued: 'bg-ash', done: 'bg-moon/80', failed: 'bg-oxide', stopped: 'bg-halo', quiet: 'bg-ash/60' };
 const label: Record<AgentState, string> = { running: 'working', queued: 'queued', done: 'done', failed: 'failed', stopped: 'stopped', quiet: 'no activity' };
 
-export function AgentDot({ a, size = 8 }: { a: Agent; size?: number }) {
-  if (a.state === 'running') return <MoonLoader size={size + 4} label="working" />;
-  return <span aria-label={label[a.state]} className={`inline-block flex-none rounded-full ${tone[a.state]}`} style={{ width: size, height: size }} />;
+// Every subagent is a moon of the same size: waxing (animated) while it works, full when done, a dim new moon while
+// queued or quiet, and a reddened full moon when it failed or was stopped.
+export function AgentDot({ a, size = 10 }: { a: Agent; size?: number }) {
+  if (a.state === 'running') return <MoonLoader size={size} label="working" />;
+  const frame = a.state === 'queued' || a.state === 'quiet' ? 0 : 18;
+  const tint = a.state === 'failed' ? 'sepia(1) saturate(4) hue-rotate(-30deg) brightness(.85)' : a.state === 'stopped' ? 'sepia(.8) saturate(2) brightness(.9)' : a.state === 'queued' || a.state === 'quiet' ? 'brightness(.7)' : undefined;
+  return <span role="img" aria-label={label[a.state]} className="moon-loader moon-still" style={{ '--s': `${size}px`, '--tonight': frame, filter: tint } as React.CSSProperties} />;
 }
 
 function summaryLine(agents: Agent[]) {
@@ -42,21 +45,38 @@ function summaryLine(agents: Agent[]) {
   return [c.running && `${c.running} working`, c.queued && `${c.queued} queued`, c.done && `${c.done} done`, c.failed && `${c.failed} failed`, c.other && `${c.other} idle`].filter(Boolean).join(' · ');
 }
 
-// Under the thread's status line while subagents work: the moon, "2 of 7 working", and what the first one is doing.
-// Nothing at all once they're done (the timeline lines and the Subagents panel still have them).
-export function SubagentCard({ agents, onOpen }: { agents: Agent[]; onOpen(): void }) {
-  const working = agents.filter(isLive);
-  if (!working.length) return null;
+// One card for a group of subagents: collapsed, the moon + "2/9 subagents working" + what one of them is doing;
+// click to unfold it in place with each subagent on its own line (click a line for its transcript), click the
+// header to fold it back. Used in the timeline where Hermes delegated, and under the status line otherwise.
+export function SubagentGroup({ agents, all, onOpen }: { agents: Agent[]; all: Agent[]; onOpen(key?: string): void }) {
+  const [open, setOpen] = useState(false);
+  if (!agents.length) return null;
+  const working = agents.filter(isLive), done = !working.length;
   const now = working.find(a => a.activity) ?? working[0];
+  const lead = <>{done ? <AgentDot a={agents.find(a => a.state === 'failed') ?? agents[0]} size={16} /> : <MoonLoader size={16} label="subagents working" />}</>;
+  const title = done ? `${agents.length} subagent${agents.length > 1 ? 's' : ''} finished` : <><span className="font-mono tabular-nums text-tide">{working.length}/{agents.length}</span> subagent{agents.length > 1 ? 's' : ''} working</>;
   return (
-    <button onClick={onOpen} data-tip="Watch the subagents"
-      className="press mt-2 ml-[17px] w-fit max-w-[calc(100%-17px)] flex items-center gap-2.5 rounded-xl border border-tide/25 bg-tide/[.05] hover:bg-tide/[.09] px-3 py-2 text-left animate-rise">
-      <MoonLoader size={16} label="subagents working" />
-      <span className="min-w-0">
-        <span className="block text-[12.5px] text-moon"><span className="font-mono tabular-nums text-tide">{working.length}/{agents.length}</span> subagent{agents.length > 1 ? 's' : ''} working</span>
-        <span className="block truncate text-[11.5px] text-dust">{agentName(now, agents.indexOf(now))}{now.activity ? <span className="font-mono text-ash"> · {now.activity}</span> : null}</span>
-      </span>
-    </button>
+    <div className={`w-full rounded-xl border transition-colors ${done ? 'border-line/70 bg-crater/40' : 'border-tide/25 bg-tide/[.05]'}`}>
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open} data-tip={open ? 'Fold' : 'Show each subagent'}
+        className="press w-full flex items-center gap-2.5 px-3 py-2 text-left rounded-xl">
+        {lead}
+        <span className="flex-1 min-w-0">
+          <span className="block text-[12.5px] text-moon">{title}</span>
+          {!open && <span className="block truncate text-[11.5px] text-dust">{now ? <>{agentName(now, all.indexOf(now))}{now.activity && <span className="font-mono text-ash"> · {now.activity}</span>}</> : agents.map((a) => agentName(a, all.indexOf(a))).join(' · ')}</span>}
+        </span>
+        <ChevronRight size={14} className={`flex-none text-ash transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && <ul className="px-1.5 pb-1.5 animate-fade">{[...working, ...agents.filter(a => !isLive(a))].map(a => (
+        <li key={a.key}>
+          <button onClick={() => onOpen(a.key)} className="press w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-[13px] text-dust hover:text-moon hover:bg-ridge/60">
+            <span className="w-4 grid place-items-center flex-none"><AgentDot a={a} size={11} /></span>
+            <span className="text-moon/90 truncate min-w-0 flex-none max-w-[55%]">{agentName(a, all.indexOf(a))}</span>
+            <span className="truncate min-w-0 font-mono text-[11.5px] text-ash">{isLive(a) ? a.activity : firstLine(a.summary ?? a.lastText)}</span>
+            <span className="ml-auto pl-2 flex-none text-[11px] font-mono text-ash">{label[a.state]}</span>
+          </button>
+        </li>
+      ))}</ul>}
+    </div>
   );
 }
 
