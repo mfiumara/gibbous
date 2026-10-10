@@ -56,6 +56,7 @@ export function ThreadView({ id }: { id: string }) {
   const [edit, setEdit] = useState<EditTarget>();
   const [panel, setPanel] = useState<string | null>(() => wide() ? localStorage.getItem('gibbous.panel') || null : null);
   const [agentFocus, setAgentFocus] = useState<string>();
+  const [groupOpen, setGroupOpen] = useState(false); // the subagent card's fold, shared wherever it renders
   const agents = useSubagents(id, tl.items, tl.running);
   const openAgents = (key?: string) => { setAgentFocus(key); setPanel('agents'); };
   const [limit, setLimit] = useState(PAGE);
@@ -329,12 +330,10 @@ export function ThreadView({ id }: { id: string }) {
                 case 'reasoning': return <div key={it.id} className={anim} data-k={it.id}><ReasoningBlock item={it} /></div>;
                 case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} /></div>;
                 case 'subagent': {
-                  // A run of subagent rows (one delegation) is one card; the rows after the first render nothing.
-                  if (items[i - 1]?.kind === 'subagent') return null;
-                  let j = i; while (items[j + 1]?.kind === 'subagent') j++;
-                  const ids = new Set(items.slice(i, j + 1).map(x => x.id));
-                  const group = agents.filter(a => a.liveId && ids.has(a.liveId));
-                  return <div key={it.id} className={anim} data-k={it.id}><SubagentGroup agents={group.length ? group : agents} all={agents} onOpen={openAgents} /></div>;
+                  // One card with every subagent of the thread, at the latest delegation; earlier rows render nothing.
+                  // (Matching live rows to stored sessions shrank the card to 1/1 once events arrived.)
+                  if (items.slice(i + 1).some(x => x.kind === 'subagent')) return null;
+                  return <div key={it.id} className={anim} data-k={it.id}><SubagentGroup agents={agents} all={agents} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>;
                 }
                 case 'side': return <div key={it.id} className={anim} data-k={it.id}><SideCard item={it} /></div>;
                 case 'turn': return <TurnFooter key={it.id} item={it} />;
@@ -343,7 +342,7 @@ export function ThreadView({ id }: { id: string }) {
             })}
             {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
             {/* Working subagents whose card isn't already right above (stored-only, or the delegation scrolled up). */}
-            {agents.some(isLive) && items.at(-1)?.kind !== 'subagent' && <div className="mt-2"><SubagentGroup agents={agents} all={agents} onOpen={openAgents} /></div>}
+            {agents.some(isLive) && items.at(-1)?.kind !== 'subagent' && <div className="mt-2"><SubagentGroup agents={agents} all={agents} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>}
             {thread.status === 'error' && !running && thread.error && !tl.items.some(i => i.kind === 'notice') && <p className="text-[13px] text-oxide select-text">{thread.error}</p>}
             {requests.map(r => <div key={r.id} className="animate-rise"><RequestCard r={r} /></div>)}
           </div>

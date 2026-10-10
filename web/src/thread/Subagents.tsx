@@ -48,34 +48,36 @@ function summaryLine(agents: Agent[]) {
 // One card for a group of subagents: collapsed, the moon + "2/9 subagents working" + what one of them is doing;
 // click to unfold it in place with each subagent on its own line (click a line for its transcript), click the
 // header to fold it back. Used in the timeline where Hermes delegated, and under the status line otherwise.
-export function SubagentGroup({ agents, all, onOpen }: { agents: Agent[]; all: Agent[]; onOpen(key?: string): void }) {
-  const [open, setOpen] = useState(false);
+export function SubagentGroup({ agents, all, onOpen, open, setOpen }: { agents: Agent[]; all: Agent[]; onOpen(key?: string): void; open: boolean; setOpen(f: (o: boolean) => boolean): void }) {
   if (!agents.length) return null;
   const working = agents.filter(isLive), done = !working.length;
   const now = working.find(a => a.activity) ?? working[0];
   const lead = <>{done ? <AgentDot a={agents.find(a => a.state === 'failed') ?? agents[0]} size={16} /> : <MoonLoader size={16} label="subagents working" />}</>;
   const title = done ? `${agents.length} subagent${agents.length > 1 ? 's' : ''} finished` : <><span className="font-mono tabular-nums text-tide">{working.length}/{agents.length}</span> subagent{agents.length > 1 ? 's' : ''} working</>;
   return (
-    <div className={`w-full rounded-xl border transition-colors ${done ? 'border-line/70 bg-crater/40' : 'border-tide/25 bg-tide/[.05]'}`}>
+    <div className={`group/sa w-full rounded-xl border transition-[background-color,border-color,box-shadow] duration-300 ease-out hover:shadow-[0_6px_24px_-12px_rgb(0_0_0/.6)] ${done ? 'border-line/70 bg-crater/40 hover:border-ash/40 hover:bg-crater/70' : 'border-tide/25 bg-tide/[.05] hover:border-tide/45 hover:bg-tide/[.09]'}`}>
       <button onClick={() => setOpen(o => !o)} aria-expanded={open} data-tip={open ? 'Fold' : 'Show each subagent'}
         className="press w-full flex items-center gap-2.5 px-3 py-2 text-left rounded-xl">
         {lead}
         <span className="flex-1 min-w-0">
           <span className="block text-[12.5px] text-moon">{title}</span>
-          {!open && <span className="block truncate text-[11.5px] text-dust">{now ? <>{agentName(now, all.indexOf(now))}{now.activity && <span className="font-mono text-ash"> · {now.activity}</span>}</> : agents.map((a) => agentName(a, all.indexOf(a))).join(' · ')}</span>}
+          <span className={`block truncate text-[11.5px] text-dust transition-opacity duration-200 ${open ? 'opacity-0' : ''}`}>{now ? <>{agentName(now, all.indexOf(now))}{now.activity && <span className="font-mono text-ash"> · {now.activity}</span>}</> : agents.map((a) => agentName(a, all.indexOf(a))).join(' · ')}</span>
         </span>
-        <ChevronRight size={14} className={`flex-none text-ash transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
+        <ChevronRight size={14} className={`flex-none text-ash transition-[transform,color] duration-300 ease-out group-hover/sa:text-moon ${open ? 'rotate-90' : ''}`} />
       </button>
-      {open && <ul className="px-1.5 pb-1.5 animate-fade">{[...working, ...agents.filter(a => !isLive(a))].map(a => (
+      {/* Unfolds downwards: the grid row animates 0fr → 1fr, the rows slide and fade in after it. */}
+      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`} inert={!open}>
+      <ul className={`min-h-0 overflow-hidden px-1.5 transition-[opacity,translate] duration-300 ease-out ${open ? 'pb-1.5 opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}>{[...working, ...agents.filter(a => !isLive(a))].map(a => (
         <li key={a.key}>
-          <button onClick={() => onOpen(a.key)} className="press w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-[13px] text-dust hover:text-moon hover:bg-ridge/60">
+          <button onClick={() => onOpen(a.key)} className="press w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-[13px] text-dust transition-colors duration-200 hover:text-moon hover:bg-ridge/60">
             <span className="w-4 grid place-items-center flex-none"><AgentDot a={a} size={11} /></span>
             <span className="text-moon/90 truncate min-w-0 flex-none max-w-[55%]">{agentName(a, all.indexOf(a))}</span>
             <span className="truncate min-w-0 font-mono text-[11.5px] text-ash">{isLive(a) ? a.activity : firstLine(a.summary ?? a.lastText)}</span>
             <span className="ml-auto pl-2 flex-none text-[11px] font-mono text-ash">{label[a.state]}</span>
           </button>
         </li>
-      ))}</ul>}
+      ))}</ul>
+      </div>
     </div>
   );
 }
