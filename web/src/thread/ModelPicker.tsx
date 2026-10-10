@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, Zap, Search, Check, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useRpc } from '../rpc';
 import { useStore, toastError } from '../store';
-import { Menu, MoonLoader, MoonDisc, inputCls, useSheet, useRichTip } from '../ui';
+import { Menu, MoonLoader, MoonDisc, PhaseMoon, inputCls, useSheet, useRichTip } from '../ui';
+export { PhaseMoon };
 import type { ModelOptionProvider, SessionLiveInfo, Usage } from '../hermes/contract';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -158,16 +159,3 @@ export function ContextMeter({ usage, compacting }: { usage?: Usage; compacting?
   );
 }
 
-// Fills from the left edge to the right; `fraction` 0 = new, .5 = half, 1 = full. (Path is drawn lit-right, then mirrored.)
-export function PhaseMoon({ fraction, color, size = 14 }: { fraction: number; color: string; size?: number }) {
-  const k = Math.min(1, Math.max(0, fraction)), r = 6, c = 7;
-  const rx = r * Math.abs(1 - 2 * k);
-  const lit = k <= 0.005 ? '' : k >= 0.995 ? `M${c} ${c - r}A${r} ${r} 0 1 1 ${c} ${c + r}A${r} ${r} 0 1 1 ${c} ${c - r}Z`
-    : `M${c} ${c - r}A${r} ${r} 0 0 1 ${c} ${c + r}A${rx} ${r} 0 0 ${k > 0.5 ? 1 : 0} ${c} ${c - r}Z`;
-  return (
-    <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden className="flex-none">
-      <circle cx={c} cy={c} r={r} fill="var(--color-ridge)" stroke="color-mix(in srgb, var(--color-ash) 55%, transparent)" strokeWidth=".75" />
-      {lit && <path d={lit} fill={color} transform="matrix(-1 0 0 1 14 0)" />}
-    </svg>
-  );
-}

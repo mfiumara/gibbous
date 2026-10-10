@@ -4,7 +4,7 @@ import type { Route } from './ui';
 
 // 0 = a top-level list (home, inbox, settings list, the kanban index…), 1 = something opened from one (a thread, a board, a section).
 export function depth(r: Route): number {
-  if (r.name === 'thread' || r.name === 'board') return 1;
+  if (r.name === 'thread' || r.name === 'board' || r.name === 'import') return 1;
   if (r.name === 'kanban') return r.slug ? 1 : 0;
   if (r.name === 'settings') return r.tab ? 1 : 0;
   if (r.name === 'rooms') return r.id ? 1 : 0;
@@ -16,6 +16,7 @@ export function parentOf(r: Route): string | null {
   if (r.name === 'settings') return r.tab ? '/settings' : null;
   if (r.name === 'rooms') return r.id ? '/rooms' : null;
   if (r.name === 'kanban') return r.slug ? '/kanban' : null;
+  if (r.name === 'import') return '/sessions';
   return depth(r) ? '/' : null;
 }
 

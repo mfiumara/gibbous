@@ -20,6 +20,7 @@ import { smoke } from './smoke.ts';
 import { redact, tail } from './diagnostics.ts';
 import { watchBuild } from './build.ts';
 import { listSubagents } from './subagents.ts';
+import { sessionDirs } from './sessionDirs.ts';
 import { openingMessage } from './titles.ts';
 import { liveBranch, prBadges, refreshPrs } from './prs.ts';
 
@@ -205,6 +206,8 @@ route('POST', '/api/threads/:id/send', async (p, b) => { await orch.send(need(or
 route('POST', '/api/threads/:id/interrupt', async p => { await orch.interrupt(need(orch.thread(p.id), 'thread')); return { ok: true }; });
 route('POST', '/api/threads/:id/archive', async (p, b) => { await orch.archiveThread(need(orch.thread(p.id), 'thread'), !!b.removeWorktree); return { ok: true }; });
 route('DELETE', '/api/threads/:id', async (p, _, u) => { await orch.deleteThread(need(orch.thread(p.id), 'thread'), u.searchParams.get('removeWorktree') === '1'); return { ok: true }; });
+// Each local Hermes session's folder (session.list has none), so the import picker can group by project.
+route('GET', '/api/sessions/dirs', () => sessionDirs(state.settings.profile || undefined));
 route('POST', '/api/import', (_, b) => orch.importSession(String(b.sessionId), String(b.title ?? ''), { projectId: b.projectId, source: b.source, startedAt: b.startedAt, readOnly: b.readOnly !== false, host: b.host && state.hosts.some(h => h.id === b.host) ? b.host : undefined }));
 // Machines on your tailnet, so adding a remote Hermes is a pick instead of typing a hostname.
 route('GET', '/api/tailnet/peers', () => {
