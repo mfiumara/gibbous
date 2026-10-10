@@ -13,7 +13,8 @@ export interface ApnsConfig { keyId: string; teamId: string; bundleId: string; k
 export interface SendResult { ok: boolean; status: number; reason?: string }
 export interface SendOpts { collapseId?: string; threadId?: string }
 export type Sender = (token: string, env: ApnsEnv, payload: ApnsPayload, opts?: SendOpts) => Promise<SendResult>;
-export interface ApnsPayload { aps: { alert: { title: string; body: string }; sound: string; 'thread-id': string; 'mutable-content': 0 | 1 }; url?: string }
+// A badge-only payload (`{aps:{badge}}`) updates the icon count without showing anything.
+export interface ApnsPayload { aps: { alert?: { title: string; body: string }; sound?: string; 'thread-id'?: string; 'mutable-content'?: 0 | 1; badge?: number }; url?: string }
 
 const HOSTS: Record<ApnsEnv, string> = { sandbox: 'api.sandbox.push.apple.com', production: 'api.push.apple.com' };
 const TIMEOUT_MS = 10_000, IDLE_MS = 5 * 60_000, JWT_TTL_MS = 50 * 60_000, EXPIRATION_S = 3600;
@@ -75,9 +76,9 @@ function bearer(l: Loaded, now = Date.now()) {
 
 // ── payload ─────────────────────────────────────────────────────────────
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-export function buildPayload(n: { title: string; body: string; url?: string; tag?: string; kind: string }): ApnsPayload {
+export function buildPayload(n: { title: string; body: string; url?: string; tag?: string; kind: string }, badge?: number): ApnsPayload {
   return {
-    aps: { alert: { title: clip(String(n.title ?? ''), 200), body: clip(String(n.body ?? ''), 1500) }, sound: 'default', 'thread-id': n.tag ?? n.kind, 'mutable-content': 0 },
+    aps: { alert: { title: clip(String(n.title ?? ''), 200), body: clip(String(n.body ?? ''), 1500) }, sound: 'default', 'thread-id': n.tag ?? n.kind, 'mutable-content': 0, ...(badge != null ? { badge } : {}) },
     ...(n.url ? { url: n.url } : {}),
   };
 }

@@ -14,7 +14,7 @@ import * as kanban from './kanban.ts';
 import { gatewayChat, gatewayAvailable } from './gateway.ts';
 import { MESSAGING_SOURCES } from './sources.ts';
 import { attachTerminal } from './pty.ts';
-import { subscribe, vapidPublicKey, notify, notifications, registerApns, unregisterApns, apnsStatus } from './push.ts';
+import { subscribe, vapidPublicKey, notify, notifications, registerApns, unregisterApns, apnsStatus, setBadgeSource, badgeChanged } from './push.ts';
 import { parseDevice, validToken } from './apns.ts';
 import * as g from './git.ts';
 import { smoke } from './smoke.ts';
@@ -620,6 +620,8 @@ const broadcast = (kind: string, data: unknown) => {
   for (const c of clients) if (c.readyState === WebSocket.OPEN) c.send(frame);
 };
 orch.on('change', ({ kind, data }) => broadcast(kind, kind === 'requests' ? [...orch.requests.values()] : data));
+setBadgeSource(() => orch.requests.size);
+orch.on('change', ({ kind }) => { if (kind === 'requests') badgeChanged(); });
 
 // Sidebar PR + CI badges: poll gh every minute, push only when something changed.
 const pollPrs = () => refreshPrs(b => broadcast('prs', b)).catch(e => console.error('[prs]', e));

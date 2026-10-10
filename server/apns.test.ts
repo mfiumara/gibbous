@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, createVerify, createPrivateKey } from 'node:crypto';
 import * as apns from './apns.ts';
 import { state, migrate } from './store.ts';
-import { notify, sendApns, setApnsSender, registerApns, unregisterApns } from './push.ts';
+import { notify, sendApns, setApnsSender, registerApns, unregisterApns, setBadgeSource, badgeChanged } from './push.ts';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gib-apns-'));
 after(() => { apns.testing.closeAll(); apns.testing.setEndpoint(undefined); apns.testing.setHome(undefined); setApnsSender(undefined); fs.rmSync(tmp, { recursive: true, force: true }); });
@@ -94,7 +94,7 @@ test('deliver + notify fan-out with a fake sender: dead tokens dropped, settings
   setApnsSender(fake);
   await sendApns({ title: 'Done', body: 'b', kind: 'done', tag: 'th_9', url: '#/t/th_9' });
   assert.equal(calls.length, 5);
-  assert.deepEqual(calls.find(c => c[0] === live)?.slice(1), ['production', apns.buildPayload({ title: 'Done', body: 'b', kind: 'done', tag: 'th_9', url: '#/t/th_9' })]);
+  assert.deepEqual(calls.find(c => c[0] === live)?.slice(1), ['production', apns.buildPayload({ title: 'Done', body: 'b', kind: 'done', tag: 'th_9', url: '#/t/th_9' }, 0)]);
   assert.deepEqual(state.push.apns.map(d => d.token).sort(), [live, flaky, throws].sort());
 
   calls.length = 0;
@@ -175,4 +175,19 @@ test('state migration: push.apns defaults to [] and drops malformed devices', ()
   assert.deepEqual(migrate({ push: { subs: [{ endpoint: 'x' }] } }).push, { subs: [{ endpoint: 'x' }], apns: [] });
   const m = migrate({ push: { subs: [], apns: [{ token: TOKEN, env: 'sandbox', at: 1 }, { token: 5 }, { token: TOKEN, env: 'dev' }] } });
   assert.deepEqual(m.push.apns, [{ token: TOKEN, env: 'sandbox', at: 1 }]);
+});
+
+test('icon badge: alerts carry the waiting count; a change alone sends one badge-only push, unchanged sends none', async () => {
+  const tok = 'ab'.repeat(32), sent: apns.ApnsPayload[] = [];
+  state.push.apns = []; state.push.subs = [];
+  registerApns({ token: tok, env: 'sandbox' });
+  setApnsSender(async (_t, _e, p) => { sent.push(p); return { ok: true, status: 200 }; });
+  let n = 2; setBadgeSource(() => n);
+  await sendApns({ title: 'Needs you', body: 'b', kind: 'input' });
+  assert.equal(sent.at(-1)?.aps.badge, 2);
+  badgeChanged(0); await new Promise(r => setTimeout(r, 20));
+  assert.equal(sent.length, 1); // still 2: nothing to send
+  n = 0; badgeChanged(0); await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(sent.at(-1), { aps: { badge: 0 } });
+  setApnsSender(undefined); setBadgeSource(() => 0); state.push.apns = [];
 });

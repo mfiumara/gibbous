@@ -58,7 +58,27 @@ export async function sendApns(n: { title: string; body: string; url?: string; t
   try {
     const devices = [...state.push.apns];
     if (!devices.length || (apnsSender === apns.send && !apns.configured())) return;
-    const dead = await apns.deliver(devices, apns.buildPayload(n), apnsSender);
+    const badge = badgeSource();
+    lastBadge = badge;
+    const dead = await apns.deliver(devices, apns.buildPayload(n, badge), apnsSender);
     if (dead.length) { state.push.apns = state.push.apns.filter(d => !dead.includes(d.token)); save(); }
   } catch (e) { console.warn('[apns] send failed', e); }
+}
+
+// The iPhone icon badge = agents waiting on you (same count as the tab title). Every alert carries it, and when the
+// count changes without an alert (answered on the Mac, a request expired) a silent badge-only push keeps the closed app right.
+let badgeSource = () => 0, lastBadge = -1, badgeTimer: ReturnType<typeof setTimeout> | undefined;
+export const setBadgeSource = (f: () => number) => { badgeSource = f; };
+export function badgeChanged(delayMs = 2000) {
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(async () => {
+    try {
+      const badge = badgeSource(), devices = [...state.push.apns];
+      if (badge === lastBadge || !devices.length || (apnsSender === apns.send && !apns.configured())) return;
+      lastBadge = badge;
+      const dead = await apns.deliver(devices, { aps: { badge } }, apnsSender);
+      if (dead.length) { state.push.apns = state.push.apns.filter(d => !dead.includes(d.token)); save(); }
+    } catch (e) { console.warn('[apns] badge failed', e); }
+  }, delayMs);
+  badgeTimer.unref?.();
 }
