@@ -370,19 +370,17 @@ export function ThreadView({ id }: { id: string }) {
   );
 }
 
-// Turn footer: hovering (or tapping, on phones) swaps the time spent for when the turn ended. Both texts share one grid
-// cell, right-aligned, so the swap never moves the clock; the fade is moonrise/moonset (styles.css .turn-swap).
+// Turn footer: hovering (or tapping, on phones) swaps the time spent for when the turn ended. The resting text sets the
+// size; the end time overlays it from the right edge (absolute, so its extra width never pushes the clock away from
+// "6s"). Each side carries its own clock. The fade is moonrise/moonset (styles.css .turn-swap).
 function TurnFooter({ item }: { item: Extract<Item, { kind: 'turn' }> }) {
   const [shown, setShown] = useState(false);
   const spent = [item.ms != null && fmtDuration(item.ms), item.tokens && `${fmtTokens(item.tokens)} tokens`, item.cost && fmtUsd(item.cost)].filter(Boolean).join(' · ');
   return (
     <p className="flex justify-end -mt-2 select-none">
-      <span className={`${item.at ? 'turn-swap' : ''} inline-flex items-center gap-1.5 font-mono text-[11.5px] text-dust ${shown ? 'is-on' : ''}`} onClick={() => item.at && setShown(s => !s)}>
-        <Clock size={11} />
-        <span className="grid justify-items-end [&>*]:[grid-area:1/1] whitespace-nowrap">
-          <span className="turn-a">{spent}</span>
-          {item.at && <span className="turn-b" aria-label={endedLabel(item.at)}>{endedLabel(item.at)}</span>}
-        </span>
+      <span className={`${item.at ? 'turn-swap' : ''} relative font-mono text-[11.5px] text-dust whitespace-nowrap ${shown ? 'is-on' : ''}`} onClick={() => item.at && setShown(s => !s)}>
+        <span className="turn-a inline-flex items-center gap-1.5"><Clock size={11} />{spent}</span>
+        {item.at && <span className="turn-b absolute right-0 top-0 inline-flex items-center gap-1.5 pointer-events-none"><Clock size={11} />{endedLabel(item.at)}</span>}
       </span>
     </p>
   );
