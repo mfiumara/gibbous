@@ -314,7 +314,7 @@ export function ThreadView({ id }: { id: string }) {
                 case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} /></div>;
                 case 'subagent': return <div key={it.id} className={anim} data-k={it.id}><SubagentLine item={it} agents={agents} onOpen={openAgents} /></div>;
                 case 'side': return <div key={it.id} className={anim} data-k={it.id}><SideCard item={it} /></div>;
-                case 'turn': return <p key={it.id} className="flex justify-end -mt-2 select-none"><span data-tip={it.at ? endedLabel(it.at) : undefined} className="inline-flex items-center gap-1.5 font-mono text-[11.5px] text-dust">{/* tip on the text, not the full-width row, so it anchors here */}<Clock size={11} />{[it.ms != null && fmtDuration(it.ms), it.tokens && `${fmtTokens(it.tokens)} tokens`, it.cost && fmtUsd(it.cost)].filter(Boolean).join(' · ')}</span></p>;
+                case 'turn': return <TurnFooter key={it.id} item={it} />;
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
             })}
@@ -360,5 +360,23 @@ export function ThreadView({ id }: { id: string }) {
       )}
     </div>
     </RpcContext.Provider>
+  );
+}
+
+// Turn footer: hovering (or tapping, on phones) swaps the time spent for when the turn ended. Both texts share one grid
+// cell, right-aligned, so the swap never moves the clock; the fade is moonrise/moonset (styles.css .turn-swap).
+function TurnFooter({ item }: { item: Extract<Item, { kind: 'turn' }> }) {
+  const [shown, setShown] = useState(false);
+  const spent = [item.ms != null && fmtDuration(item.ms), item.tokens && `${fmtTokens(item.tokens)} tokens`, item.cost && fmtUsd(item.cost)].filter(Boolean).join(' · ');
+  return (
+    <p className="flex justify-end -mt-2 select-none">
+      <span className={`${item.at ? 'turn-swap' : ''} inline-flex items-center gap-1.5 font-mono text-[11.5px] text-dust ${shown ? 'is-on' : ''}`} onClick={() => item.at && setShown(s => !s)}>
+        <Clock size={11} />
+        <span className="grid justify-items-end [&>*]:[grid-area:1/1] whitespace-nowrap">
+          <span className="turn-a">{spent}</span>
+          {item.at && <span className="turn-b" aria-label={endedLabel(item.at)}>{endedLabel(item.at)}</span>}
+        </span>
+      </span>
+    </p>
   );
 }
