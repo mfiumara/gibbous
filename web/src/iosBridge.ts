@@ -36,7 +36,7 @@ export const iosNotify = (n: { title: string; body?: string; url?: string; tag?:
 export const shellVersion = () => { const s = shell(); return s?.version ? `${s.version}${s.build ? ` (${s.build})` : ''}` : undefined; };
 
 // ── push registration (Settings → Notifications reads this) ──────────────
-const PUSH_KEY = 'gibbous.iosPush';
+const PUSH_KEY = 'gibbous.iosPush', PUSH_ASKED = 'gibbous.iosPushAsked';
 let push: PushStatus = { state: typeof localStorage !== 'undefined' && localStorage.getItem(PUSH_KEY) === 'on' ? 'on' : 'off' };
 const pushSubs = new Set<() => void>();
 function setPush(s: PushStatus) { push = s; pushSubs.forEach(f => f()); }
@@ -97,4 +97,9 @@ export function installIosShell(deps: { go(path: string): void; refresh(): void;
 
   // Tokens can change (restore, reinstall): once turned on, re-register on every launch. No prompt once granted.
   if (localStorage.getItem(PUSH_KEY) === 'on') post('gibbousPush', {});
+  // First signed-in launch: ask right away (iOS shows its "Allow notifications?" prompt once; after that the answer
+  // sticks and Settings → Devices can retry). Waits a beat so the prompt lands on the app, not the splash.
+  else if (!localStorage.getItem(PUSH_ASKED) && !location.pathname.startsWith('/login')) {
+    setTimeout(() => { localStorage.setItem(PUSH_ASKED, '1'); requestPush(); }, 1500);
+  }
 }
