@@ -297,7 +297,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
 
   return <>
     <div ref={scrimRef} onClick={close} className={`fixed inset-0 z-40 bg-black/50 lg:hidden transition-opacity duration-300 ${sidebar ? 'opacity-100 backdrop-blur-[2px]' : 'opacity-0 pointer-events-none'}`} />
-    <nav ref={navRef} aria-label="Threads" data-drag-window="self" style={{ '--sb-w': `${width.w}px` } as React.CSSProperties}
+    <nav ref={navRef} aria-label="Threads" data-pane="nav" data-drag-window="self" style={{ '--sb-w': `${width.w}px` } as React.CSSProperties}
       className={`fixed lg:relative inset-y-0 left-0 z-50 w-[276px] lg:w-[var(--sb-w)] max-w-[85vw] flex-none flex flex-col pt-[env(safe-area-inset-top)] bg-crater lg:bg-transparent edge-r transition-transform duration-300 [transition-timing-function:var(--ease-out)] lg:translate-x-0 ${sidebar ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
       <div data-drag-window className="flex items-center gap-2.5 px-4 h-12 flex-none">
         <TonightMoon size={18} />

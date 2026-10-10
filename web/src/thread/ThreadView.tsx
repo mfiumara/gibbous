@@ -303,7 +303,7 @@ export function ThreadView({ id }: { id: string }) {
         <ThreadHeader thread={thread} tl={tl} panels={panels} panel={panel} setPanel={setPanel} onBranch={branch} onExport={exportThread} />
         {finding && <FindBar root={content} onClose={() => setFinding(false)} version={tl.items.length} />}
 
-        <div ref={scroller} onWheel={markGesture} onTouchMove={markGesture} onPointerDown={markGesture} onKeyDown={markGesture} onScroll={e => {
+        <div ref={scroller} data-pane="doc" tabIndex={-1} onWheel={markGesture} onTouchMove={markGesture} onPointerDown={markGesture} onKeyDown={markGesture} onScroll={e => {
             // Only scrolling *up* stops following; growth, scroll anchoring and smooth-scrolls down never do.
             const el = e.currentTarget, b = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
             // Layout changes (a growing composer, content settling) can move scrollTop too; only a real gesture unfollows.
@@ -311,7 +311,7 @@ export function ThreadView({ id }: { id: string }) {
             lastTop.current = el.scrollTop;
             const shown = b || stick.current; if (shown !== atBottom) setAtBottom(shown);
             if (!loading) { if (stick.current) SCROLL.delete(id); else SCROLL.set(id, el.scrollHeight - el.scrollTop); } }}
-          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden outline-none">
           <div ref={content} className="mx-auto max-w-3xl px-4 py-6 space-y-3">
             {tl.items.length > limit && <button onClick={() => { const el = scroller.current!; stick.current = false; keepFromBottom.current = el.scrollHeight - el.scrollTop; setLimit(l => l + PAGE); }} className="press mx-auto block label hover:text-moon rounded-md px-2 py-1">Show earlier ({tl.items.length - limit})</button>}
             {loading && !tl.items.length && <div className="space-y-5 pt-2" aria-label="Loading conversation">
@@ -372,7 +372,7 @@ export function ThreadView({ id }: { id: string }) {
       </div>
 
       {panel && (
-        <aside className="kb-fixed fixed inset-0 z-40 bg-basalt flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:py-0 lg:static lg:z-auto lg:w-[44%] lg:min-w-[380px] lg:max-w-[760px] lg:border-l lg:border-line animate-fade">
+        <aside data-pane="items" className="kb-fixed fixed inset-0 z-40 bg-basalt flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:py-0 lg:static lg:z-auto lg:w-[44%] lg:min-w-[380px] lg:max-w-[760px] lg:border-l lg:border-line animate-fade">
           <div className="flex items-center gap-1 px-2 h-12 border-b border-line flex-none">
             {/* Phones: the panel covers the chat, so "back" is always the first thing. */}
             <button onClick={() => setPanel(null)} aria-label="Back to the conversation" className="lg:hidden press inline-grid place-items-center size-8 flex-none rounded-lg text-tide"><ChevronLeft size={20} /></button>

@@ -4,8 +4,10 @@ import { useStore, toastError, archiveWithUndo } from './store';
 import { inIosApp, iosBadge } from './iosBridge';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
-import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, parse, sourceLabel, applyPrefs, type Route } from './ui';
+import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, sourceLabel, applyPrefs, type Route } from './ui';
 import { BackSwipe } from './BackSwipe';
+import { BINDINGS, helpRows } from './keys';
+import { vimKey, vimEscape } from './vim';
 import { Sidebar } from './Sidebar';
 import { ProjectFilter } from './ProjectFilter';
 import { Home, AddProjectDialog } from './Home';
@@ -27,14 +29,16 @@ import { HealthBanner } from './HealthBanner';
 
 // Thread-scoped shortcuts are broadcast; the open ThreadView acts on them.
 const shortcut = (name: 'stop' | 'approve' | 'panel' | 'find') => dispatchEvent(new CustomEvent(`gibbous:${name}`));
-const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
 
-const SHORTCUTS: [string, string][] = [
+// The ⌘ shortcuts and keys handled outside the vim layer; the vim keys come from the registry in keys.ts.
+const COMMANDS: [string, string][] = [
   ['⌘K', 'Search or jump anywhere'], ['⌘N', 'New thread'], ['⌘1–9', 'Open recent thread'], ['⌘F', 'Find in thread'],
   ['⌘.', 'Stop the running turn'], ['⌘⇧A', 'Allow the pending approval once'], ['⌘\\', 'Toggle side panel'],
-  ['Esc', 'Close / cancel edit / leave the message box'], ['Enter', 'Jump into the message box, or open the focused card'], ['j / k', 'Next / previous thread in the sidebar (k past the top goes home); on a kanban board, next / previous card'], ['h / l', 'Previous / next kanban column'],
-  ['↑ in empty composer', 'Edit your last message'], ['?', 'Show shortcuts'],
+  ['Esc', 'Close, cancel an edit or leave a box; press again to go back to the thread list'],
+  ['↑ in empty message box', 'Edit your last message'], ['Ctrl N / Ctrl P', 'In the search box, next / previous result'],
+  ['j / k on a kanban board', 'Next / previous card'], ['h / l on a kanban board', 'Previous / next column'],
 ];
+const HELP = [...helpRows(BINDINGS), { group: 'Commands', rows: COMMANDS }];
 
 export function App() {
   const { loaded, authed, palette } = useStore(useShallow(s => ({ loaded: s.loaded, authed: s.authed, palette: s.palette })));
@@ -43,9 +47,12 @@ export function App() {
   const [help, setHelp] = useState(false);
 
   useEffect(() => {
+    const help = () => setHelp(true);
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
+      // Ctrl keys that are vim bindings (Ctrl D, Ctrl W h, Ctrl N in a menu…) win over the Ctrl spelling of ⌘ shortcuts.
+      if (e.ctrlKey && !e.metaKey && vimKey(e, help)) return;
       if (mod && k === 'k') { e.preventDefault(); useStore.setState({ palette: !useStore.getState().palette }); return; }
       if (mod && k === 'n' && !e.shiftKey) { e.preventDefault(); go('/new'); return; }
       if (mod && /^[1-9]$/.test(e.key)) {
@@ -58,40 +65,10 @@ export function App() {
       if (mod && e.shiftKey && k === 'a') { e.preventDefault(); shortcut('approve'); return; }
       if (mod && e.key === '\\') { e.preventDefault(); shortcut('panel'); return; }
       if (mod && k === 'f' && location.hash.startsWith('#/t/')) { e.preventDefault(); shortcut('find'); return; }
-      if (e.key === '?' && !typing(e) && !mod) { e.preventDefault(); setHelp(true); return; }
       // Esc is always ours: unhandled, the Mac app's window takes it as "leave full screen". Native <dialog>s close themselves.
-      if (e.key === 'Escape' && !document.querySelector('dialog[open]')) { e.preventDefault(); return; }
-      if (mod || e.altKey || e.isComposing || typing(e)) return;
-      // Outside any text field: Enter jumps into the message box, j/k walk the sidebar's threads (vim-style).
-      if (e.key === 'Enter' && !(e.target as HTMLElement).closest('button, [role=menuitem], [role=option], summary')) {
-        const box = document.querySelector<HTMLTextAreaElement>('textarea[aria-label=Message], textarea[aria-label="First message"]');
-        if (box) { e.preventDefault(); box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
-        return;
-      }
-      if ((k === 'j' || k === 'k') && !e.shiftKey && !document.querySelector('[role=dialog], [role=menu], dialog[open]')) {
-        e.preventDefault();
-        // A screen with its own list (the kanban board) takes j/k: walk its [data-vim-item]s in DOM order.
-        const items = [...document.querySelectorAll<HTMLElement>('[data-vim-list] [data-vim-item]')];
-        if (items.length) {
-          const i = items.indexOf(document.activeElement as HTMLElement);
-          const next = items[i < 0 ? (k === 'j' ? 0 : items.length - 1) : Math.max(0, Math.min(items.length - 1, i + (k === 'j' ? 1 : -1)))];
-          next.focus(); next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-          return;
-        }
-        // Walk the sidebar in DOM order, skipping rows inside collapsed sections ([inert]). If the open thread is itself
-        // in a collapsed section, step from its position to the nearest visible row. Home sits above the first thread:
-        // j from Home opens the first thread, k past the first thread comes back Home.
-        const all = [...document.querySelectorAll<HTMLAnchorElement>('nav[aria-label=Threads] a[href^="#/t/"]')];
-        const open = (a: HTMLAnchorElement) => !a.closest('[inert]');
-        const here = all.findIndex(a => a.getAttribute('href') === location.hash);
-        const d = k === 'j' ? 1 : -1;
-        const home = parse(location.hash).name === 'home';
-        let next: HTMLAnchorElement | undefined;
-        if (here < 0) next = home && d < 0 ? undefined : (d > 0 ? all : [...all].reverse()).find(open);
-        else for (let i = here + d; i >= 0 && i < all.length && !next; i += d) if (open(all[i])) next = all[i];
-        if (!next && here >= 0 && d < 0) { go('/'); document.querySelector('nav[aria-label=Threads]')?.closest('.overflow-y-auto')?.scrollTo({ top: 0 }); return; }
-        if (next && next.getAttribute('href') !== location.hash) { location.hash = next.getAttribute('href')!; next.scrollIntoView({ block: 'nearest' }); }
-      }
+      if (e.key === 'Escape' && !document.querySelector('dialog[open]')) { vimEscape(e); e.preventDefault(); return; }
+      if (mod || e.altKey) return;
+      vimKey(e, help);
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
@@ -156,7 +133,7 @@ export function App() {
     <div className="h-full flex overflow-hidden">
       <SkyMoon />
       <Sidebar route={route} onAddProject={() => setAdding(true)} />
-      <main data-drag-window="self" className="flex-1 min-w-0 h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] kb-flush">
+      <main data-pane="items" data-drag-window="self" className="flex-1 min-w-0 h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] kb-flush">
         <HealthBanner />
         {/* .vt-screen is the only part that moves on navigation (screenTransition.ts); BackSwipe draws the screen
             a back gesture returns to underneath it. */}
@@ -169,8 +146,13 @@ export function App() {
       </main>
       <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
       {palette && <Palette start={palette === 'projects' ? 'projects' : undefined} onClose={() => useStore.setState({ palette: false })} />}
-      <Modal open={help} onClose={() => setHelp(false)} title="Keyboard shortcuts">
-        <ul className="divide-y divide-line">{SHORTCUTS.map(([k, d]) => <li key={k} className="flex items-center py-2 text-sm"><span className="flex-1 text-dust">{d}</span><Kbd>{k}</Kbd></li>)}</ul>
+      <Modal open={help} onClose={() => setHelp(false)} title="Keyboard shortcuts" wide>
+        <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
+          {HELP.map(g => <section key={g.group}>
+            <p className="label pb-1">{g.group}</p>
+            <ul className="divide-y divide-line">{g.rows.map(([k, d]) => <li key={k + d} className="flex items-center gap-3 py-2 text-sm"><span className="flex-1 text-dust">{d}</span><span className="flex-none"><Kbd>{k}</Kbd></span></li>)}</ul>
+          </section>)}
+        </div>
       </Modal>
       <Toasts />
       <TooltipHost />
@@ -273,8 +255,10 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
           <input autoFocus className="flex-1 bg-transparent py-3.5 text-[15px] placeholder:text-ash focus:outline-none" placeholder="Jump to a thread, kanban or page, or search everything…" value={q}
             onChange={e => { setQ(e.target.value); setSel(0); }}
             onKeyDown={e => {
-              if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(s + 1, options.length - 1)); }
-              if (e.key === 'ArrowUp') { e.preventDefault(); setSel(s => Math.max(s - 1, 0)); }
+              // Ctrl N/J and Ctrl P/K as well as the arrows; stopped here so the global Ctrl shortcuts don't also fire.
+              const ctrl = e.ctrlKey && !e.metaKey && !e.altKey ? e.key.toLowerCase() : '';
+              if (e.key === 'ArrowDown' || ctrl === 'n' || ctrl === 'j') { e.preventDefault(); e.stopPropagation(); setSel(s => Math.min(s + 1, options.length - 1)); }
+              if (e.key === 'ArrowUp' || ctrl === 'p' || ctrl === 'k') { e.preventDefault(); e.stopPropagation(); setSel(s => Math.max(s - 1, 0)); }
               if (e.key === 'Enter') pick(sel);
               if (e.key === 'Escape') { e.preventDefault(); onClose(); }
             }} />

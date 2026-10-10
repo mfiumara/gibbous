@@ -34,7 +34,7 @@ export function SettingsView({ tab: id }: { tab: string }) {
     <div className="h-full flex flex-col">
       <PageHeader title={listing ? 'Settings' : current.label} back={listing ? undefined : { href: '#/settings', label: 'Settings' }} />
       <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-        <nav aria-label="Settings sections" className={`${listing ? 'flex-1 overflow-y-auto' : 'hidden'} md:block md:flex-none md:w-56 md:border-r border-line md:py-4 md:px-2 md:overflow-y-auto`}>
+        <nav aria-label="Settings sections" data-pane="nav" className={`${listing ? 'flex-1 overflow-y-auto' : 'hidden'} md:block md:flex-none md:w-56 md:border-r border-line md:py-4 md:px-2 md:overflow-y-auto`}>
           <div className="p-3 md:p-0 space-y-4 md:space-y-0">
             {groups.map(g => <div key={g} className="md:mb-4">
               <p className="label px-3 pb-1.5">{g}</p>
@@ -49,7 +49,7 @@ export function SettingsView({ tab: id }: { tab: string }) {
             </div>)}
           </div>
         </nav>
-        <div className={`${listing ? 'hidden md:block' : ''} flex-1 min-h-0 overflow-y-auto`}>
+        <div data-pane="items" className={`${listing ? 'hidden md:block' : ''} flex-1 min-h-0 overflow-y-auto`}>
           <div key={current.id} className="mx-auto max-w-2xl p-4 sm:p-6 space-y-4 pb-16">
             <Suspense fallback={<Skeleton className="h-40 rounded-2xl" />}><current.C /></Suspense>
           </div>
