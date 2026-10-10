@@ -3,3 +3,5 @@ dist
 .run
 scratch
 *.log
+ios/Gibbous.xcodeproj
+ios/build
