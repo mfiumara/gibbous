@@ -141,3 +141,12 @@ test('history turn footers carry their end time', () => {
   const items = fromHistory([{ role: 'user', text: 'hi', timestamp: 100 } as never, { role: 'assistant', text: 'yo', timestamp: 160 } as never]);
   const f = items.at(-1)!; assert.equal(f.kind, 'turn'); if (f.kind === 'turn') assert.equal(f.at, 160_000);
 });
+
+test('a queued prompt that never ran (left behind by a Stop) is not shown as sent', () => {
+  const items = fromHistory([
+    { role: 'user', text: 'long job', timestamp: 100 } as never,
+    { role: 'user', text: 'AAA', timestamp: 101, display_metadata: { _queued_prompt: true } } as never,
+    { role: 'assistant', text: '', timestamp: 110 } as never,
+  ]);
+  assert.deepEqual(items.filter(i => i.kind === 'user').map(i => (i as { text: string }).text), ['long job']);
+});

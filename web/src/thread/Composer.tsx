@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Navigation, Square, Paperclip, CornerDownLeft, Layers, MessageCircleQuestion, Mic, Headphones, Clock } from 'lucide-react';
+import { ArrowUp, Navigation, Square, Paperclip, CornerDownLeft, Layers, MessageCircleQuestion, Mic, Headphones, Clock, X } from 'lucide-react';
 import { canDictate, dictate, handsFree, setHandsFree } from '../voice';
 import { Menu, MenuItem, MoonLoader, useDraft, NO_PREDICT } from '../ui';
 import { useAttachments, AttachmentChips, filesFrom, takeHandoff } from '../attachments';
@@ -10,9 +10,9 @@ import { SubagentChip } from './Subagents';
 import type { Agent } from './agents';
 import type { SessionLiveInfo, Usage } from '../hermes/contract';
 import { toastError, useStore } from '../store';
+import { useQueue, enqueue, discard, requeue, sendNow as sendQueuedNow, type Queued } from './queue';
 
 export interface EditTarget { rowId?: number; text: string }
-interface Queued { shown: string; message: string; images: boolean }
 
 interface Props {
   draftKey?: string;  // where the unsent text is kept (the thread id)
@@ -76,32 +76,16 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
   const [waiting, setWaiting] = useState(false);
   // Messages sent while a turn runs wait in Hermes' queue; show them until that turn ends and they go out. `message` is
   // what Hermes got (with @file refs); images live on the session, so those can't be re-sent by "send now".
-  const [queued, setQueued] = useState<Queued[]>([]);
-  const wasRunning = useRef(running), runningRef = useRef(running);
-  runningRef.current = running;
-  useEffect(() => { if (wasRunning.current && !running && queued.length) { queued.forEach(q => onSent?.(q.shown)); setQueued([]); } wasRunning.current = running; }, [running]);
-  useEffect(() => setQueued([]), [sid]);
+  // The mirror lives in queue.ts (per thread), and ThreadView releases one message per finished turn.
+  const qKey = draftKey ?? sid ?? '';
+  const queued = useQueue(qKey);
   useEffect(() => { if (!running && mode === 'steer') setMode('send'); }, [running]);
   // A first message started on Home (with attachments) arrives here and goes out as soon as the session is up.
   useEffect(() => { const h = draftKey ? takeHandoff(draftKey) : undefined; if (h) { setDraft(h.text); setFiles(h.files); setWaiting(true); } }, [draftKey]);
   useEffect(() => { if (waiting && connected && sid && !busy) { setWaiting(false); submitRef.current(); } }, [waiting, connected, sid, busy]);
 
-  // "Send now" on a queued message: Hermes has no way to pull one message out of its queue, so stop the turn (which
-  // clears the queue), send this one, then queue the others again in their original order.
-  async function sendNow(i: number) {
-    if (!sid || busy) return;
-    const pick = queued[i], rest = queued.filter((_, j) => j !== i);
-    setBusy(true); setQueued([]);
-    try {
-      await rpc.call('session.interrupt', { session_id: sid });
-      for (let k = 0; runningRef.current && k < 50; k++) await new Promise(r => setTimeout(r, 100));
-      const r = await rpc.call('prompt.submit', { session_id: sid, text: pick.message, queued: true });
-      if (r.status === 'queued') rest.unshift(pick); else onSent?.(pick.shown);
-      const again: Queued[] = [];
-      for (const q of rest) { await rpc.call('prompt.submit', { session_id: sid, text: q.message, queued: true }); again.push(q); }
-      setQueued(again);
-    } catch (e) { toastError(e); setQueued([pick, ...rest]); } finally { setBusy(false); }
-  }
+  // Send now / resend: queue.ts stops the running turn if it must (Hermes can't pull one message out of its queue).
+  const sendNow = (q: Queued) => (q.held ? (requeue(qKey, q.id), Promise.resolve()) : sendQueuedNow(qKey, q.id, running)).catch(toastError);
 
   async function submit() {
     const body = text.trim();
@@ -132,6 +116,14 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
           }
         }
         const message = [refs.join('\n'), body].filter(Boolean).join('\n\n') || (files.some(f => f.kind === 'image') ? 'What do you see in this image?' : '');
+        const images = files.some(f => f.kind === 'image'), shown = body || files.map(f => f.name).join(', ');
+        // Mid-turn text waits in Gibbous' line (queue.ts), handed to Hermes one at a time: Hermes would merge queued
+        // text into a single prompt. Images already sit on the session, so those go to Hermes now.
+        if (running && mode !== 'steer' && !edit && !images) {
+          enqueue(qKey, { shown, message, images: false });
+          setText(''); setFiles([]); completions.clear();
+          return;
+        }
         // Mid-turn messages queue for after the turn by default; Hermes' own default would redirect the running turn.
         // "Steer now" opts into that (Hermes' busy_input_mode decides between steer and redirect).
         const params = { session_id: sid, text: message, ...(edit?.rowId != null ? { truncate_before_row_id: edit.rowId, confirm_truncate: true } : { queued: mode !== 'steer' }) };
@@ -139,8 +131,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
         for (let i = 0; ; i++) {
           try {
             const r = await rpc.call('prompt.submit', params);
-            const shown = body || files.map(f => f.name).join(', ');
-            if (r.status === 'queued') setQueued(q => [...q, { shown, message, images: files.some(f => f.kind === 'image') }]);
+            if (r.status === 'queued') enqueue(qKey, { shown, message, images, inHermes: true });
             else if (!edit) onSent?.(shown);
             if (r.status === 'steered' || r.status === 'redirected') toast({ title: r.status === 'steered' ? 'Sent as guidance to the running turn' : 'Redirected the running turn' });
             if (mode === 'steer') setMode('send');
@@ -193,22 +184,34 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
   return (
     <div className="relative">
       {completions.list()}
-      {queued.length > 0 && (
-        <div role="status" className="mb-2 mx-1 rounded-xl border border-tide/50 bg-tide/10 px-3 py-2 animate-rise">
-          <p className="flex items-center gap-2 text-[12.5px] font-medium text-tide"><Clock size={13} className="animate-pulse" />
-            {queued.length === 1 ? 'Queued · sends when this turn finishes' : `${queued.length} messages queued · each goes out as its own turn, in order`}</p>
-          {/* One card per prompt, numbered, so several queued messages never read as one long message. */}
-          <ol className="mt-1.5 space-y-1">{queued.map((q, i) => (
-            <li key={i} className="flex items-start gap-2 rounded-lg bg-basalt/50 border border-tide/20 pl-2 pr-1 py-1 animate-rise">
-              {queued.length > 1 && <span className="mt-[3px] flex-none size-4 grid place-items-center rounded-full bg-tide/20 font-mono text-[10px] text-tide tabular-nums">{i + 1}</span>}
-              <p className="flex-1 min-w-0 text-[13px] text-moon line-clamp-2 whitespace-pre-wrap select-text">{q.shown}</p>
-              {!q.images && <button type="button" aria-label="Send now" disabled={busy} onClick={() => sendNow(i)}
-                data-tip="Send now: stops the current turn and sends this message right away"
-                className="press flex-none size-6 grid place-items-center rounded-full text-tide hover:bg-tide/20 disabled:opacity-40"><ArrowUp size={13} strokeWidth={2.5} /></button>}
-            </li>
-          ))}</ol>
-        </div>
-      )}
+      {queued.length > 0 && (() => {
+        const waiting = queued.filter(q => !q.held), held = queued.filter(q => q.held);
+        // One card per prompt (numbered when several wait), so queued messages never read as one long message.
+        const card = (q: Queued, n?: number) => (
+          <li key={q.id} className={`flex items-start gap-2 rounded-lg bg-basalt/50 border pl-2 pr-1 py-1 animate-rise ${q.held ? 'border-line' : 'border-tide/20'}`}>
+            {n != null && <span className="mt-[3px] flex-none size-4 grid place-items-center rounded-full bg-tide/20 font-mono text-[10px] text-tide tabular-nums">{n}</span>}
+            <p className={`flex-1 min-w-0 text-[13px] line-clamp-2 whitespace-pre-wrap select-text ${q.held ? 'text-dust' : 'text-moon'}`}>{q.shown}</p>
+            {!q.images && <button type="button" aria-label="Send now" disabled={busy || !sid} onClick={() => sendNow(q)}
+              data-tip={q.held ? (running ? 'Queue this again: it goes out after the current turn' : 'Send this message now') : 'Send now: stops the current turn and sends this message right away'}
+              className="press flex-none size-6 grid place-items-center rounded-full text-tide hover:bg-tide/20 disabled:opacity-40"><ArrowUp size={13} strokeWidth={2.5} /></button>}
+            {!q.inHermes && <button type="button" aria-label="Discard" onClick={() => discard(qKey, q.id)} data-tip="Discard this message"
+              className="press flex-none size-6 grid place-items-center rounded-full text-ash hover:text-moon hover:bg-ridge"><X size={13} /></button>}
+          </li>
+        );
+        return (
+          <div role="status" className="mb-2 mx-1 rounded-xl border border-tide/50 bg-tide/10 px-3 py-2 animate-rise">
+            {waiting.length > 0 && <>
+              <p className="flex items-center gap-2 text-[12.5px] font-medium text-tide"><Clock size={13} className="animate-pulse" />
+                {waiting.length === 1 ? 'Queued · sends when this turn finishes' : `${waiting.length} messages queued · each goes out as its own turn, in order`}</p>
+              <ol className="mt-1.5 space-y-1">{waiting.map((q, i) => card(q, waiting.length > 1 ? i + 1 : undefined))}</ol>
+            </>}
+            {held.length > 0 && <>
+              <p className={`text-[12.5px] font-medium text-dust ${waiting.length ? 'mt-2' : ''}`}>Not sent · the turn was stopped before {held.length === 1 ? 'this message' : 'these messages'} went out</p>
+              <ol className="mt-1.5 space-y-1">{held.map(q => card(q))}</ol>
+            </>}
+          </div>
+        );
+      })()}
       {!!openTodos.length && running && (
         <div className="mb-2 mx-1 rounded-xl border border-line bg-crater/70 px-3 py-2 animate-rise">
           <p className="label mb-1">Plan · {todoDone}/{todos!.length}</p>

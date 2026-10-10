@@ -30,6 +30,9 @@ export function fromHistory(messages: TranscriptMessage[], running = false): Ite
   const footer = () => { if (start && end && end > start) items.push({ kind: 'turn', id: uid('tn'), ms: (end - start) * 1000, at: end * 1000 }); };
   for (const m of messages) {
     if (m.display_kind === 'hidden') continue;
+    // A queued prompt Hermes stored at accept time but never ran (a Stop drops the queue and leaves the row behind);
+    // once it runs, its row loses the flag. Waiting ones show in the composer's queue box instead.
+    if (m.role === 'user' && (m.display_metadata as { _queued_prompt?: boolean } | undefined)?._queued_prompt) continue;
     if (m.role === 'user') {
       footer(); start = m.timestamp ?? undefined; end = undefined;
       const meta = m.display_metadata as { display_text?: string } | undefined;

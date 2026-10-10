@@ -4,6 +4,7 @@ import { api } from '../api';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
 import { Moon, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
+import { bindQueue, syncWithHermes, onQueuedSent } from './queue';
 import { reduce, checkpointFor, endedLabel, type Timeline, type Item } from './timeline';
 import { getCached, putCached, onCached, fromResume, reconcile, revive } from './cache';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
@@ -135,6 +136,7 @@ export function ThreadView({ id }: { id: string }) {
           anchor.current = row ? { id: row.dataset.k!, y: row.offsetTop - el!.scrollTop } : null;
         }
         initial.current = new Set(items.map(i => i.id));
+        bindQueue(id, rpc, r.session_id); syncWithHermes(id, r.queued?.user);
         setTl({ ...next, items });
         setSid(r.session_id);
         if (!prev.length) { stick.current = !SCROLL.has(id); restore.current = SCROLL.has(id); }
@@ -151,6 +153,11 @@ export function ThreadView({ id }: { id: string }) {
     return () => { cancelled = true; unsub(); offReady(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, thread?.sessionId]);
+
+  // A queued message that just started its turn (queue.ts hands them to Hermes one at a time): show it as sent.
+  useEffect(() => onQueuedSent((thread, m) => {
+    if (thread === id) setTl(t => ({ ...t, items: [...t.items, { kind: 'user', id: `sent-${m.id}`, text: m.shown, at: Date.now() }] }));
+  }), [id]);
 
   // A prefetch (sidebar hover/press) that lands while we still show skeletons: paint it now.
   useEffect(() => onCached(k => {
