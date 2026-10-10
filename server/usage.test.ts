@@ -1,0 +1,105 @@
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { computeUsage, loadRows, modelLabel, modelId, parseDays, rangeStart } from './usage.ts';
+
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gib-usage-'));
+const NOW = new Date(2030, 4, 15, 15, 0, 0).getTime(); // a fixed local afternoon
+const at = (daysAgo: number, hour = 10) => { const d = new Date(NOW); d.setDate(d.getDate() - daysAgo); d.setHours(hour, 0, 0, 0); return d.getTime() / 1000; };
+
+function makeDb(name: string, rows: Record<string, unknown>[]) {
+  const file = path.join(dir, `${name}.db`);
+  const w = new DatabaseSync(file);
+  w.exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, model TEXT, model_config TEXT, parent_session_id TEXT,
+    started_at REAL NOT NULL, message_count INTEGER DEFAULT 0, tool_call_count INTEGER DEFAULT 0, api_call_count INTEGER DEFAULT 0,
+    input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, cache_write_tokens INTEGER DEFAULT 0,
+    reasoning_tokens INTEGER DEFAULT 0, billing_provider TEXT, estimated_cost_usd REAL, actual_cost_usd REAL, cost_status TEXT)`);
+  const ins = w.prepare(`INSERT INTO sessions (id, source, model, model_config, parent_session_id, started_at, message_count, tool_call_count, api_call_count,
+    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, billing_provider, estimated_cost_usd, cost_status)
+    VALUES (:id, :source, :model, :cfg, :parent, :started, :msgs, :tools, :api, :inp, :out, :cr, :cw, :rs, :prov, :est, :status)`);
+  for (const r of rows) ins.run({ cfg: null, parent: null, msgs: 4, tools: 1, api: 2, inp: 0, out: 0, cr: 0, cw: 0, rs: 0, prov: null, est: null, status: null, ...r } as any);
+  w.close();
+  return new DatabaseSync(file, { readOnly: true });
+}
+
+const main = makeDb('main', [
+  // A Gibbous thread, its compaction continuation, and a subagent it delegated.
+  { id: 's1', source: 'desktop', model: 'claude-opus-5-5', started: at(0), inp: 1000, out: 200, cr: 3000, cw: 500, rs: 50, prov: 'anthropic', est: 1.5, status: 'estimated' },
+  { id: 's1b', source: 'desktop', model: 'claude-opus-5-5', parent: 's1', started: at(0, 12), inp: 400, out: 100, prov: 'anthropic', est: 0.5, status: 'estimated' },
+  { id: 'sub', source: 'subagent', model: 'claude-opus-5-5', parent: 's1', cfg: '{"_delegate_from": "s1"}', started: at(1), inp: 300, out: 100, prov: 'anthropic', est: 0.25, status: 'estimated' },
+  // A subscription session: no API-equivalent price.
+  { id: 'c1', source: 'cron', model: 'openai/gpt-5.6-sol', started: at(2), inp: 5000, out: 1000, prov: 'openai-codex', est: 0, status: 'included' },
+  { id: 'd1', source: 'discord', model: 'gpt-5.6-sol', started: at(3), inp: 100, out: 10, prov: 'openai-codex', status: 'included' },
+  // Out of a 7-day range, and an empty probe session that never counts.
+  { id: 'old', source: 'cli', model: 'kimi-k3', started: at(20), inp: 7, out: 3 },
+  { id: 'nil', source: 'acp', model: 'gpt-5.6-sol', started: at(0), msgs: 0 },
+]);
+const prof = makeDb('prof', [{ id: 'k1', source: 'kanban', model: 'gpt-5.6-sol', started: at(0), inp: 50, out: 50, prov: 'openai-codex' }]);
+const dbs = loadRows([{ profile: 'default', db: main }, { profile: 'review', db: prof }]);
+after(() => { main.close(); prof.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+const threads = [{ id: 'T1', title: 'Fix login', sessionId: 's1' }];
+
+test('totals, cost and cache hit rate over the range', () => {
+  const r = computeUsage(dbs, threads, 7, NOW);
+  assert.equal(r.totals.sessions, 6);
+  assert.equal(r.totals.input, 1000 + 400 + 300 + 5000 + 100 + 50);
+  assert.equal(r.totals.tokens, r.totals.input + r.totals.output);
+  assert.equal(r.totals.reasoning, 50);
+  assert.equal(r.totals.costUsd, 2.25);
+  assert.equal(r.totals.pricedSessions, 3);
+  assert.equal(r.totals.cacheHitRate, 3000 / (r.totals.input + 3000 + 500));
+});
+
+test('models merge vendor prefixes, keep providers, and omit cost when unpriced', () => {
+  const r = computeUsage(dbs, threads, 7, NOW);
+  assert.deepEqual(r.models.map(m => m.id), ['gpt-5.6-sol', 'claude-opus-5-5']);
+  const gpt = r.models[0];
+  assert.equal(gpt.label, 'GPT-5.6 Sol');
+  assert.deepEqual(gpt.providers, ['openai-codex']);
+  assert.equal(gpt.costUsd, null);
+  assert.equal(r.models[1].label, 'Opus 5.5');
+  assert.equal(r.models[1].costUsd, 2.25);
+});
+
+test('days are local, zero-filled and stacked by model', () => {
+  const r = computeUsage(dbs, threads, 7, NOW);
+  assert.equal(r.daily.length, 7);
+  const today = r.daily.at(-1)!;
+  assert.equal(today.byModel['claude-opus-5-5'], 1700);
+  assert.equal(today.byModel['gpt-5.6-sol'], 100);
+  assert.equal(r.daily[0].tokens, 0);
+  assert.equal(r.daily.reduce((n, d) => n + d.tokens, 0), r.totals.tokens);
+});
+
+test('sources, profiles and threads (continuations and subagents roll up into the thread)', () => {
+  const r = computeUsage(dbs, threads, 7, NOW);
+  const src = Object.fromEntries(r.sources.map(s => [s.key, s.sessions]));
+  assert.deepEqual(src, { threads: 2, subagents: 1, cron: 1, messaging: 1, kanban: 1 });
+  assert.deepEqual(r.profiles.map(p => [p.key, p.sessions]), [['default', 5], ['review', 1]]);
+  assert.equal(r.threads.length, 1);
+  assert.equal(r.threads[0].threadId, 'T1');
+  assert.equal(r.threads[0].sessions, 3);
+  assert.equal(r.threads[0].tokens, 1200 + 500 + 400);
+});
+
+test('all time starts at the first session', () => {
+  const r = computeUsage(dbs, threads, null, NOW);
+  assert.equal(r.since, null);
+  assert.equal(r.daily.length, 21);
+  assert.equal(r.totals.sessions, 7);
+});
+
+test('labels and params', () => {
+  assert.equal(modelLabel('claude-sonnet-4-6'), 'Sonnet 4.6');
+  assert.equal(modelLabel('claude-opus-4-20250514'), 'Opus 4');
+  assert.equal(modelLabel('gpt-5.5'), 'GPT-5.5');
+  assert.equal(modelLabel('kimi-k3'), 'Kimi K3');
+  assert.equal(modelLabel(modelId('')), 'Unknown model');
+  assert.equal(parseDays('all'), null);
+  assert.equal(parseDays('30'), 30);
+  assert.equal(parseDays('x'), 7);
+  assert.equal(new Date(rangeStart(1, NOW)! * 1000).getHours(), 0);
+});

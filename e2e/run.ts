@@ -62,7 +62,7 @@ try {
   await visit(page, '#/automations', 'New job');
   await visit(page, '#/search?q=hello', 'hello');
   for (const [tab, text] of [['general', 'General'], ['appearance', 'Theme'], ['notifications', 'Notifications'], ['phone', 'Phone'],
-    ['maintenance', 'Maintenance'], ['usage', 'Spend'], ['profiles', 'Profiles'], ['skills', 'Skills'], ['mcp', 'MCP'],
+    ['maintenance', 'Maintenance'], ['usage', 'Across every profile'], ['profiles', 'Profiles'], ['skills', 'Skills'], ['mcp', 'MCP'],
     ['jobs', 'Scheduled'], ['platforms', 'Messaging'], ['memory', 'Memory'], ['vault', 'Vault'], ['config', 'Config'], ['hosts', 'Hosts'], ['update', 'Compatibility']])
     await visit(page, `#/settings/${tab}`, text);
 
