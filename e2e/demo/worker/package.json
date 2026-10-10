@@ -1,0 +1,10 @@
+{
+  "name": "gibbous-demo-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && npx -y wrangler@4 dev",
+    "deploy": "node build.mjs && npx -y wrangler@4 deploy"
+  }
+}

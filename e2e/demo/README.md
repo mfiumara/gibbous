@@ -65,3 +65,35 @@ down together:
 
 The CDP screencast frames are then placed at their real timestamps and resampled to a constant 60 fps H.264 file at
 normal speed. Desktop clips are 1920×1200 (`REC_DPR=1`). The phone clip is 804×1748 (402×874 @2x).
+
+## Hosted demo (demo.gibbousapp.com)
+
+A free Cloudflare Worker that serves the real web app and imitates the Gibbous server with recordings of this demo, so
+App Review and website visitors can use Gibbous without a server. Sign-in link (public on purpose; it only opens the
+recorded demo): `https://demo.gibbousapp.com/login?token=demo-a95f47b826bdcae17773`.
+
+```sh
+pnpm build                                        # if web/dist is stale
+node e2e/demo/record.ts                           # ~3 min → e2e/demo/worker/fixtures.json
+cd e2e/demo/worker && npm run deploy              # copies the recorded web build to public/, wrangler deploy
+node e2e/demo/check-demo.ts                       # walk the live demo like a visitor (or pass http://localhost:8787 for `npm run dev`)
+```
+
+- **`record.ts`** boots the isolated demo above, drives Chrome through every screen and records each `/api` GET, the
+  JSON-RPC answers on `/ws` (plus a full `session.resume` of every session and every Claude Code / Codex import), and
+  the event stream of one scripted turn (`DEMO_PROMPT` in `scripts.ts`: reasoning, reads, two patches with inline
+  diffs, tests, then a `git push` approval and the reply) and of the seeded TypeScript approval. Paths become
+  `/Users/demo`; it refuses to write fixtures that contain the access token or anything that looks personal.
+- **`worker/worker.js`**: `/login?token=` and `POST /api/login` set the same cookie as the real server (wrong token →
+  401, unauthenticated `/api` → 401, so the iPhone app's sign-in and signed-out flows behave as usual). Each visitor
+  gets their own copy of the demo in a SQLite-backed Durable Object (WebSocket hibernation; resets a day after it
+  started). Any prompt, from Home or a thread, plays the recorded turn with its original timing (gaps capped at
+  1.5 s) and waits at the approval until you answer it (Deny ends the turn like Hermes would); a reload mid-turn or
+  after it shows the same rows. Threads you start, rename, archive or delete, queued messages and settings stick.
+  Timestamps are shifted so the demo always reads as recorded just now. `/api/state` reports the deployed build, so
+  the stale-build banner never fires.
+- **Refused, politely**: the terminal (`/pty` prints that it isn't available and closes with 4001 so it doesn't
+  retry), git actions, commits/PRs, file writes, adding projects or hosts, shares, attachments, slash commands and
+  other Hermes mutations answer "Not available in the demo". Push routes answer ok and send nothing.
+- `build.mjs` only deploys a web build that matches the recording (the recorder's snapshot or `web/dist`), since new
+  web code may call routes the recording doesn't have: re-record after UI changes, then deploy.

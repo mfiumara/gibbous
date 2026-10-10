@@ -1,0 +1,21 @@
+// Gibbous demo (https://demo.gibbousapp.com): the real web app + a recorded imitation of the Gibbous server.
+// Deploy: npm run deploy (copies web/dist into ./public first). Free plan only: static assets, one Worker, and a
+// SQLite-backed Durable Object per visitor (WebSocket hibernation).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gibbous-demo",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "demo.gibbousapp.com", "custom_domain": true }],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/ws", "/pty", "/login", "/s/*"]
+  },
+  "durable_objects": { "bindings": [{ "name": "DEMO", "class_name": "Demo" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Demo"] }],
+  // The demo's sign-in link is public on purpose (App Review notes, the website): it only opens this recorded demo.
+  "vars": { "DEMO_TOKEN": "demo-a95f47b826bdcae17773" }
+}
