@@ -260,6 +260,10 @@
 /* Terminal panel: transparent viewport (the rounded well behind it shows), thin overlay scrollbar. */
 .xterm .xterm-viewport { background-color: transparent !important; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--color-ash) 30%, transparent) transparent; }
 .safe-b { padding-bottom: env(safe-area-inset-bottom); }
+/* Phones (PWA and the iPhone app, both edge-to-edge): a bottom bar's last control ends ~5px above the home indicator
+   (its bar's top is ~13px up), not a whole 34px inset above the screen edge: the inset's lower strip is dead space a
+   touch can't use anyway. With the keyboard up the inset is 0, and .5rem keeps the bar off the keys. */
+@media (pointer: coarse) { .safe-b-bar { padding-bottom: max(.5rem, calc(env(safe-area-inset-bottom) - 1rem)); } }
 .moon-loader { display: inline-block; flex: none; width: var(--s); height: var(--s); background: url(/moon/phases.webp) 0 0 / calc(var(--s) * 36) var(--s) no-repeat;
   animation: lunation 3s steps(36) infinite, fade .3s var(--ease-out) both; }
 @keyframes lunation { to { background-position-x: calc(var(--s) * -36); } }

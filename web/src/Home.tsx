@@ -5,6 +5,7 @@ import { useStore, toastError, NONE } from './store';
 import { useAttachments, AttachmentChips, filesFrom, handOff } from './attachments';
 import { useCompletions } from './thread/completions';
 import { Button, IconButton, Modal, Moon, Switch, inputCls, go, ago, sourceLabel, useDraft, NO_PREDICT } from './ui';
+import { haptic } from './iosBridge';
 
 // The old single shared Home draft held already-sent text (its clear was dropped on unmount).
 localStorage.removeItem('gibbous.draft.home');
@@ -68,6 +69,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
   const recent = threads.filter(t => t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 4);
   const start = async () => {
     if ((!text.trim() && !att.files.length) || busy) return;
+    haptic('send');
     setBusy(true);
     const sent = text;
     try {

@@ -9,6 +9,7 @@ import { ModelPicker, ApprovalChip, ContextMeter } from './ModelPicker';
 import type { SessionLiveInfo, Usage } from '../hermes/contract';
 import { toastError, useStore, NONE } from '../store';
 import { api, type Thread } from '../api';
+import { haptic } from '../iosBridge';
 
 type Queued = NonNullable<Thread['queue']>[number];
 
@@ -110,6 +111,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
     const body = text.trim();
     if ((!body && !files.length) || busy) return;
     if (!sid || !useStore.getState().connected) { setWaiting(true); return; }
+    haptic('send');
     setBusy(true);
     try {
       if ((mode === 'btw' || mode === 'background') && !edit) {

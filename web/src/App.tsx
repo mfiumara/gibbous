@@ -1,6 +1,7 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { X, Search, CornerDownLeft, Copy } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo } from './store';
+import { inIosApp, iosBadge } from './iosBridge';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
 import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, parse, sourceLabel, applyPrefs, type Route } from './ui';
@@ -127,7 +128,8 @@ export function App() {
   const waiting = useStore(s => s.requests.length);
   useEffect(() => {
     document.title = waiting ? `(${waiting}) Gibbous` : 'Gibbous';
-    (window as any).webkit?.messageHandlers?.gibbousBadge?.postMessage(waiting); // macOS app: Dock + menu-bar count
+    if (inIosApp()) iosBadge(waiting); // iPhone app: icon badge
+    else (window as any).webkit?.messageHandlers?.gibbousBadge?.postMessage(waiting); // macOS app: Dock + menu-bar count
   }, [waiting]);
 
   // A fresh Gibbous (no threads, no projects) opens on the import picker until it's used or skipped.

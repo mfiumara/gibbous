@@ -4,6 +4,7 @@ import { EDGE, axis, progress, settle } from './drawer';
 import { DIM, parentOf, underlay } from './screens';
 import { quiet } from './screenTransition';
 import { go, parse, routeNow, type Route } from './ui';
+import { haptic } from './iosBridge';
 
 // Sideways scrollers (code blocks, tables, the subagent pager, chip rows) keep their own horizontal swipes.
 export function inScroller(el: EventTarget | null) {
@@ -85,6 +86,7 @@ export function BackSwipe({ screen, render }: { screen: RefObject<HTMLDivElement
           // Hide the underlay first so the real parent screen never paints on top of its copy; then swap the route
           // synchronously (quiet = no view transition) and drop the offset in the same frame.
           if (uRef.current) uRef.current.style.visibility = 'hidden';
+          haptic('snap');
           quiet(); go(was.parent);
           // The copy was already on screen: the real one's mount animations (rows rising in) would replay. Skip them.
           for (const a of document.getAnimations()) { const t = (a.effect as KeyframeEffect | null)?.target; if (t && s?.contains(t) && Number.isFinite(a.effect?.getComputedTiming().endTime as number)) a.finish(); } // looping ones (the running moon) can't finish

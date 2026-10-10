@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { api, ApiError, type PrBadge, type Project, type Thread, type Settings, type OpenRequest, type Host } from './api';
 import { rpc } from './rpc';
 import { showsTarget } from './notify';
+import { inIosApp, iosNotify } from './iosBridge';
 
 interface Toast { id: number; title: string; body?: string; url?: string; tone?: 'error' | 'info'; action?: { label: string; run(): void } }
 
@@ -116,6 +117,13 @@ rpc.onGibbous = (kind, data) => {
     case 'hermes': useStore.setState({ hermesReady: data.ready }); break;
     case 'health': useStore.setState({ hermes: { ...s.hermes, ready: s.hermesReady, ...data } }); break;
     case 'notify': {
+      // Inside the iPhone app: a local notification only while it's in the background (the app checks too; push
+      // covers it once iOS has suspended the page). In the foreground: the in-app toast, like a browser.
+      if (inIosApp()) {
+        if (document.hidden) { iosNotify({ title: data.title, body: data.body, url: data.url, tag: data.tag }); break; }
+        if (!showsTarget(data.url, location.hash) || data.test) s.toast({ title: data.title, body: data.body, url: data.url });
+        break;
+      }
       // Inside the macOS app: native notification whenever the window isn't focused.
       const bridge = (window as any).webkit?.messageHandlers?.gibbousNotify;
       if (bridge && (!document.hasFocus() || data.test)) bridge.postMessage(data); // the test always shows a real banner

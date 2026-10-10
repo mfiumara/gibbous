@@ -8,6 +8,7 @@ import { prefetch } from './thread/prefetch';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, routeNow, type Route } from './ui';
 import { parentOf } from './screens';
 import { quiet } from './screenTransition';
+import { haptic, inIosApp } from './iosBridge';
 
 // Navigating from the open drawer: the drawer slides away itself, so the screen change gets no transition on top.
 const close = () => { if (useStore.getState().sidebar) quiet(); useStore.setState({ sidebar: false }); };
@@ -64,7 +65,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
   const toggleArchive = () => { if (archived) api.patch(`/api/threads/${t.id}`, { status: 'idle' }).catch(toastError); else archiveWithUndo(t); };
   const rename = (title: string) => { setRenaming(false); if (title.trim() && title.trim() !== t.title) api.patch(`/api/threads/${t.id}`, { title: title.trim() }).catch(toastError); };
   // Phones have no hover or right-click: a long press opens the same menu.
-  const touchStart = () => { prefetch(t.id); longPressed.current = false; press.current = setTimeout(() => { longPressed.current = true; setMenu(true); navigator.vibrate?.(8); }, 500); };
+  const touchStart = () => { prefetch(t.id); longPressed.current = false; press.current = setTimeout(() => { longPressed.current = true; setMenu(true); if (inIosApp()) haptic('longPress'); else navigator.vibrate?.(8); }, 500); };
   const touchEnd = () => clearTimeout(press.current);
   // Warm the timeline cache when the pointer rests on a row (not on a fly-by), so the click paints instantly.
   const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -220,6 +221,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
       // Hand back to the CSS transition from where the finger left it.
       const nav = navRef.current, scrim = scrimRef.current;
       if (nav && scrim) { nav.style.transition = scrim.style.transition = ''; void nav.offsetWidth; nav.style.translate = open ? '0 0' : '-100% 0'; scrim.style.opacity = open ? '1' : '0'; }
+      if (open && !was.open) haptic('snap');
       useStore.setState({ sidebar: open });
       setTimeout(() => paint(null), 320);
     };
@@ -407,7 +409,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
       </div>
       </SelectCtx.Provider>
 
-      <div className="px-2 py-2 border-t border-line flex-none safe-b">
+      <div className="px-2 py-2 border-t border-line flex-none safe-b safe-b-bar">
         {/* Phones: the places below fold away so the threads get the height; the fold is remembered. Desktop: always open. */}
         <button onClick={() => setMore(m => { localStorage.setItem('gibbous.sidebarMore', m ? '0' : '1'); return !m; })} aria-expanded={more}
           className="lg:hidden press flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg text-[13.5px] text-dust hover:text-moon hover:bg-ridge/55">

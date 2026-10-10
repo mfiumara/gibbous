@@ -27,6 +27,7 @@ const ProcessesPanel = lazy(() => import('../panels/ProcessesPanel').then(m => (
 const ScreenPanel = lazy(() => import('../panels/ScreenPanel').then(m => ({ default: m.ScreenPanel })));
 import { filesFrom } from '../attachments';
 import { findLocalUrls } from '../panels/preview-urls';
+import { haptic } from '../iosBridge';
 
 const PANELS: PanelDef[] = [
   { id: 'changes', label: 'Changes', icon: FolderGit2 },
@@ -113,6 +114,8 @@ export function ThreadView({ id }: { id: string }) {
         const onEv = (ev: HermesEvent) => {
           // Hands-free: read the finished reply aloud, then listen for the next request.
           if (ev.type === 'message.complete' && handsFree.on && typeof ev.payload?.text === 'string' && ev.payload.text) speak(ev.payload.text, () => dispatchEvent(new CustomEvent('gibbous:listen')));
+          // The turn you're watching ended: a soft tick (iPhone app only; not while the app is in the background).
+          if (ev.type === 'message.complete' && !document.hidden) haptic('done');
           if (ev.type === 'preview.open' && ev.payload?.url) { setPreviewUrl(ev.payload.url); setPanel('preview'); }
           setTl(t => reduce(t, ev));
           if ((ev.type === 'message.complete' || ev.type === 'message.start') && pendingSent.current.length) flushSent();
@@ -349,7 +352,7 @@ export function ThreadView({ id }: { id: string }) {
         </div>
 
 
-        <div className="kb-bar flex-none px-3 pt-1 pb-3 pointer-coarse:pb-[max(.5rem,calc(env(safe-area-inset-bottom)-1.25rem))] pointer-coarse:-mb-[env(safe-area-inset-bottom)]">
+        <div className="kb-bar flex-none px-3 pt-1 pb-3 safe-b-bar pointer-coarse:-mb-[env(safe-area-inset-bottom)]">
           <div className="relative mx-auto max-w-3xl">
             {/* Sits on top of the composer, so it never covers what you are typing however tall the box gets. */}
             {!atBottom && <button onClick={() => { const el = scroller.current!; stick.current = true; setAtBottom(true); el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }}
