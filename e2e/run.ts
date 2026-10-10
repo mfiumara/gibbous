@@ -1,6 +1,6 @@
 // End-to-end UI check: an isolated Gibbous (temp state, port 7979) on top of the already running Hermes, driven by
-// system Chrome at desktop and phone sizes. Walks every screen, adds a project and a backlog task, fails on any
-// console error. Never sends a prompt, so it costs no tokens.  Run: pnpm build && pnpm e2e
+// system Chrome at desktop and phone sizes. Walks every screen, adds a project, opens the Hermes kanban views (read
+// only), fails on any console error. Never sends a prompt or changes a kanban board, so it costs nothing.  Run: pnpm build && pnpm e2e
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -59,31 +59,32 @@ try {
   await visit(page, '#/rooms', 'Rooms');
   await visit(page, '#/automations', 'New job');
   await visit(page, '#/search?q=hello', 'hello');
-  for (const [tab, text] of [['general', 'General'], ['appearance', 'Theme'], ['notifications', 'Notifications'], ['phone', 'Phone'], ['coordinator', 'Coordinator'],
-    ['playbooks', 'Playbooks'], ['maintenance', 'Maintenance'], ['usage', 'Spend'], ['profiles', 'Profiles'], ['skills', 'Skills'], ['mcp', 'MCP'],
+  for (const [tab, text] of [['general', 'General'], ['appearance', 'Theme'], ['notifications', 'Notifications'], ['phone', 'Phone'],
+    ['maintenance', 'Maintenance'], ['usage', 'Spend'], ['profiles', 'Profiles'], ['skills', 'Skills'], ['mcp', 'MCP'],
     ['jobs', 'Scheduled'], ['platforms', 'Messaging'], ['memory', 'Memory'], ['vault', 'Vault'], ['config', 'Config'], ['hosts', 'Hosts'], ['update', 'Compatibility']])
     await visit(page, `#/settings/${tab}`, text);
 
-  // Board: add a backlog task through the modal.
-  await visit(page, `#/board/${project.id}`, 'Add a task');
-  await clickText(page, 'button', 'Add a task');
-  await page.waitForSelector('dialog[open] input');
-  await page.type('dialog[open] input', 'E2E task');
-  await page.type('dialog[open] textarea', 'Do nothing; this is a UI test.');
-  await clickText(page, 'button', 'Add to backlog');
-  await page.waitForFunction(() => document.querySelector('section[aria-label="Backlog"]')?.textContent?.includes('E2E task'), { timeout: 5000 }).catch(() => failures.push('task card never appeared in Backlog'));
-  const tasks = (await (await fetch(`${BASE}/api/state`, { headers: { Cookie: `gibbous_auth=${token}` } })).json()).tasks;
-  assert.equal(tasks.length, 1);
-  assert.equal(tasks[0].status, 'backlog');
+  // Kanban: the index lists Hermes' boards; a project without a board offers to link one (nothing is linked here).
+  await visit(page, '#/kanban', 'Kanban');
+  await visit(page, `#/board/${project.id}`, 'No Hermes board for e2e');
+  const kb = await (await fetch(`${BASE}/api/kanban/boards`, { headers: { Cookie: `gibbous_auth=${token}` } })).json();
+  assert.ok(Array.isArray(kb.boards) && typeof kb.matches === 'object', `kanban boards: ${JSON.stringify(kb).slice(0, 200)}`);
+  assert.equal(kb.matches[project.id], undefined);
+  const bad = await fetch(`${BASE}/api/kanban/boards/..%2Fx/tasks`, { headers: { Cookie: `gibbous_auth=${token}` } });
+  assert.equal(bad.status, 400);
+  const st = await (await fetch(`${BASE}/api/state`, { headers: { Cookie: `gibbous_auth=${token}` } })).json();
+  for (const k of ['tasks', 'plans', 'playbooks', 'schedules']) assert.equal(st[k], undefined, `state still has ${k}`);
 
   // Backup → restore round trip; the diagnostics bundle never carries the access token.
   const auth = { Cookie: `gibbous_auth=${token}` };
   const saved = await (await fetch(`${BASE}/api/backup`, { headers: auth })).json();
-  assert.equal(saved.tasks.length, 1);
+  assert.equal(saved.projects.length, 1);
   assert.equal(saved.push, undefined);
-  const r = await fetch(`${BASE}/api/restore`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', Origin: BASE }, body: JSON.stringify({ ...saved, tasks: [] }) });
+  const r = await fetch(`${BASE}/api/restore`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', Origin: BASE }, body: JSON.stringify({ ...saved, projects: [], tasks: [{ id: 'old' }] }) });
   assert.equal(r.status, 200);
-  assert.equal((await (await fetch(`${BASE}/api/state`, { headers: auth })).json()).tasks.length, 0);
+  const restored = await (await fetch(`${BASE}/api/state`, { headers: auth })).json();
+  assert.equal(restored.projects.length, 0);
+  assert.equal(restored.tasks, undefined); // an old backup's task board is dropped on restore
   assert.ok(fs.readdirSync(home).some(f => f.startsWith('state.json.before-restore')));
   await fetch(`${BASE}/api/restore`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', Origin: BASE }, body: JSON.stringify(saved) });
   await visit(page, '#/settings/maintenance', 'Copy debug bundle');
@@ -122,9 +123,9 @@ try {
   }
   await page.evaluate(() => { localStorage.setItem('gibbous.density', 'cozy'); document.documentElement.dataset.density = 'cozy'; });
 
-  // Phone: home, a thread-less board and settings fit the viewport without horizontal scroll.
+  // Phone: home, the kanban screens and settings fit the viewport without horizontal scroll.
   const phone = await open(390, 844);
-  for (const [hash, text] of [['#/', 'e2e'], [`#/board/${project.id}`, 'E2E task'], ['#/settings/phone', 'Phone']]) {
+  for (const [hash, text] of [['#/', 'e2e'], ['#/kanban', 'Kanban'], [`#/board/${project.id}`, 'No Hermes board'], ['#/settings/phone', 'Phone']]) {
     await visit(phone, hash, text);
     const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     if (overflow > 1) failures.push(`${hash} scrolls sideways on a phone (${overflow}px)`);

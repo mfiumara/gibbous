@@ -35,34 +35,8 @@ export interface Project {
   baseBranch?: string;          // default: repo's current branch at add time
   setupScript?: string;         // runs in every new worktree
   scripts?: { name: string; command: string }[];
-  playbookId?: string;          // default playbook for goals in this project
+  kanbanBoard?: string;         // Hermes kanban board slug picked by hand; unset = matched by workdir (kanban.ts)
   createdAt: number;
-}
-
-export interface Playbook {
-  id: string; name: string; description: string; builtin?: boolean;
-  plan: boolean;                // run the planner first
-  planPrompt?: string;          // extra guidance for the planner
-  workerNote?: string;          // appended to every task prompt
-  writeTests: boolean;          // workers must add/extend tests
-  reviewRounds: number;         // reviewer ↔ author loops; 0 = no review
-  reviewer?: { model?: string; provider?: string }; // second-opinion model for reviews
-  reviewPasses: ('correctness' | 'security' | 'tests')[];
-  testScript?: string;          // project script that must pass after approval
-  finish: 'manual' | 'merge' | 'pr'; // what happens once approved (and tested)
-  budgetUsd?: number;           // per-task spend cap
-}
-
-export interface PlanDraft {
-  id: string; projectId: string; goal: string; threadId: string; playbookId?: string;
-  status: 'drafting' | 'ready' | 'accepted' | 'discarded';
-  summary?: string; error?: string; tasks: { key: string; title: string; prompt: string; deps: string[] }[];
-  createdAt: number; updatedAt: number;
-}
-
-export interface Schedule {
-  id: string; projectId: string; title: string; prompt: string; cron: string;
-  playbookId?: string; enabled: boolean; lastRun?: number; createdAt: number;
 }
 
 export interface Usage { tokens: number; costUsd: number }
@@ -71,7 +45,8 @@ export interface Usage { tokens: number; costUsd: number }
 export interface Host { id: string; name: string; ssh: string; remotePort: number; createdAt: number }
 
 export type ThreadStatus = 'idle' | 'running' | 'needs_input' | 'error' | 'archived';
-export type ThreadRole = 'chat' | 'worker' | 'reviewer' | 'planner' | 'coordinator';
+// Only chats now: work orchestration lives in Hermes' kanban, not here.
+export type ThreadRole = 'chat';
 
 export interface Thread {
   id: string; projectId?: string; title: string;
@@ -79,8 +54,7 @@ export interface Thread {
   sessionId: string;            // Hermes durable (stored) session id
   cwd: string;
   worktree?: { path: string; branch: string; base: string };
-  role: ThreadRole; taskId?: string; planned?: boolean; planId?: string;
-  parentId?: string;            // coordinator that spawned this thread
+  role: ThreadRole;
   profile?: string;             // Hermes profile the session runs under (default profile when unset)
   host?: string;                // Host id when the session lives on another machine (unset = this Mac)
   usage?: Usage;                // latest cumulative session usage
@@ -92,49 +66,49 @@ export interface Thread {
   createdAt: number; updatedAt: number;
 }
 
-export type TaskStatus = 'backlog' | 'queued' | 'running' | 'reviewing' | 'testing' | 'review' | 'done' | 'failed';
-
-export interface Task {
-  id: string; projectId: string; title: string; prompt: string;
-  status: TaskStatus; deps: string[];
-  worktree: boolean; threadId?: string; reviewThreadId?: string;
-  reviewRounds: number; verdict?: 'approve' | 'changes'; reviewNotes?: string;
-  mergedAs?: string; createdAt: number; updatedAt: number;
-  playbookId?: string; startedAt?: number; finishedAt?: number; testRuns?: number; scheduleId?: string;
-}
+export type NotifyKind = 'input' | 'done' | 'failure';
 
 export interface Settings {
   model: string;                // '' = Hermes default
   provider: string;
   profile: string;              // '' = default Hermes profile for new threads
-  maxConcurrent: number;
-  autoReview: boolean;
-  maxReviewRounds: number;
   worktreeRoot: string;
   syncSources: string[];        // Hermes session sources mirrored into the sidebar automatically (e.g. discord)
-  notify: Record<'input' | 'done' | 'task' | 'failure' | 'plan', boolean>; // which events push to devices
+  notify: Record<NotifyKind, boolean>; // which events push to devices
   snippets: { name: string; text: string }[];   // saved prompts, inserted with ;name in any composer
   autoArchiveDays: number;      // 0 = never; idle chat threads older than this archive themselves
   monthlyBudgetUsd: number;     // 0 = no alert; notify once a month when Hermes spend crosses it
 }
 
 export interface State {
-  projects: Project[]; threads: Thread[]; tasks: Task[];
-  playbooks: Playbook[]; plans: PlanDraft[]; schedules: Schedule[]; hosts: Host[];
+  projects: Project[]; threads: Thread[]; hosts: Host[];
   settings: Settings;
   push: { vapid?: { publicKey: string; privateKey: string }; subs: any[] };
   budgetAlerted?: string;   // 'YYYY-MM' the monthly budget alert last fired for
 }
 
 const FILE = path.join(GIBBOUS_HOME, 'state.json');
-const defaults: State = {
-  projects: [], threads: [], tasks: [], playbooks: [], plans: [], schedules: [], hosts: [],
-  settings: { model: '', provider: '', profile: '', maxConcurrent: 3, autoReview: true, maxReviewRounds: 2, worktreeRoot: path.join(GIBBOUS_HOME, 'worktrees'), syncSources: [], notify: { input: true, done: true, task: true, failure: true, plan: true }, snippets: [], autoArchiveDays: 0, monthlyBudgetUsd: 0 },
-  push: { subs: [] },
-};
+const defaultSettings = (): Settings => ({ model: '', provider: '', profile: '', worktreeRoot: path.join(GIBBOUS_HOME, 'worktrees'), syncSources: [], notify: { input: true, done: true, failure: true }, snippets: [], autoArchiveDays: 0, monthlyBudgetUsd: 0 });
 
-const loaded = readJson<Partial<State>>(FILE, {});
-export const state: State = { ...defaults, ...loaded, settings: { ...defaults.settings, ...loaded.settings }, push: { ...defaults.push, ...loaded.push } };
+// Gibbous used to run its own task board (tasks, plans, playbooks, board schedules, coordinator/worker threads).
+// That moved to Hermes' kanban: drop those keys and turn every leftover agent thread into a plain chat, keeping
+// everything else (projects, threads, hosts, push keys, unknown future keys) untouched.
+export function migrate(raw: any): State {
+  const { tasks: _t, plans: _p, playbooks: _pb, schedules: _s, ...rest } = raw ?? {};
+  const { maxConcurrent: _m, autoReview: _a, maxReviewRounds: _r, notify, ...settings } = rest.settings ?? {};
+  const keep = <K extends string>(o: any, keys: readonly K[]) => Object.fromEntries(keys.filter(k => typeof o?.[k] === 'boolean').map(k => [k, o[k]]));
+  return {
+    ...rest,
+    projects: (rest.projects ?? []).map(({ playbookId: _, ...p }: any) => p),
+    threads: (rest.threads ?? []).map(({ taskId: _a, planId: _b, planned: _c, parentId: _d, ...t }: any) => ({ ...t, role: 'chat' })),
+    hosts: rest.hosts ?? [],
+    settings: { ...defaultSettings(), ...settings, notify: { ...defaultSettings().notify, ...keep(notify, ['input', 'done', 'failure'] as const) } },
+    push: { subs: [], ...rest.push },
+  };
+}
+
+const loaded = readJson<any>(FILE, {});
+export const state: State = migrate(loaded);
 
 let timer: NodeJS.Timeout | undefined;
 export function save() {
@@ -142,23 +116,26 @@ export function save() {
   timer = setTimeout(() => { try { writeJsonAtomic(FILE, state); } catch (e) { console.error('[store] save failed', e); } }, 100);
 }
 export function saveNow() { clearTimeout(timer); writeJsonAtomic(FILE, state); }
+// Rewrite the file once when it still holds the old task board, so the dropped keys don't linger on disk.
+if (['tasks', 'plans', 'playbooks', 'schedules'].some(k => k in loaded)) save();
 
 // Backup/restore of everything except push keys and subscriptions (the VAPID private key stays on this machine).
 export const backup = () => { const { push: _, ...rest } = state; return { gibbousBackup: 1, at: Date.now(), ...rest }; };
 export function restore(b: any) {
-  const lists = ['projects', 'threads', 'tasks', 'playbooks', 'plans', 'schedules', 'hosts'] as const;
+  const lists = ['projects', 'threads', 'hosts'] as const;
   if (b?.gibbousBackup !== 1 || lists.some(k => !Array.isArray(b[k])) || typeof b.settings !== 'object') throw new Error('not a Gibbous backup file');
   saveNow();
   fs.copyFileSync(FILE, `${FILE}.before-restore-${Date.now()}`); // the state being replaced is never lost
-  for (const k of lists) state[k] = b[k];
-  state.settings = { ...defaults.settings, ...b.settings };
+  const m = migrate({ ...b, push: state.push }); // older backups still carry the task board
+  for (const k of lists) (state as any)[k] = m[k];
+  state.settings = m.settings;
   saveNow();
 }
 
 // Secrets live apart from state so state.json can be inspected/shared safely.
 const SECRET_FILE = path.join(GIBBOUS_HOME, 'secret.json');
-export const secret: { accessToken: string; mcpToken: string } = readJson(SECRET_FILE, null as any) ?? (() => {
-  const s = { accessToken: randomBytes(24).toString('base64url'), mcpToken: randomBytes(24).toString('base64url') };
+export const secret: { accessToken: string } = readJson(SECRET_FILE, null as any) ?? (() => {
+  const s = { accessToken: randomBytes(24).toString('base64url') };
   writeJsonAtomic(SECRET_FILE, s);
   return s;
 })();

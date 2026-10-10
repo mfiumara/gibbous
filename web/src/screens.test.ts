@@ -22,6 +22,8 @@ test('back goes to the parent list; top-level screens have none (the edge opens 
   assert.equal(parentOf(home), null);
   assert.equal(parentOf(inbox), null);
   assert.equal(parentOf(list), null);
+  assert.equal(parentOf({ name: 'kanban', slug: 'b' }), '/kanban');
+  assert.equal(parentOf({ name: 'kanban' }), null);
 });
 
 test('phones push deeper and pop back; wide layouts fade; same-kind switches are instant', () => {

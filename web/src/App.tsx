@@ -11,7 +11,8 @@ import { Home, AddProjectDialog } from './Home';
 import { ThreadView } from './thread/ThreadView';
 import { ExternalThread } from './thread/ExternalThread';
 import { lazy, Suspense } from 'react';
-const Board = lazy(() => import('./board/Board').then(m => ({ default: m.Board })));
+const Kanban = lazy(() => import('./kanban/Kanban').then(m => ({ default: m.Kanban })));
+const KanbanIndex = lazy(() => import('./kanban/Kanban').then(m => ({ default: m.KanbanIndex })));
 import { InboxView, SessionsView, Login } from './Inbox';
 const SearchView = lazy(() => import('./Search').then(m => ({ default: m.SearchView })));
 const RoomsView = lazy(() => import('./Rooms').then(m => ({ default: m.RoomsView })));
@@ -27,7 +28,7 @@ const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return
 const SHORTCUTS: [string, string][] = [
   ['⌘K', 'Search or jump anywhere'], ['⌘N', 'New thread'], ['⌘1–9', 'Open recent thread'], ['⌘F', 'Find in thread'],
   ['⌘.', 'Stop the running turn'], ['⌘⇧A', 'Allow the pending approval once'], ['⌘\\', 'Toggle side panel'],
-  ['Esc', 'Close / cancel edit / leave the message box'], ['Enter', 'Jump into the message box'], ['j / k', 'Next / previous thread in the sidebar (k past the top goes home)'],
+  ['Esc', 'Close / cancel edit / leave the message box'], ['Enter', 'Jump into the message box, or open the focused card'], ['j / k', 'Next / previous thread in the sidebar (k past the top goes home); on a kanban board, next / previous card'], ['h / l', 'Previous / next kanban column'],
   ['↑ in empty composer', 'Edit your last message'], ['?', 'Show shortcuts'],
 ];
 
@@ -65,6 +66,14 @@ export function App() {
       }
       if ((k === 'j' || k === 'k') && !e.shiftKey && !document.querySelector('[role=dialog], [role=menu], dialog[open]')) {
         e.preventDefault();
+        // A screen with its own list (the kanban board) takes j/k: walk its [data-vim-item]s in DOM order.
+        const items = [...document.querySelectorAll<HTMLElement>('[data-vim-list] [data-vim-item]')];
+        if (items.length) {
+          const i = items.indexOf(document.activeElement as HTMLElement);
+          const next = items[i < 0 ? (k === 'j' ? 0 : items.length - 1) : Math.max(0, Math.min(items.length - 1, i + (k === 'j' ? 1 : -1)))];
+          next.focus(); next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          return;
+        }
         // Walk the sidebar in DOM order, skipping rows inside collapsed sections ([inert]). If the open thread is itself
         // in a collapsed section, step from its position to the nearest visible row. Home sits above the first thread:
         // j from Home opens the first thread, k past the first thread comes back Home.
@@ -121,7 +130,8 @@ export function App() {
   const screenRef = useRef<HTMLDivElement>(null);
   const screen = (r: Route) =>
     r.name === 'thread' ? <ThreadRoute key={r.id} id={r.id} /> :
-    r.name === 'board' ? <Board projectId={r.projectId} /> :
+    r.name === 'board' ? <Kanban key={r.projectId} projectId={r.projectId} /> :
+    r.name === 'kanban' ? (r.slug ? <Kanban key={r.slug} slug={r.slug} /> : <KanbanIndex />) :
     r.name === 'inbox' ? <InboxView /> :
     r.name === 'sessions' ? <SessionsView /> :
     r.name === 'search' ? <SearchView q={r.q} /> :
@@ -193,12 +203,10 @@ type Opt = { label: string; hint: string; href?: string; run?: () => void; statu
 
 // Every settings section, findable by what's inside it ("theme", "password", "budget"…).
 const SETTINGS: [string, string, string][] = [
-  ['general', 'General', 'model default parallel tasks review rounds approvals yolo smart'],
+  ['general', 'General', 'model default approvals yolo smart snippets'],
   ['appearance', 'Appearance', 'theme night daylight dark light density compact roomy moon animations editor vs code'],
   ['notifications', 'Notifications', 'push alerts needs you finished failures test'],
   ['phone', 'Phone', 'qr sign in link iphone tailnet tailscale install home screen'],
-  ['coordinator', 'Coordinator', 'mcp tools lead team spawn register'],
-  ['playbooks', 'Playbooks', 'plan review tests budget auto merge pr'],
   ['maintenance', 'Maintenance', 'stuck orphaned worktrees backup restore diagnostics debug bundle'],
   ['usage', 'Usage', 'spend cost tokens insights chart'],
   ['profiles', 'Profiles', 'persona profile default'],
@@ -224,11 +232,11 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
     const needle = q.toLowerCase().trim();
     const all: Opt[] = [
       { label: 'New thread', hint: 'start', href: '/new' },
-      ...projects.flatMap(p => [{ label: `New thread in ${p.name}`, hint: 'start', href: `/new/${p.id}` }, { label: `${p.name} board`, hint: 'board', href: `/board/${p.id}` }]),
+      ...projects.flatMap(p => [{ label: `New thread in ${p.name}`, hint: 'start', href: `/new/${p.id}` }, { label: `${p.name} kanban`, hint: 'kanban', href: `/board/${p.id}`, keywords: 'board tasks hermes' }]),
       ...threads.filter(t => t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt)
         .map(t => ({ label: t.title, hint: t.readOnly ? sourceLabel(t.source) : projects.find(p => p.id === t.projectId)?.name ?? 'chat', href: `/t/${t.id}`, status: t.status })),
       ...(projects.length > 1 ? [{ label: 'Filter projects in the sidebar…', hint: 'filter', keywords: 'show hide projects sidebar toggle', stay: true, run: () => setMode('projects') }] : []),
-      { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Hermes history', hint: 'go', href: '/sessions' }, { label: 'Settings', hint: 'go', href: '/settings' },
+      { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'hermes board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Hermes history', hint: 'go', href: '/sessions' }, { label: 'Settings', hint: 'go', href: '/settings' },
       ...SETTINGS.map(([id, label, keywords]) => ({ label: `${label} settings`, hint: 'settings', href: `/settings/${id}`, keywords })),
       ...(here ? [
         { label: here.pinned ? 'Unpin this thread' : 'Pin this thread', hint: 'action', run: () => { api.patch(`/api/threads/${here.id}`, { pinned: !here.pinned }).catch(toastError); } },
@@ -253,7 +261,7 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
       <div role="dialog" aria-label="Search or jump" className="pop w-full max-w-xl h-fit rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 px-4 border-b border-line">
           <Search size={16} className="text-ash" />
-          <input autoFocus className="flex-1 bg-transparent py-3.5 text-[15px] placeholder:text-ash focus:outline-none" placeholder="Jump to a thread, board or page, or search everything…" value={q}
+          <input autoFocus className="flex-1 bg-transparent py-3.5 text-[15px] placeholder:text-ash focus:outline-none" placeholder="Jump to a thread, kanban or page, or search everything…" value={q}
             onChange={e => { setQ(e.target.value); setSel(0); }}
             onKeyDown={e => {
               if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(s + 1, options.length - 1)); }

@@ -1,6 +1,6 @@
 // Settings shell: a tab list (left on desktop; its own page on phones) and one file per tab under settings/.
 import { lazy, Suspense } from 'react';
-import { SlidersHorizontal, Palette, Bell, Smartphone, Network, Plug, Clock, Workflow, Wrench, UsersRound, Sparkles, MessagesSquare, FileCog, Brain, BarChart3, KeyRound, ArrowUpCircle, Server, ChevronRight } from 'lucide-react';
+import { SlidersHorizontal, Palette, Bell, Smartphone, Plug, Clock, Wrench, UsersRound, Sparkles, MessagesSquare, FileCog, Brain, BarChart3, KeyRound, ArrowUpCircle, Server, ChevronRight } from 'lucide-react';
 import { Skeleton } from './ui';
 import { PageHeader } from './Inbox';
 
@@ -11,9 +11,7 @@ const TABS: { id: string; label: string; group: string; icon: React.ComponentTyp
   { id: 'appearance', label: 'Appearance', group: 'Gibbous', icon: Palette, C: tab(() => import('./settings/General'), 'AppearanceTab') },
   { id: 'notifications', label: 'Notifications', group: 'Gibbous', icon: Bell, C: tab(() => import('./settings/Devices'), 'NotificationsTab') },
   { id: 'phone', label: 'Phone', group: 'Gibbous', icon: Smartphone, C: tab(() => import('./settings/Devices'), 'PhoneTab') },
-  { id: 'coordinator', label: 'Coordinator', group: 'Gibbous', icon: Network, C: tab(() => import('./settings/Devices'), 'CoordinatorTab') },
-  { id: 'playbooks', label: 'Playbooks', group: 'Gibbous', icon: Workflow, C: tab(() => import('./settings/Playbooks'), 'PlaybooksTab') },
-  { id: 'maintenance', label: 'Maintenance', group: 'Gibbous', icon: Wrench, C: tab(() => import('./settings/Playbooks'), 'MaintenanceTab') },
+  { id: 'maintenance', label: 'Maintenance', group: 'Gibbous', icon: Wrench, C: tab(() => import('./settings/Maintenance'), 'MaintenanceTab') },
   { id: 'usage', label: 'Usage', group: 'Hermes', icon: BarChart3, C: tab(() => import('./settings/Usage'), 'UsageTab') },
   { id: 'profiles', label: 'Profiles', group: 'Hermes', icon: UsersRound, C: tab(() => import('./settings/Profiles'), 'ProfilesTab') },
   { id: 'skills', label: 'Skills', group: 'Hermes', icon: Sparkles, C: tab(() => import('./settings/Skills'), 'SkillsTab') },

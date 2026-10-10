@@ -20,46 +20,28 @@ export { Header as PageHeader };
 
 export function InboxView() {
   const requests = useStore(s => s.requests);
-  const tasks = useStore(s => s.tasks);
   const threads = useStore(s => s.threads);
-  const projects = useStore(s => s.projects);
-  const review = tasks.filter(t => t.status === 'review' || t.status === 'failed');
   const errored = threads.filter(t => t.status === 'error');
   const midnight = new Date().setHours(0, 0, 0, 0);
-  const doneToday = threads.filter(t => !t.readOnly && t.role !== 'worker' && t.role !== 'reviewer' && t.role !== 'planner' && t.status === 'idle' && t.lastText && t.updatedAt >= midnight).sort((a, b) => b.updatedAt - a.updatedAt);
-  const mergedToday = tasks.filter(t => t.status === 'done' && (t.finishedAt ?? t.updatedAt) >= midnight);
+  const doneToday = threads.filter(t => !t.readOnly && t.status === 'idle' && t.lastText && t.updatedAt >= midnight).sort((a, b) => b.updatedAt - a.updatedAt);
   const [spent, setSpent] = useState<number>();
   // Today's row of the daily breakdown (Hermes's `totals` aren't scoped to the requested days).
   useEffect(() => { hermes.get<{ daily: { day: string; actual_cost: number; estimated_cost: number }[] }>('analytics/usage?days=2').then(u => { const d = u.daily.find(x => x.day === new Date().toLocaleDateString('en-CA')); setSpent(d ? d.actual_cost || d.estimated_cost : 0); }, () => {}); }, []);
-  const empty = !requests.length && !review.length && !errored.length && !doneToday.length && !mergedToday.length;
+  const empty = !requests.length && !errored.length && !doneToday.length;
   return (
     <div className="h-full flex flex-col">
       <Header title="Inbox" />
       {empty ? <Empty title="Nothing needs you" /> : (
         <div className="flex-1 overflow-y-auto"><div className="mx-auto max-w-2xl p-4 space-y-8">
           {requests.length > 0 && <section className="space-y-3"><h2 className="label">Waiting for an answer</h2>{requests.map(r => <RequestCard key={r.id} r={r} showThread />)}</section>}
-          {review.length > 0 && <section className="space-y-2"><h2 className="label">Tasks to review</h2>
-            {review.map(t => (
-              <a key={t.id} href={`#/board/${t.projectId}`} className="tile flex items-center gap-3 rounded-xl px-3 py-2.5">
-                <Moon task={t.status} size={10} /><span className="flex-1 min-w-0"><span className="block truncate font-bold text-sm">{t.title}</span>
-                <span className="block text-xs text-dust">{projects.find(p => p.id === t.projectId)?.name} · {t.status === 'failed' ? 'failed' : t.verdict === 'approve' ? 'approved by reviewer' : 'reviewer asked for changes'}</span></span>
-                <span className="text-xs text-ash">{ago(t.updatedAt)}</span>
-              </a>
-            ))}</section>}
           {errored.length > 0 && <section className="space-y-2"><h2 className="label">Threads with errors</h2>
             {errored.map(t => (
               <a key={t.id} href={`#/t/${t.id}`} className="tile flex items-center gap-3 rounded-xl px-3 py-2.5">
                 <Moon thread={t.status} size={10} /><span className="flex-1 min-w-0"><span className="block truncate font-bold text-sm">{t.title}</span><span className="block text-xs text-oxide truncate">{t.error}</span></span>
               </a>
             ))}</section>}
-          {(doneToday.length > 0 || mergedToday.length > 0) && <section className="space-y-2">
-            <h2 className="label flex items-baseline gap-2">Today<span className="normal-case tracking-normal font-sans text-[12px] text-ash">{[doneToday.length && `${doneToday.length} finished`, mergedToday.length && `${mergedToday.length} merged`, spent && `${fmtUsd(spent)} spent`].filter(Boolean).join(' · ')}</span></h2>
-            {mergedToday.map(t => (
-              <a key={t.id} href={t.mergedAs?.startsWith('http') ? t.mergedAs : `#/board/${t.projectId}`} target={t.mergedAs?.startsWith('http') ? '_blank' : undefined} className="tile flex items-center gap-3 rounded-xl px-3 py-2.5">
-                <Moon task="done" size={10} /><span className="flex-1 min-w-0"><span className="block truncate text-sm">{t.title}</span><span className="block text-xs text-dust">{projects.find(p => p.id === t.projectId)?.name} · {t.mergedAs?.startsWith('http') ? 'pull request opened' : `merged ${t.mergedAs ?? ''}`}</span></span>
-                <span className="text-xs text-ash">{ago(t.finishedAt ?? t.updatedAt)}</span>
-              </a>
-            ))}
+          {doneToday.length > 0 && <section className="space-y-2">
+            <h2 className="label flex items-baseline gap-2">Today<span className="normal-case tracking-normal font-sans text-[12px] text-ash">{[`${doneToday.length} finished`, spent && `${fmtUsd(spent)} spent`].filter(Boolean).join(' · ')}</span></h2>
             {doneToday.slice(0, 12).map(t => (
               <a key={t.id} href={`#/t/${t.id}`} className="tile flex items-center gap-3 rounded-xl px-3 py-2.5">
                 <Moon thread={t.status} size={10} /><span className="flex-1 min-w-0"><span className="block truncate text-sm">{t.title}</span><span className="block text-xs text-dust truncate">{t.lastText?.replace(/\s+/g, ' ').slice(0, 140)}</span></span>

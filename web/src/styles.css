@@ -369,6 +369,14 @@
    Positions move with `translate` so the drag (inline style.translate) and the CSS slide are the same property, and
    the entry animation only fills backwards, so it never overrides the finger once it's done. */
 .menu-sheet-layer { position: fixed; inset: 0; z-index: 60; }
+/* A Modal with `bottom` (the kanban card detail) docks to the bottom edge on phones, like the menu sheets. Narrow
+   width alone qualifies here: a desktop window that thin has no room for a centred dialog either. */
+@media (max-width: 640px) {
+  dialog.sheet.dialog-bottom { margin: auto 0 0; width: 100%; max-width: 100%; max-height: 92dvh; border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  dialog.sheet.dialog-bottom { transform: translateY(24px); }
+  dialog.sheet.dialog-bottom[open] { transform: none; }
+  @starting-style { dialog.sheet.dialog-bottom[open] { transform: translateY(100%); } }
+}
 .menu-sheet-layer[data-leaving] { pointer-events: none; }
 .menu-sheet-scrim { position: absolute; inset: 0; background: rgb(5 6 9 / .5); touch-action: none; transition: opacity .24s var(--ease-out); animation: fade .24s var(--ease-out) backwards; }
 .menu-sheet { position: absolute; left: 0; right: 0; bottom: var(--kb, 0px); display: flex; flex-direction: column; max-height: calc(80vh - var(--kb, 0px));

@@ -16,7 +16,8 @@ export interface SubagentRow {
 }
 
 const dbs = new Map<string, DatabaseSync>();
-function open(profile?: string): DatabaseSync | undefined {
+// Read-only handle on a profile's state.db (also used by kanban.ts to find worker sessions).
+export function openStateDb(profile?: string): DatabaseSync | undefined {
   const home = process.env.HERMES_HOME ?? path.join(os.homedir(), '.hermes');
   const file = profile && profile !== 'default' ? path.join(home, 'profiles', profile, 'state.db') : path.join(home, 'state.db');
   if (!fs.existsSync(file)) return undefined;
@@ -51,7 +52,7 @@ ORDER BY s.started_at, s.id`;
 const text = (v: unknown, n: number) => typeof v === 'string' ? v.trim().slice(0, n) : undefined;
 
 export function listSubagents(sessionId: string, profile?: string): SubagentRow[] {
-  const db = open(profile);
+  const db = openStateDb(profile);
   if (!db) return [];
   return (db.prepare(SQL).all(sessionId) as any[]).map(r => ({
     sessionId: r.id, parentSessionId: r.parent, depth: r.depth,

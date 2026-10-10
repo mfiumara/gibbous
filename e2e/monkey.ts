@@ -23,14 +23,13 @@ const repo = path.join(home, 'repo'); fs.mkdirSync(repo);
 for (const a of [['init', '-q', '-b', 'main'], ['-c', 'user.email=m@m', '-c', 'user.name=m', 'commit', '-q', '--allow-empty', '-m', 'init']]) execFileSync('git', a, { cwd: repo });
 // Seed with your threads (read-only imports stay read-only) so screens have real content; no agents can start.
 const st = JSON.parse(fs.readFileSync(`${real}/state.json`, 'utf8'));
-fs.writeFileSync(`${home}/state.json`, JSON.stringify({ threads: st.threads, settings: { ...st.settings, maxConcurrent: 0, syncSources: [] } }));
+fs.writeFileSync(`${home}/state.json`, JSON.stringify({ threads: st.threads, settings: { ...st.settings, syncSources: [] } }));
 
-const server = spawn(process.execPath, ['server/main.ts'], { env: { ...process.env, GIBBOUS_HOME: home, GIBBOUS_PORT: String(PORT), GIBBOUS_TICK_MS: '600000' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(process.execPath, ['server/main.ts'], { env: { ...process.env, GIBBOUS_HOME: home, GIBBOUS_PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
 await new Promise<void>(res => server.stdout!.on('data', d => String(d).includes('Gibbous on') && res()));
 const token = JSON.parse(fs.readFileSync(`${home}/secret.json`, 'utf8')).accessToken;
 const api = (m: string, p: string, body?: unknown) => fetch(BASE + p, { method: m, headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: `gibbous_auth=${token}` }, body: body ? JSON.stringify(body) : undefined }).then(r => r.json());
 const project = await api('POST', '/api/projects', { path: repo, name: 'monkey' });
-for (const t of ['Parse the config file', 'Add retries', 'Document the CLI']) await api('POST', '/api/tasks', { projectId: project.id, title: t, prompt: 'monkey task', status: 'backlog' });
 
 const b = await webkit.launch();
 const ctx = await b.newContext(PHONE ? { viewport: { width: 390, height: 844 }, hasTouch: true } : { viewport: { width: 1440, height: 900 } });
@@ -45,11 +44,11 @@ page.on('dialog', d => d.dismiss().catch(() => {}));
 let crashed = false;
 page.on('crash', () => { crashed = true; report('page crashed (web process died)'); });
 page.on('close', () => { if (!crashed) report('page closed'); crashed = true; });
-// Network: GETs are fine; writes only to Gibbous's own throwaway state; Hermes REST writes are refused.
+// Network: GETs are fine; writes only to Gibbous's own throwaway state; Hermes REST and kanban writes are refused.
 await page.route('**/*', r => {
   const req = r.request(), u = new URL(req.url());
   if (req.method() === 'GET' || !u.pathname.startsWith('/api/')) return r.continue();
-  const ok = /^\/api\/(tasks|projects|settings|playbooks|schedules|plans|threads\/[^/]+$|search)/.test(u.pathname) && !/\/(send|reply|interrupt|continue)$/.test(u.pathname);
+  const ok = /^\/api\/(projects|settings|threads\/[^/]+$|search)/.test(u.pathname) && !/\/(send|reply|interrupt|continue)$/.test(u.pathname);
   return ok ? r.continue() : r.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'blocked by monkey' }) });
 });
 await page.routeWebSocket(/\/pty/, ws => ws.close());
@@ -65,8 +64,8 @@ await page.routeWebSocket(/\/ws/, ws => {
 await page.goto(`${BASE}/login?token=${token}`, { waitUntil: 'networkidle' });
 
 const threads = st.threads.filter((t: any) => !t.host).map((t: any) => t.id);
-const screens = ['#/', '#/inbox', '#/sessions', '#/search?q=test', '#/rooms', '#/automations', `#/board/${project.id}`, '#/settings',
-  ...['general', 'appearance', 'notifications', 'phone', 'coordinator', 'playbooks', 'maintenance', 'usage', 'profiles', 'skills', 'mcp', 'jobs', 'platforms', 'memory', 'vault', 'config', 'hosts', 'update'].map(t => `#/settings/${t}`),
+const screens = ['#/', '#/inbox', '#/sessions', '#/search?q=test', '#/rooms', '#/automations', '#/kanban', `#/board/${project.id}`, '#/settings',
+  ...['general', 'appearance', 'notifications', 'phone', 'maintenance', 'usage', 'profiles', 'skills', 'mcp', 'jobs', 'platforms', 'memory', 'vault', 'config', 'hosts', 'update'].map(t => `#/settings/${t}`),
   ...threads.map((id: string) => `#/t/${id}`)];
 const WORDS = ['hello', '/', '@', 'x'.repeat(300), '<b>hi</b>', '🌖', '  ', '12', '-1', 'pcb'];
 
