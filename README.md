@@ -90,6 +90,18 @@ After `hermes update`, Settings → Update → *Check compatibility* confirms th
 
 Logs: `~/.gibbous/gibbous.log` and `~/.gibbous/hermes-serve.log`.
 
+## Releasing
+
+The version lives in `ios/project.yml` (`MARKETING_VERSION`) and `package.json`. Both release scripts use the App Store Connect API key in `~/.appstoreconnect` (see `ios/tools/asc.mjs`).
+
+```sh
+scripts/release-mac.sh   # notarized dist/Gibbous-<version>.dmg (needs a Developer ID Application certificate)
+scripts/release-ios.sh   # archive the iPhone app and upload it to App Store Connect / TestFlight
+node e2e/demo/run.ts     # demo footage and screenshots: isolated instance, scripted fake Hermes, no tokens spent
+```
+
+The DMG is the unsandboxed `dev.gibbous.desktop` app (signs in to the local server with no setup), attached to a GitHub release. Submitting the iPhone build for App Review is done in App Store Connect.
+
 ## Deliberate shortcuts
 
 - State is one JSON file, rewritten on change. Settings → Maintenance shows its size. Move it to SQLite if it ever grows past a few MB.

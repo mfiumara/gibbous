@@ -5,3 +5,4 @@ scratch
 *.log
 ios/Gibbous.xcodeproj
 ios/build
+.DS_Store
