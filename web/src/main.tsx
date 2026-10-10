@@ -4,13 +4,15 @@ import './styles.css';
 import { App } from './App';
 import { rpc } from './rpc';
 import { useStore } from './store';
-import { applyPrefs } from './ui';
+import { applyPrefs, go } from './ui';
 import { healViewportOnBlur, trackKeyboard } from './viewport';
 import { installMacShell } from './macBridge';
+import { inIosApp, installIosShell } from './iosBridge';
 
 applyPrefs();
-healViewportOnBlur();
-trackKeyboard();
+installIosShell({ go, refresh: () => useStore.getState().load(), reconnect: () => { if (useStore.getState().authed) rpc.kick(); else useStore.getState().load(); } });
+// Safari's keyboard workarounds. The iPhone app resizes the web view above the keyboard itself, so they'd fight it.
+if (!inIosApp()) { healViewportOnBlur(); trackKeyboard(); }
 installMacShell();
 // A newer build was deployed while this tab was open and one of its chunks is gone: reload once onto the new build.
 const reloadOnce = () => {
@@ -44,7 +46,8 @@ function nativeFeel() {
 }
 
 useStore.getState().load().then(() => { if (useStore.getState().authed) rpc.connect(); });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+// The iPhone app has native push and loads every build live: no service worker there.
+if ('serviceWorker' in navigator && !inIosApp()) navigator.serviceWorker.register('/sw.js').catch(() => {});
 // Clicking a push notification while the app is open routes in-place.
 navigator.serviceWorker?.addEventListener('message', e => { if (e.data?.url) location.hash = String(e.data.url).replace(/^\/#/, ''); });
 

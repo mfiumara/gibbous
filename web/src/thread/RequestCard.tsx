@@ -5,6 +5,7 @@ import { ShieldAlert, HelpCircle, KeyRound } from 'lucide-react';
 import { api, type OpenRequest } from '../api';
 import { toastError, useStore } from '../store';
 import { Button, inputCls, go } from '../ui';
+import { haptic } from '../iosBridge';
 
 const answer = (r: OpenRequest, result: unknown) =>
   api.post(`/api/requests/${encodeURIComponent(r.id)}/answer`, { result }).catch(toastError);
@@ -30,7 +31,7 @@ export function RequestCard({ r, showThread }: { r: OpenRequest; showThread?: bo
       {p.command && <pre className="font-mono text-[12.5px] bg-well border border-line rounded-md p-2.5 overflow-x-auto whitespace-pre-wrap">{p.command}</pre>}
       {p.description && <p className="text-[13px] text-dust">{p.description}</p>}
       <div className="flex flex-wrap gap-2">
-        {choices.map(c => <Button key={c} size="sm" tone={c === 'once' ? 'halo' : c === 'deny' ? 'danger' : 'ghost'} onClick={() => answer(r, { choice: c })}>{label[c] ?? c}</Button>)}
+        {choices.map(c => <Button key={c} size="sm" tone={c === 'once' ? 'halo' : c === 'deny' ? 'danger' : 'ghost'} onClick={() => { haptic(c === 'deny' ? 'deny' : 'allow'); answer(r, { choice: c }); }}>{label[c] ?? c}</Button>)}
       </div>
     </>);
   }

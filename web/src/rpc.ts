@@ -40,9 +40,20 @@ export class Rpc {
       this.onStatus(false);
       for (const p of this.pending.values()) p.reject({ code: -32000, message: 'connection lost' });
       this.pending.clear();
-      setTimeout(() => this.connect(), this.backoff);
+      this.retry = setTimeout(() => { this.retry = undefined; this.connect(); }, this.backoff);
       this.backoff = Math.min(this.backoff * 2, 8000);
     };
+  }
+  private retry: ReturnType<typeof setTimeout> | undefined;
+
+  // Back from the background (iPhone app): a suspended socket can look open but be dead, and a pending retry may
+  // be at the 8s backoff. Reconnect now; views re-resume their session on ready as after any reconnect.
+  kick() {
+    this.backoff = 500;
+    if (this.retry) { clearTimeout(this.retry); this.retry = undefined; this.connect(); return; }
+    const ws = this.ws;
+    if (!ws || ws.readyState === WebSocket.CLOSED) { this.connect(); return; }
+    ws.close(); // onclose reconnects after 500ms
   }
 
   private onFrame(m: any) {
