@@ -366,10 +366,10 @@
    iOS slides the keyboard over the page instead of resizing it. While it's up, --kb is how much of the window it
    covers: #root (and full-screen panels) end right on top of it, and the home-indicator padding goes, since that
    strip is under the keyboard now. */
-[data-kb] #root { bottom: var(--kb); height: auto; } /* height:100% (base) would win over bottom */
+[data-kb] #root { top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, auto); } /* exactly the visible area (viewport.ts) */
 [data-kb] .kb-flush { padding-bottom: 0; }
 [data-kb] .kb-bar { padding-bottom: .5rem; margin-bottom: 0; }
-[data-kb] .kb-fixed { bottom: var(--kb); padding-bottom: 0; }
+[data-kb] .kb-fixed { top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, auto); padding-bottom: 0; }
 
 /* ── Phone bottom sheets ────────────────────────────────────────────────
    Every Menu on a phone (MenuSheet in ui.tsx): rises from the bottom over a dimmed scrim, follows the finger down.

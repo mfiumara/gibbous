@@ -236,6 +236,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
   }, [sidebar]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => JSON.parse(localStorage.getItem('gibbous.collapsed') ?? '{}'));
   const [showArchived, setShowArchived] = useState(false);
+  const [more, setMore] = useState(() => localStorage.getItem('gibbous.sidebarMore') === '1');
   const toggle = (id: string) => setCollapsed(c => { const n = { ...c, [id]: !c[id] }; localStorage.setItem('gibbous.collapsed', JSON.stringify(n)); return n; });
   const [q, setQ] = useState('');
   // Projects: order lives on the server (same on every device); which ones are hidden is per device.
@@ -406,7 +407,15 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
       </div>
       </SelectCtx.Provider>
 
-      <div className="px-2 py-2 border-t border-line space-y-0.5 flex-none safe-b">
+      <div className="px-2 py-2 border-t border-line flex-none safe-b">
+        {/* Phones: the places below fold away so the threads get the height; the fold is remembered. Desktop: always open. */}
+        <button onClick={() => setMore(m => { localStorage.setItem('gibbous.sidebarMore', m ? '0' : '1'); return !m; })} aria-expanded={more}
+          className="lg:hidden press flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg text-[13.5px] text-dust hover:text-moon hover:bg-ridge/55">
+          <MoreHorizontal size={15} /><span className="flex-1 text-left">{more ? 'Less' : 'Kanban, sessions, settings…'}</span>
+          <ChevronDown size={15} className={`text-ash transition-transform duration-300 ease-out ${more ? 'rotate-180' : ''}`} />
+        </button>
+        <div className={`grid transition-[grid-template-rows] duration-300 ease-out lg:grid-rows-[1fr] ${more ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+        <div className={`min-h-0 overflow-hidden space-y-0.5 transition-opacity duration-300 lg:opacity-100 ${more ? 'opacity-100' : 'opacity-0'}`}>
         {/* A filter, not a place: when on it's tinted (not the page highlight) and says how to get back. */}
         <button onClick={() => setShowArchived(!showArchived)} aria-pressed={showArchived}
           className={`press group relative flex items-center gap-2.5 rounded-lg text-[13.5px] w-full px-3 py-1.5 pointer-coarse:py-2.5 ${showArchived ? 'text-tide bg-tide/10 hover:bg-tide/15' : 'text-dust hover:text-moon hover:bg-ridge/55'}`}>
@@ -417,6 +426,8 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
         {nav('#/rooms', <Users size={15} />, 'Rooms', route.name === 'rooms')}
         {nav('#/sessions', <History size={15} />, 'Sessions', route.name === 'sessions')}
         {nav('#/settings', <Settings size={15} />, 'Settings', route.name === 'settings')}
+        </div>
+        </div>
       </div>
       <div role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuenow={width.w} aria-valuemin={SB_MIN} aria-valuemax={SB_MAX} tabIndex={0}
         data-tip="Drag to resize · double-click to reset" {...width.handle}

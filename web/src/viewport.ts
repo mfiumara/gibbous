@@ -21,6 +21,13 @@ export function keyboardInset({ innerHeight, vvHeight, vvOffsetTop, scale, field
   return kb > 1 ? kb : 0;
 }
 
+// The visible part of the layout viewport while the keyboard is up: where #root goes. Null when nothing covers it.
+export function visibleBox({ innerHeight, vvHeight, vvOffsetTop, scale, field }: ViewportSample) {
+  if (!field || scale > 1.01) return null;
+  const top = Math.max(0, Math.round(vvOffsetTop)), height = Math.round(vvHeight);
+  return innerHeight - height > 1 ? { top, height } : null;
+}
+
 const isField = (el: Element | null) => !!el && (el.matches('input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=file]), textarea, select') || (el as HTMLElement).isContentEditable);
 
 // CSS px of a fixed element per screen px under the density zoom (same probe as fixedScale in ui.tsx).
@@ -37,16 +44,23 @@ export function trackKeyboard() {
   const vv = window.visualViewport;
   if (!vv) return;
   const root = document.documentElement;
-  let last = -1;
+  let last = '';
   const update = () => {
     const field = isField(document.activeElement);
     // iOS scrolled the document to show the field: undo it, #root already ends above the keyboard.
     if (field && (scrollY !== 0 || document.scrollingElement?.scrollTop)) scrollTo(0, 0);
-    const kb = keyboardInset({ innerHeight, vvHeight: vv.height, vvOffsetTop: vv.offsetTop, scale: vv.scale, field });
-    if (kb === last) return;
-    last = kb;
-    if (kb) { root.style.setProperty('--kb', `${kb / zoomScale()}px`); root.dataset.kb = ''; }
-    else { root.style.removeProperty('--kb'); delete root.dataset.kb; }
+    const s = { innerHeight, vvHeight: vv.height, vvOffsetTop: vv.offsetTop, scale: vv.scale, field };
+    const kb = keyboardInset(s), box = visibleBox(s);
+    const key = box ? `${kb}|${box.top}|${box.height}` : '';
+    if (key === last) return;
+    last = key;
+    // #root sits exactly on what's visible: iOS may also pan the visual viewport (offsetTop) to reveal the field,
+    // and then "keyboard height" alone came out as 0 and the composer stayed under the keys.
+    if (box) {
+      const z = zoomScale();
+      root.style.setProperty('--kb', `${kb / z}px`); root.style.setProperty('--vv-top', `${box.top / z}px`); root.style.setProperty('--vv-h', `${box.height / z}px`);
+      root.dataset.kb = '';
+    } else { root.style.removeProperty('--kb'); root.style.removeProperty('--vv-top'); root.style.removeProperty('--vv-h'); delete root.dataset.kb; }
     // A field inside a scroller (Home's first-message box) may now sit under the keyboard's old edge.
     if (kb && field) (document.activeElement as HTMLElement).scrollIntoView?.({ block: 'nearest' });
   };
