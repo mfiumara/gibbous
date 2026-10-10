@@ -244,7 +244,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
           {withAgent.length > 0 && <>
             <p className={`flex items-center gap-2 text-[12.5px] font-medium text-tide ${queued.length ? 'mt-2' : ''}`}><Clock size={13} className="animate-pulse" />With the agent · runs after this turn</p>
             <ol className="mt-1.5 space-y-1">{withAgent.map(m => (
-              <li key={m.id} className="flex items-start gap-2 rounded-lg bg-basalt/50 border border-tide/20 px-2 py-1 animate-rise" data-tip="Has images, so it already sits with Hermes and can't be edited">
+              <li key={m.id} className="flex items-start gap-2 rounded-lg bg-basalt/50 border border-tide/20 px-2 py-1 animate-rise" data-tip="Has images, so it already went to the agent and can't be edited">
                 <Paperclip size={12} className="mt-[4px] flex-none text-tide" /><p className="flex-1 min-w-0 text-[13px] line-clamp-2 whitespace-pre-wrap select-text text-moon">{m.shown}</p>
               </li>
             ))}</ol>
