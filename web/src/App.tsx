@@ -5,7 +5,6 @@ import { inIosApp, iosBadge } from './iosBridge';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
 import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, sourceLabel, applyPrefs, type Route } from './ui';
-import { BackSwipe } from './BackSwipe';
 import { BINDINGS, helpRows } from './keys';
 import { vimKey, vimEscape } from './vim';
 import { Sidebar } from './Sidebar';
@@ -135,10 +134,8 @@ export function App() {
       <Sidebar route={route} onAddProject={() => setAdding(true)} />
       <main data-pane="items" data-drag-window="self" className="flex-1 min-w-0 h-full flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] kb-flush">
         <HealthBanner />
-        {/* .vt-screen is the only part that moves on navigation (screenTransition.ts); BackSwipe draws the screen
-            a back gesture returns to underneath it. */}
+        {/* .vt-screen is the only part that moves on navigation (screenTransition.ts). */}
         <div className="flex-1 min-h-0 relative">
-          <BackSwipe screen={screenRef} render={screen} />
           <div ref={screenRef} className="vt-screen relative h-full"><Boundary key={location.hash}><Suspense fallback={<div className="h-full grid place-items-center"><MoonLoader size={40} /></div>}>
             {screen(route)}
           </Suspense></Boundary></div>
