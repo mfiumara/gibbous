@@ -1,5 +1,7 @@
 // Gibbous for macOS: a native window around the local Gibbous server (WKWebView), with native notifications.
-// Build: scripts/build-mac-app.sh
+// Build: scripts/build-mac-app.sh (local ad-hoc, unsandboxed), or the GibbousMac target in ios/project.yml (App
+// Sandbox, TestFlight). Everything here must stay sandbox-safe: no subprocesses, and no file access outside
+// ~/Downloads, files the user picks, and the read-only ~/.gibbous exception (which App Store builds don't have).
 import Cocoa
 import WebKit
 import UserNotifications
@@ -36,11 +38,38 @@ final class Web: WKWebView {
 // A saved route must look like one the server's /login?next= accepts, or it would land on home anyway.
 func isRoute(_ h: String) -> Bool { h.range(of: #"^#/[\w/?=&%.~-]*$"#, options: .regularExpression) != nil }
 
-let base = URL(string: ProcessInfo.processInfo.environment["GIBBOUS_URL"] ?? "http://127.0.0.1:7878")!
+// The user's real home. In the App Sandbox NSHomeDirectory()/homeDirectoryForCurrentUser point into the container.
+let realHome = URL(fileURLWithPath: getpwuid(getuid()).flatMap { $0.pointee.pw_dir.map { String(cString: $0) } } ?? NSHomeDirectory())
+let gibbousHome = realHome.appendingPathComponent(".gibbous")
+
+// Zero-setup sign-in: ~/.gibbous/login-url (written by the server: its port and token) and secret.json. Readable
+// unsandboxed and in the TestFlight build (read-only ~/.gibbous exception); an App Store build can't read them,
+// gets no token, and the page shows its own Sign in screen (paste the link once; the cookie lasts a year).
+func localLink() -> URL? {
+  guard let s = try? String(contentsOf: gibbousHome.appendingPathComponent("login-url"), encoding: .utf8) else { return nil }
+  return URL(string: s.trimmingCharacters(in: .whitespacesAndNewlines))
+}
+func localToken() -> String {
+  let secret = gibbousHome.appendingPathComponent("secret.json")
+  if let t = (try? JSONSerialization.jsonObject(with: Data(contentsOf: secret))).flatMap({ ($0 as? [String: Any])?["accessToken"] as? String }), !t.isEmpty { return t }
+  return localLink().flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "token" }?.value } ?? ""
+}
+func origin(_ u: URL) -> URL? {
+  guard let s = u.scheme?.lowercased(), s == "http" || s == "https", let h = u.host else { return nil }
+  var c = URLComponents(); c.scheme = s; c.host = h; c.port = u.port
+  return c.url
+}
+// Server: $GIBBOUS_URL, else the local server's own link (follows a changed port), else the origin of the last
+// pasted sign-in link, else the default port.
+var base: URL = ProcessInfo.processInfo.environment["GIBBOUS_URL"].flatMap(URL.init(string:))
+  ?? localLink().flatMap(origin)
+  ?? UserDefaults.standard.string(forKey: "server").flatMap(URL.init(string:))
+  ?? URL(string: "http://127.0.0.1:7878")!
 
 func loginURL(next: String = "") -> URL {
-  let secret = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gibbous/secret.json")
-  let token = (try? JSONSerialization.jsonObject(with: Data(contentsOf: secret))) .flatMap { ($0 as? [String: Any])?["accessToken"] as? String } ?? ""
+  let token = localToken()
+  // No token readable: open the app directly. A saved cookie signs in; otherwise the page shows Sign in.
+  if token.isEmpty { return URL(string: base.absoluteString.replacingOccurrences(of: #"/+$"#, with: "", options: .regularExpression) + "/" + next)! }
   var c = URLComponents(url: base.appendingPathComponent("login"), resolvingAgainstBaseURL: false)!
   // Encoded by hand: URLComponents leaves & and = in values, which would split a route like #/search?q=a&b.
   let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
@@ -182,13 +211,18 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
     decisionHandler(.allow)
   }
   func webView(_ w: WKWebView, decidePolicyFor r: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+    // A stale token (server re-keyed) answers 401 at /login: show the page's Sign in screen, not a JSON error.
+    if let h = r.response as? HTTPURLResponse, h.statusCode == 401, r.isForMainFrame, h.url?.path == "/login" {
+      decisionHandler(.cancel); w.load(URLRequest(url: base)); return
+    }
     let attachment = ((r.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? "").lowercased().hasPrefix("attachment")
     decisionHandler(attachment || !r.canShowMIMEType ? .download : .allow)
   }
   func webView(_ w: WKWebView, navigationAction a: WKNavigationAction, didBecome d: WKDownload) { d.delegate = self }
   func webView(_ w: WKWebView, navigationResponse r: WKNavigationResponse, didBecome d: WKDownload) { d.delegate = self }
   func download(_ d: WKDownload, decideDestinationUsing r: URLResponse, suggestedFilename name: String, completionHandler: @escaping (URL?) -> Void) {
-    let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+    // Sandboxed, this is the container's Downloads: a symlink to ~/Downloads (files.downloads.read-write).
+    let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].resolvingSymlinksInPath()
     let stem = (name as NSString).deletingPathExtension, ext = (name as NSString).pathExtension
     var url = dir.appendingPathComponent(name), n = 1
     while FileManager.default.fileExists(atPath: url.path) { n += 1; url = dir.appendingPathComponent(ext.isEmpty ? "\(stem) \(n)" : "\(stem) \(n).\(ext)") }
@@ -253,8 +287,9 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
     let main = NSMenu()
     @discardableResult func sub(_ title: String, _ items: [NSMenuItem]) -> NSMenu { let i = NSMenuItem(); let m = NSMenu(title: title); items.forEach(m.addItem); i.submenu = m; main.addItem(i); return m }
     func item(_ t: String, _ s: Selector?, _ k: String, _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem { let i = NSMenuItem(title: t, action: s, keyEquivalent: k); i.keyEquivalentModifierMask = mods; return i }
+    func action(_ t: String, _ s: Selector) -> NSMenuItem { let i = item(t, s, ""); i.target = self; return i }
     func page(_ t: String, _ cmd: String, _ k: String = "", _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem { let i = item(t, #selector(pageCommand(_:)), k, mods); i.representedObject = cmd; i.target = self; return i }
-    sub("Gibbous", [item("About Gibbous", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""), .separator(), page("Settings…", "settings", ","), .separator(),
+    sub("Gibbous", [item("About Gibbous", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""), .separator(), page("Settings…", "settings", ","), action("Sign In with Link…", #selector(signInWithLink)), .separator(),
                     item("Hide Gibbous", #selector(NSApplication.hide(_:)), "h"), item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
                     item("Show All", #selector(NSApplication.unhideAllApplications(_:)), ""), .separator(), item("Quit Gibbous", #selector(NSApplication.terminate(_:)), "q")])
     sub("File", [page("New Thread", "new", "n"), .separator(), item("Close Window", #selector(NSWindow.performClose(_:)), "w")])
@@ -283,6 +318,28 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
     for (t, a) in [("New Thread", #selector(newThread)), ("Inbox", #selector(openInbox))] { let i = NSMenuItem(title: t, action: a, keyEquivalent: ""); i.target = self; m.addItem(i) }
     return m
   }
+  // Paste a sign-in link (Settings → Devices on a signed-in device, or ~/.gibbous/login-url) or a bare token. The
+  // only sign-in an App Store build has besides the page's own screen; also points the app at another server.
+  @objc func signInWithLink() {
+    let a = NSAlert(); a.messageText = "Sign in with a link"
+    a.informativeText = "Paste the sign-in link from Settings → Devices on a signed-in device, or from ~/.gibbous/login-url on this Mac."
+    a.addButton(withTitle: "Sign In"); a.addButton(withTitle: "Cancel")
+    let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24)); field.placeholderString = "Sign-in link or token"
+    a.accessoryView = field; a.window.initialFirstResponder = field
+    guard a.runModal() == .alertFirstButtonReturn else { return }
+    let raw = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !raw.isEmpty else { return }
+    var token = raw
+    if let u = URL(string: raw), let o = origin(u) {
+      token = URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "token" }?.value ?? ""
+      base = o; defaults.set(o.absoluteString, forKey: "server")
+    }
+    var c = URLComponents(url: base.appendingPathComponent("login"), resolvingAgainstBaseURL: false)!
+    c.queryItems = [URLQueryItem(name: "token", value: token)]
+    c.percentEncodedQuery = c.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+    web.load(URLRequest(url: c.url!))
+  }
+
   // Reload always lands back in the app: reloading a stray page (a file, an error) would keep you stuck on it.
   @objc func reload() { if web.url?.path.hasPrefix("/api/") == true { goHome() } else { web.reload() } }
   @objc func goBack() { if web.canGoBack { web.goBack() } else { goHome() } }
@@ -334,8 +391,14 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
   }
 }
 
-let app = NSApplication.shared
-let delegate = App()
-app.delegate = delegate
-app.setActivationPolicy(.regular)
-app.run()
+// @main rather than top-level code: Xcode compiles a non-main.swift file as a library (scripts/build-mac-app.sh passes
+// -parse-as-library to match).
+@main enum Main {
+  static let delegate = App()
+  static func main() {
+    let app = NSApplication.shared
+    app.delegate = delegate
+    app.setActivationPolicy(.regular)
+    app.run()
+  }
+}

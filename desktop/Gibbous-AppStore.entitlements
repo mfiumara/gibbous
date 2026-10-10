@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- App Sandbox without the ~/.gibbous exception, for App Store review. Sign-in is a pasted link (the page's
+     Sign in screen or Gibbous → Sign In with Link…); the cookie then persists in the app's WebKit store. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- the local server (127.0.0.1) and Tailscale hosts -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- downloads and saved media go to ~/Downloads -->
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	<!-- attaching files: the open panel grants access to what the user picks -->
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- App Sandbox for the TestFlight build (GibbousMac target). The temporary exception lets the app read
+     ~/.gibbous/secret.json and login-url to sign in with no setup. App Review rejects it, so App Store builds use
+     Gibbous-AppStore.entitlements instead and the user pastes a sign-in link once (see ios/README.md). -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- the local server (127.0.0.1) and Tailscale hosts -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- downloads and saved media go to ~/Downloads -->
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	<!-- attaching files: the open panel grants access to what the user picks -->
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/.gibbous/</string>
+	</array>
+</dict>
+</plist>
