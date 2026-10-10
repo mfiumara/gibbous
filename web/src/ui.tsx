@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { screenChange } from './screenTransition';
 import { Download, X } from 'lucide-react';
@@ -373,8 +373,17 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 }
 
 // ── tooltips: one floating bubble for every [data-tip] element ──────────
+// Rich tips: an element with data-tip-rich="<key>" shows richTips.get(key)() instead of its plain data-tip text
+// (which stays as the accessible label). The owner keeps its entry current with useRichTip.
+export const richTips = new Map<string, () => ReactNode>();
+export function useRichTip(render: () => ReactNode) {
+  const key = useId();
+  richTips.set(key, render); // latest render wins: the tip always shows current data
+  useEffect(() => () => { richTips.delete(key); }, [key]);
+  return key;
+}
 export function TooltipHost() {
-  const [tip, setTip] = useState<{ text: string; kbd?: string; x: number; y: number; below: boolean; vw: number } | null>(null);
+  const [tip, setTip] = useState<{ text: string; rich?: string; kbd?: string; x: number; y: number; below: boolean; vw: number } | null>(null);
   useEffect(() => {
     let timer: number | undefined, current: Element | null = null;
     const hide = () => { clearTimeout(timer); current = null; setTip(null); };
@@ -389,7 +398,7 @@ export function TooltipHost() {
         const z = fixedScale(), b = el.getBoundingClientRect();
         const r = { top: b.top / z, bottom: b.bottom / z, left: b.left / z, width: b.width / z };
         const below = r.top < 44;
-        setTip({ text: el.getAttribute('data-tip')!, kbd: el.getAttribute('data-kbd') ?? undefined, x: r.left + r.width / 2, y: below ? r.bottom + 7 : r.top - 7, below, vw: innerWidth / z });
+        setTip({ text: el.getAttribute('data-tip')!, rich: el.getAttribute('data-tip-rich') ?? undefined, kbd: el.getAttribute('data-kbd') ?? undefined, x: r.left + r.width / 2, y: below ? r.bottom + 7 : r.top - 7, below, vw: innerWidth / z });
       }, 380);
     };
     addEventListener('pointerover', over);
@@ -403,7 +412,8 @@ export function TooltipHost() {
   if (!tip) return null;
   // Keep the whole bubble on screen, however wide the text makes it.
   const x = Math.min(Math.max(tip.x, w / 2 + 8), tip.vw - w / 2 - 8);
-  return <div ref={el} className="tip" style={{ left: x, top: tip.y, transform: `translate(-50%, ${tip.below ? '0' : '-100%'})` }}>{tip.text}{tip.kbd && <kbd>{tip.kbd}</kbd>}</div>;
+  const rich = tip.rich ? richTips.get(tip.rich) : undefined;
+  return <div ref={el} className={`tip ${rich ? 'tip-rich' : ''}`} style={{ left: x, top: tip.y, transform: `translate(-50%, ${tip.below ? '0' : '-100%'})` }}>{rich ? rich() : <>{tip.text}{tip.kbd && <kbd>{tip.kbd}</kbd>}</>}</div>;
 }
 
 // ── in-app viewer for images, videos and PDFs ──────────────────────────
@@ -503,3 +513,22 @@ export const fmtDuration = (ms?: number) => {
   const s = Math.round(ms / 1000), m = Math.floor(s / 60);
   return s < 60 ? `${s}s` : m < 10 ? `${m}m ${s % 60}s` : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
 };
+
+// A real moon (the sky's albedo photo) lit from the left edge by `fraction`, like PhaseMoon but large: the unlit side
+// keeps a faint earthshine instead of going black, and the terminator is softened.
+export function MoonDisc({ fraction, size = 96 }: { fraction: number; size?: number }) {
+  const k = Math.min(1, Math.max(0, fraction)), r = 6, c = 7, s = 1 - k; // shadow = the right-lit shape of 1 - k
+  const rx = r * Math.abs(1 - 2 * s);
+  const shadow = s <= 0.005 ? '' : s >= 0.995 ? `M${c} ${c - r}A${r} ${r} 0 1 1 ${c} ${c + r}A${r} ${r} 0 1 1 ${c} ${c - r}Z`
+    : `M${c} ${c - r}A${r} ${r} 0 0 1 ${c} ${c + r}A${rx} ${r} 0 0 ${s > 0.5 ? 1 : 0} ${c} ${c - r}Z`;
+  const id = useId();
+  return (
+    <div className="relative flex-none rounded-full" style={{ width: size, height: size, boxShadow: `0 0 ${size / 3}px -${size / 12}px color-mix(in srgb, var(--color-moon) ${Math.round(10 + 22 * k)}%, transparent)` }}>
+      <div className="absolute inset-0 rounded-full moon-still" style={{ background: 'url(/moon/albedo.webp) center / 102% no-repeat' }} />
+      <svg viewBox="1 1 12 12" width={size} height={size} className="absolute inset-0" aria-hidden>
+        <defs><filter id={id} x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation=".16" /></filter></defs>
+        {shadow && <path d={shadow} fill="rgb(9 10 13 / .9)" filter={`url(#${id})`} />}
+      </svg>
+    </div>
+  );
+}

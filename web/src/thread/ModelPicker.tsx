@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, Zap, Search, Check, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useRpc } from '../rpc';
 import { useStore, toastError } from '../store';
-import { Menu, MoonLoader, inputCls, useSheet } from '../ui';
+import { Menu, MoonLoader, MoonDisc, inputCls, useSheet, useRichTip } from '../ui';
 import type { ModelOptionProvider, SessionLiveInfo, Usage } from '../hermes/contract';
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -105,7 +105,7 @@ export function ApprovalChip({ info, sid }: { info?: SessionLiveInfo; sid?: stri
 
 const fmtK = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}k` : String(n);
 
-// The tooltip: how much of the window is used, in tokens, plus what Hermes knows about compaction and caching.
+// The plain-text tip (screen readers, and the fallback): how much of the window is used, compaction and caching.
 export function contextTip(u: Usage | undefined, compacting?: boolean) {
   if (compacting) return 'Compacting · Hermes is summarizing earlier conversation to free up the context window.';
   const pct = u?.context_percent;
@@ -114,17 +114,45 @@ export function contextTip(u: Usage | undefined, compacting?: boolean) {
   if (u?.context_used != null && u?.context_max) lines.push(`${u.context_estimated ? '≈' : ''}${fmtK(u.context_used)} of ${fmtK(u.context_max)} tokens · ${fmtK(Math.max(0, u.context_max - u.context_used))} left`);
   if (u?.compressions) lines.push(`Compacted ${u.compressions}× this session`);
   if (u?.cache_hit_pct != null) lines.push(`Prompt cache hits ${Math.round(u.cache_hit_pct)}%`);
-  lines.push(pct > 80 ? 'Nearly full: Hermes will compact older turns soon.' : 'Hermes compacts older turns automatically when it fills up.');
+  if (pct > 80) lines.push('Nearly full: Hermes will compact older turns soon.');
   return lines.join('\n');
+}
+
+// The hover card: a large real moon filled to the context level, the percentage under it, then label/value rows
+// (no rules; values right-aligned in tabular figures so 26% / 738k / 1× / 96% line up).
+function ContextCard({ usage: u, compacting }: { usage?: Usage; compacting?: boolean }) {
+  const pct = u?.context_percent;
+  const rows: [string, string][] = [];
+  if (u?.context_used != null && u?.context_max) {
+    rows.push(['Used', `${u.context_estimated ? '≈' : ''}${fmtK(u.context_used)} / ${fmtK(u.context_max)}`]);
+    rows.push(['Left', fmtK(Math.max(0, u.context_max - u.context_used))]);
+  }
+  if (u?.compressions) rows.push(['Compacted', `${u.compressions}×`]);
+  if (u?.cache_hit_pct != null) rows.push(['Cache hits', `${Math.round(u.cache_hit_pct)}%`]);
+  return (
+    <div className="w-[208px] flex flex-col items-center">
+      {compacting ? <MoonLoader size={88} label="Compacting context" /> : <MoonDisc fraction={(pct ?? 0) / 100} size={88} />}
+      <p className="mt-3 text-[22px] leading-none font-medium tabular-nums text-moon">{compacting ? 'Compacting' : pct != null ? `${pct}%` : '—'}</p>
+      <p className="mt-1 label text-ash">{compacting ? 'Summarizing earlier turns' : 'of the context window'}</p>
+      {!compacting && rows.length > 0 && (
+        <dl className="mt-3.5 w-full grid grid-cols-[1fr_auto] gap-x-6 gap-y-1.5 text-[12px]">
+          {rows.map(([k, v]) => <div key={k} className="contents"><dt className="text-dust">{k}</dt><dd className="text-right font-mono tabular-nums text-moon">{v}</dd></div>)}
+        </dl>
+      )}
+      {!compacting && pct != null && pct > 80 && <p className="mt-3 text-[11.5px] text-oxide text-center">Nearly full: Hermes will compact older turns soon.</p>}
+      {pct == null && !compacting && <p className="mt-2 text-[12px] text-dust">No usage reported yet.</p>}
+    </div>
+  );
 }
 
 // How full the context window is, as a moon filling left to right. While Hermes compacts, it cycles through a lunation.
 export function ContextMeter({ usage, compacting }: { usage?: Usage; compacting?: boolean }) {
   const pct = usage?.context_percent ?? 0;
   const tone = pct > 80 ? 'var(--color-oxide)' : pct > 60 ? 'var(--color-halo)' : 'var(--color-tide)';
+  const rich = useRichTip(() => <ContextCard usage={usage} compacting={compacting} />);
   return (
     <span role="img" aria-label={compacting ? 'Compacting context' : `Context window ${pct}% used`}
-      className="inline-grid place-items-center size-8 rounded-lg hover:bg-ridge flex-none" data-tip={contextTip(usage, compacting)}>
+      className="inline-grid place-items-center size-8 rounded-lg hover:bg-ridge flex-none" data-tip={contextTip(usage, compacting)} data-tip-rich={rich}>
       {compacting ? <MoonLoader size={15} label="Compacting context" /> : <PhaseMoon fraction={pct / 100} color={tone} size={15} />}
     </span>
   );

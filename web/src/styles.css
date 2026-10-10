@@ -181,6 +181,9 @@
     color: var(--color-moon); background: color-mix(in srgb, var(--color-crater) 94%, transparent); border: 1px solid var(--color-line); box-shadow: var(--shadow-pop);
     backdrop-filter: blur(12px); animation: fade .14s var(--ease-out) both; }
   .tip kbd { font-family: var(--font-mono); font-size: 10.5px; color: var(--color-dust); margin-left: 6px; }
+  /* Rich tips (data-tip-rich): a small card rather than a label. */
+  .tip.tip-rich { padding: 18px 18px 14px; border-radius: 16px; white-space: normal; max-width: none; font-size: 12px;
+    background: color-mix(in srgb, var(--color-crater) 96%, transparent); box-shadow: var(--shadow-pop), inset 0 1px 0 var(--surface-hi, transparent); }
 
   /* Markdown in the timeline */
   .prose-moon { overflow-wrap: anywhere; line-height: 1.62; }
