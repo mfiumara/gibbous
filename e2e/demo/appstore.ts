@@ -21,6 +21,12 @@ export async function appStoreShots(env: Env, o: { heroId: string; project: stri
   fs.mkdirSync(RAW, { recursive: true });
   const still = (name: string) => { simctl('io', udid, 'screenshot', '--type=png', path.join(RAW, `${name}.png`)); console.log(`  ✓ ${name}.png`); };
   try {
+    // en_US so the status bar reads 9:41, not 09:41.
+    const prefs = path.join(os.homedir(), 'Library/Developer/CoreSimulator/Devices', udid, 'data/Library/Preferences/.GlobalPreferences.plist');
+    fs.mkdirSync(path.dirname(prefs), { recursive: true });
+    execFileSync('defaults', ['write', prefs, 'AppleLocale', 'en_US']);
+    execFileSync('defaults', ['write', prefs, 'AppleLanguages', '-array', 'en-US']);
+    execFileSync('defaults', ['write', prefs, 'AppleICUForce24HourTime', '-bool', 'false']);
     simctl('boot', udid);
     simctl('bootstatus', udid, '-b');
     simctl('ui', udid, 'appearance', 'dark');
@@ -32,27 +38,29 @@ export async function appStoreShots(env: Env, o: { heroId: string; project: stri
     still('00-connect');
     simctl('terminate', udid, 'dev.gibbous.ios');
     // Sign-in link for the demo instance only; passed as a launch argument, never printed.
-    simctl('launch', udid, 'dev.gibbous.ios', '-GibbousConnect', `${BASE}/login?token=${env.token}`);
-    await sleep(7000);
     const data = simctl('get_app_container', udid, 'dev.gibbous.ios', 'data');
     const run = async (js: string, wait = 900) => { fs.mkdirSync(path.join(data, 'Documents'), { recursive: true }); fs.writeFileSync(path.join(data, 'Documents/debug.js'), js); await sleep(wait); };
-    await run(`localStorage.setItem('gibbous.location', JSON.stringify({ lat: 0, lon: 0, src: 'ip', at: Date.now() })); localStorage.setItem('gibbous.chime', '0'); localStorage.setItem('gibbous.iosPushAsked', '1'); localStorage.setItem('gibbous.seen', JSON.stringify({ '*': Date.now() })); return 'ok';`, 1500);
-    // The first signed-in launch asks for notifications (a system alert screenshots can't hide). The page has now
-    // recorded that it asked, so a relaunch comes up without it; the sign-in cookie survives.
-    simctl('terminate', udid, 'dev.gibbous.ios');
-    await sleep(1500);
-    simctl('launch', udid, 'dev.gibbous.ios');
-    await sleep(6000);
-    await run(`location.hash = '#/t/${o.heroId}'; return 'ok';`, 3000);
+    // The first signed-in launch asks for notifications (a system alert screenshots can't hide, and the simulator
+    // can't pre-grant it). Keep feeding the page a script that marks the prompt as asked and mutes the native call,
+    // so neither the login page's redirect nor Home's 1.5 s timer reaches iOS.
+    // The page only posts to native while it believes it's in the iOS shell, so hide the shell flag until the timer
+    // has passed; the reload below brings it back.
+    const mute = `localStorage.setItem('gibbous.iosPushAsked', '1'); if (window.__gibbousShell) window.__gibbousShell = { ...window.__gibbousShell, platform: 'muted' }; delete document.documentElement.dataset.shell; return location.pathname;`;
+    simctl('launch', udid, 'dev.gibbous.ios', '-GibbousConnect', `${BASE}/login?token=${env.token}`);
+    for (let i = 0; i < 50; i++) await run(mute, 160);
+    await sleep(2000);
+    await run(`localStorage.setItem('gibbous.location', JSON.stringify({ lat: 0, lon: 0, src: 'ip', at: Date.now() })); localStorage.setItem('gibbous.chime', '0'); localStorage.setItem('gibbous.seen', JSON.stringify({ '*': Date.now() })); location.hash = '#/t/${o.heroId}'; location.reload(); return 'ok';`, 6000);
     const dismiss = `document.querySelectorAll('button[aria-label=Dismiss]').forEach(b => b.click()); (document.activeElement)?.blur?.();`;
     const scroller = `document.querySelector('.max-w-3xl.px-4.py-6')?.parentElement`;
     await run(`${dismiss} const s = ${scroller}; if (s) s.scrollTop = s.scrollHeight; return 'ok';`, 1500);
     still('01-thread-bottom');
-    await run(`const s = ${scroller}; if (s) s.scrollTop = Math.max(0, s.scrollHeight * 0.45); return 'ok';`, 1200);
-    still('01-thread-mid');
-    await run(`const s = ${scroller}; if (s) s.scrollTop = 0; return 'ok';`, 1200);
-    still('01-thread-top');
-
+    // The hero turn with its patch row opened, so the inline diff shows.
+    await run(`const rows = [...document.querySelectorAll('button, [role=button]')].filter(b => /^patch\\s+src\\/index\\.ts/.test(b.innerText.trim().replace(/\\s+/g, ' ')) || /write_file\\s+src\\/sliding-window\\.ts/.test(b.innerText.trim())); rows.forEach(r => r.click()); setTimeout(() => rows[0]?.scrollIntoView({ block: 'start' }), 400); return rows.length;`, 2000);
+    still('01-thread-diff');
+    // A live turn: reasoning, tool calls and diffs streaming in.
+    const live = await env.api('POST', '/api/threads', { projectId: o.project, title: 'Retry-After headers', prompt: 'Add Retry-After and RateLimit-Reset headers to the HTTP middleware when a request is rejected, and cover it with a test.' });
+    await run(`${dismiss} location.hash = '#/t/${live.id}'; return 'ok';`, 600);
+    for (let i = 0; i < 8; i++) { await sleep(700); still(`01-live-${i}`); }
     const prune = await env.api('POST', '/api/threads', { projectId: o.project, title: 'Prune release branches', prompt: 'Delete the release branches on the remote that are already merged into main.' });
     await threadStatus(env, prune.id, 'needs_input');
     await sleep(1500);
@@ -60,6 +68,7 @@ export async function appStoreShots(env: Env, o: { heroId: string; project: stri
     await run(`${dismiss} const s = ${scroller}; if (s) s.scrollTop = s.scrollHeight; return 'ok';`, 1500);
     still('02-approval');
     await run(`${dismiss} location.hash = '#/inbox'; return 'ok';`, 2500);
+    await run(`${dismiss} if (location.hash !== '#/inbox') location.hash = '#/inbox'; return 'ok';`, 2500);
     still('03-inbox');
     await run(`${dismiss} location.hash = '#/board/${o.project}'; return 'ok';`, 3000);
     still('04-board');
