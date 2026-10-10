@@ -71,3 +71,36 @@ test('cached shares one load within the ttl and drops failures', async () => {
   await new Promise(r => setTimeout(r, 0));
   assert.equal(await cached('k2', 1000, load), 2);
 });
+
+test('links: board db path follows Hermes (default at the root, others under kanban/boards, profiles share the root)', async () => {
+  const { kanbanDbPath } = await import('./kanban.ts');
+  assert.equal(kanbanDbPath('default', {}, '/u'), '/u/.hermes/kanban.db');
+  assert.equal(kanbanDbPath('alpha', {}, '/u'), '/u/.hermes/kanban/boards/alpha/kanban.db');
+  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/u/.hermes/profiles/coder' }, '/u'), '/u/.hermes/kanban/boards/alpha/kanban.db');
+  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/srv/h/profiles/coder' }, '/u'), '/srv/h/kanban/boards/alpha/kanban.db');
+  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/srv/h' }, '/u'), '/srv/h/kanban/boards/alpha/kanban.db');
+  assert.equal(kanbanDbPath('default', { HERMES_KANBAN_HOME: '/k', HERMES_HOME: '/srv/h' }, '/u'), '/k/kanban.db');
+});
+
+test('links: read task_links from a board db (read-only), [] when the db or table is missing', async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const { DatabaseSync } = await import('node:sqlite');
+  const { readLinks, boardLinks } = await import('./kanban.ts');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gib-links-'));
+  try {
+    const dir = path.join(home, 'kanban', 'boards', 'alpha');
+    fs.mkdirSync(dir, { recursive: true });
+    const w = new DatabaseSync(path.join(dir, 'kanban.db'));
+    w.exec('PRAGMA journal_mode = WAL; CREATE TABLE task_links (parent_id TEXT NOT NULL, child_id TEXT NOT NULL, PRIMARY KEY (parent_id, child_id));');
+    w.exec(`INSERT INTO task_links VALUES ('t_a', 't_b'), ('t_b', 't_c'), ('t_a', 't_c')`);
+    assert.deepEqual(readLinks(path.join(dir, 'kanban.db')), [{ parent: 't_a', child: 't_b' }, { parent: 't_b', child: 't_c' }, { parent: 't_a', child: 't_c' }]);
+    assert.deepEqual(await boardLinks('alpha', { HERMES_KANBAN_HOME: home }), { links: [{ parent: 't_a', child: 't_b' }, { parent: 't_b', child: 't_c' }, { parent: 't_a', child: 't_c' }] });
+    // The reader never writes: the db still takes writes from Hermes' side while it's open.
+    w.exec(`INSERT INTO task_links VALUES ('t_c', 't_d')`);
+    assert.equal(readLinks(path.join(dir, 'kanban.db')).length, 4);
+    w.close();
+    assert.deepEqual(await boardLinks('missing', { HERMES_KANBAN_HOME: home }), { links: [] });
+    const bare = path.join(home, 'bare.db'); new DatabaseSync(bare).close();
+    assert.deepEqual(readLinks(bare), []);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

@@ -35,7 +35,7 @@ const COMMANDS: [string, string][] = [
   ['⌘.', 'Stop the running turn'], ['⌘⇧A', 'Allow the pending approval once'], ['⌘\\', 'Toggle side panel'],
   ['Esc', 'Close, cancel an edit or leave a box; press again to go back to the thread list'],
   ['↑ in empty message box', 'Edit your last message'], ['Ctrl N / Ctrl P', 'In the search box, next / previous result'],
-  ['j / k on a kanban board', 'Next / previous card'], ['h / l on a kanban board', 'Previous / next column'],
+  ['j / k on a kanban board', 'Next / previous card'], ['h / l on a kanban board', 'Previous / next column'], ['v on a kanban board', 'Switch between board and dependency graph'],
 ];
 const HELP = [...helpRows(BINDINGS), { group: 'Commands', rows: COMMANDS }];
 

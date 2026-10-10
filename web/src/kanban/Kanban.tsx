@@ -1,12 +1,14 @@
 // Hermes' kanban, read and acted on through the Gibbous server (server/kanban.ts). Gibbous keeps no tasks of its own:
 // `#/board/<projectId>` shows the board matched to that project, `#/kanban` lists every board, `#/kanban/<slug>` opens one.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Menu as MenuIcon, Plus, Archive, Link2, Unlink, Settings2, GitBranch, MessageSquare, AlertTriangle, Ban, Search, Eye, Undo2, Trash2, ChevronRight, KanbanSquare, CornerDownLeft } from 'lucide-react';
+import { Menu as MenuIcon, Plus, Archive, Link2, Unlink, Settings2, GitBranch, MessageSquare, AlertTriangle, Ban, Search, Eye, Undo2, Trash2, ChevronRight, KanbanSquare, CornerDownLeft, Network, Columns3 } from 'lucide-react';
 import { api, type KanbanBoard, type KanbanCard, type KanbanColumn, type BoardMatch, type Project } from '../api';
 import { useStore, toastError } from '../store';
-import { Button, IconButton, Modal, Field, Menu, MenuItem, Moon, MoonLoader, Empty, Elapsed, Skeleton, inputCls, go, NO_PREDICT } from '../ui';
+import { Button, IconButton, Modal, Field, Menu, MenuItem, Moon, MoonLoader, Empty, Elapsed, Skeleton, Segmented, inputCls, go, NO_PREDICT } from '../ui';
 import { TranscriptModal } from '../thread/TranscriptModal';
 import { LABEL, HINT, visibleColumns, stepColumn, filterColumns, eventGist, agoS } from './board';
+import { GraphView } from './Graph';
+import { graphTasks, type Link } from './graphLayout';
 
 type Boards = { boards: KanbanBoard[]; current: string; matches: Record<string, BoardMatch> };
 type BoardData = { columns: KanbanColumn[]; assignees: string[]; now: number };
@@ -19,6 +21,12 @@ interface Detail {
 }
 
 const base = (slug: string) => `/api/kanban/boards/${encodeURIComponent(slug)}/tasks`;
+// Board or Graph, and the graph's "hide done", remembered per board. Hide done defaults on once done tasks pile up.
+type ViewKind = 'board' | 'graph';
+const viewKey = (slug: string) => `gibbous.kanban.view.${slug}`, hideKey = (slug: string) => `gibbous.kanban.hideDone.${slug}`;
+const stored = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+const store = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
+const MANY_DONE = 12;
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName); };
 const HOW: Record<BoardMatch['how'], string> = { linked: 'linked by hand', workdir: 'board workdir is this project', 'hermes-project': 'board is scoped to a project with this folder', inside: 'board workdir is inside this project' };
 
@@ -149,17 +157,34 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
   const [creating, setCreating] = useState(false);
   const [linkMenu, setLinkMenu] = useState(false);
   const [more, setMore] = useState<Record<string, boolean>>({});
+  const [view, setViewState] = useState<ViewKind>(() => stored(viewKey(board.slug)) === 'graph' ? 'graph' : 'board');
+  const setView = (v: ViewKind) => { store(viewKey(board.slug), v); setViewState(v); };
+  const [hideDonePref, setHideDonePref] = useState(() => stored(hideKey(board.slug)));
+  const [links, setLinks] = useState<Link[]>();
+  const loadLinks = useCallback(() => api.get<{ links: Link[] }>(`/api/kanban/boards/${encodeURIComponent(board.slug)}/links`).then(r => setLinks(r.links), e => { setErr(e.message); setLinks(l => l ?? []); }), [board.slug]);
+  usePoll(loadLinks, 8000, view === 'graph');
+  useEffect(() => { if (view === 'graph') loadLinks(); }, [view, loadLinks]);
   const load = useCallback(() => api.get<BoardData>(`${base(board.slug)}${archived ? '?archived=1' : ''}`).then(d => { setData(d); setErr(undefined); }, e => setErr(e.message)), [board.slug, archived]);
   usePoll(load, 4000);
   useEffect(() => { load(); }, [load]);
   const cols = useMemo(() => data ? filterColumns(visibleColumns(data.columns, archived), q) : [], [data, archived, q]);
   const open_ = data?.columns.reduce((n, c) => n + (c.name === 'archived' || c.name === 'done' ? 0 : c.tasks.length), 0) ?? 0;
   const scroller = useRef<HTMLDivElement>(null);
+  const graph = useMemo(() => {
+    if (!data || view !== 'graph') return null;
+    const all = visibleColumns(data.columns, archived).flatMap(c => c.tasks);
+    const doneCount = all.filter(t => t.status === 'done').length;
+    const hideDone = hideDonePref == null ? doneCount > MANY_DONE : hideDonePref === '1';
+    const kept = graphTasks(all, links ?? [], hideDone);
+    const tasks = filterColumns([{ name: 'todo', tasks: kept }], q)[0].tasks;
+    return { tasks, doneCount, hideDone };
+  }, [data, view, archived, links, hideDonePref, q]);
 
   // h/l: jump to the previous/next column with cards (j/k inside the column are App.tsx's [data-vim-list] walk).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key !== 'h' && e.key !== 'l') || e.metaKey || e.ctrlKey || e.altKey || typing(e) || document.querySelector('[role=dialog], [role=menu], dialog[open]')) return;
+      if (e.key === 'v' && !e.metaKey && !e.ctrlKey && !e.altKey && !typing(e) && !document.querySelector('[role=dialog], [role=menu], dialog[open]')) { e.preventDefault(); setView(view === 'board' ? 'graph' : 'board'); return; }
+      if (view !== 'board' || (e.key !== 'h' && e.key !== 'l') || e.metaKey || e.ctrlKey || e.altKey || typing(e) || document.querySelector('[role=dialog], [role=menu], dialog[open]')) return;
       const sections = [...(scroller.current?.querySelectorAll<HTMLElement>('section[data-col]') ?? [])];
       const at = sections.findIndex(s => s.contains(document.activeElement));
       const to = at < 0 ? stepColumn(cols, -1, 1) : stepColumn(cols, at, e.key === 'l' ? 1 : -1);
@@ -170,7 +195,7 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [cols]);
+  }, [cols, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const unlink = () => project && api.patch(`/api/projects/${project.id}`, { kanbanBoard: '' }).then(() => { setLinkMenu(false); onRelink(); }, toastError);
   const relink = (slug: string) => project && api.patch(`/api/projects/${project.id}`, { kanbanBoard: slug }).then(() => { setLinkMenu(false); onRelink(); }, toastError);
@@ -185,6 +210,10 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
         </div>
         <span className="hidden md:inline label text-ash" data-tip="Not done or archived">{open_} open</span>
         <div className="ml-auto flex items-center gap-1">
+          <Segmented label="View" value={view} onChange={setView} options={[
+            { value: 'board', label: <span className="inline-flex items-center gap-1.5"><Columns3 size={14} /><span className="hidden sm:inline">Board</span></span>, tip: 'Columns by status (v)' },
+            { value: 'graph', label: <span className="inline-flex items-center gap-1.5"><Network size={14} /><span className="hidden sm:inline">Graph</span></span>, tip: 'Dependencies: what waits on what (v)' },
+          ]} />
           <label className="hidden sm:flex items-center gap-1.5 well rounded-lg px-2 h-7.5 w-44 focus-within:border-tide/60"><Search size={13} className="text-ash flex-none" />
             <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); setQ(''); (e.target as HTMLElement).blur(); } }} placeholder="Filter cards" aria-label="Filter cards" className="bg-transparent text-[13px] w-full focus:outline-none placeholder:text-ash" {...NO_PREDICT} /></label>
           <IconButton label={archived ? 'Hide archived' : 'Show archived'} aria-pressed={archived} className={archived ? 'text-tide' : ''} onClick={() => setArchived(!archived)}><Archive size={16} /></IconButton>
@@ -202,7 +231,10 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
         </div>
       </Header>
       {err && <p className="px-4 py-2 text-[13px] text-oxide select-text border-b border-line">{err}</p>}
-      {!data ? <div className="flex gap-3 p-3">{[0, 1, 2].map(i => <Skeleton key={i} className="h-40 w-[280px] rounded-2xl" />)}</div> : (
+      {view === 'graph' ? (!data || !links || !graph ? <div className="grid place-items-center flex-1"><MoonLoader size={36} label="Loading dependencies" /></div>
+        : <GraphView tasks={graph.tasks} links={links} now={data.now} hideDone={graph.hideDone} doneCount={graph.doneCount} onOpen={setOpen}
+          onHideDone={v => { store(hideKey(board.slug), v ? '1' : '0'); setHideDonePref(v ? '1' : '0'); }} fitKey={`${board.slug}|${archived}|${graph.hideDone}|${q.trim()}`} />)
+      : !data ? <div className="flex gap-3 p-3">{[0, 1, 2].map(i => <Skeleton key={i} className="h-40 w-[280px] rounded-2xl" />)}</div> : (
         <div ref={scroller} data-vim-list className="flex-1 min-h-0 overflow-x-auto snap-x snap-mandatory sm:snap-none overscroll-x-contain">
           <div className="flex gap-3 p-3 h-full w-max min-w-full">
             {cols.map(col => {

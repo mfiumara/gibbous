@@ -443,3 +443,27 @@
 .turn-swap.is-on .turn-a { opacity: 0; filter: blur(3px); translate: 0 -2px; transition-duration: 380ms; }
 .turn-swap.is-on .turn-b { opacity: 1; filter: none; translate: 0; transition-duration: 380ms; color: var(--color-moon); }
 @media (prefers-reduced-motion: reduce) { .turn-swap .turn-a, .turn-swap .turn-b { transition-property: opacity; } }
+
+/* ── Kanban dependency graph (kanban/Graph.tsx) ───────────────────────────────────────────────────────────────────
+   One transformed canvas; the dot grid is a separate layer that follows pan/zoom (Graph.tsx apply()). */
+.graph-canvas { cursor: grab; }
+.graph-grid { background-image: radial-gradient(color-mix(in srgb, var(--color-moon) 9%, transparent) 1px, transparent 1.2px); }
+.graph-canvas[data-grabbing] { cursor: grabbing; }
+.graph-node { background: color-mix(in srgb, var(--color-crater) 92%, var(--color-basalt)); border: 1px solid var(--color-line);
+  box-shadow: inset 0 1px 0 var(--surface-hi), 0 1px 2px rgb(0 0 0 / .14); transition: opacity .15s ease, border-color .15s ease; }
+.graph-node.is-done { background: color-mix(in srgb, var(--color-crater) 55%, transparent); }
+.graph-node.is-running { border-color: color-mix(in srgb, var(--color-tide) 45%, transparent); box-shadow: inset 0 1px 0 var(--surface-hi), 0 0 18px -6px color-mix(in srgb, var(--color-tide) 50%, transparent); }
+/* Hover: the canvas gets [data-hovering]; the task's ancestors/descendants get [data-lit] and their edges a cloned top layer. */
+.graph-canvas[data-hovering] .graph-node:not([data-lit]) { opacity: .3; }
+.graph-node[data-lit] { border-color: color-mix(in srgb, var(--color-tide) 40%, transparent); }
+.graph-node[data-lit="focus"] { border-color: color-mix(in srgb, var(--color-tide) 80%, transparent); box-shadow: inset 0 1px 0 var(--surface-hi), 0 8px 24px -10px rgb(0 0 0 / .5); }
+.graph-node:focus-visible { outline-offset: 3px; border-radius: 12px; }
+.graph-edge { fill: none; stroke: var(--color-dust); stroke-opacity: .5; stroke-width: 1.4; transition: stroke-opacity .2s ease, stroke .2s ease; }
+.graph-edge.resolved { stroke: var(--color-ash); stroke-opacity: .28; }
+.graph-edge.back { stroke: var(--color-oxide); stroke-opacity: .55; stroke-dasharray: 4 4; }
+.graph-canvas[data-hovering] .graph-edge:not(.hot) { stroke-opacity: .07; }
+.graph-edge.hot { stroke: var(--color-tide); stroke-opacity: .95; stroke-width: 2; }
+[data-theme="light"] .graph-edge { stroke-opacity: .55; }
+[data-theme="light"] .graph-edge.resolved { stroke-opacity: .35; }
+[data-theme="light"] .graph-node { background: var(--color-crater); }
+[data-theme="light"] .graph-node.is-done { background: color-mix(in srgb, var(--color-crater) 60%, var(--color-basalt)); }

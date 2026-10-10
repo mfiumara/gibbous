@@ -3,7 +3,9 @@
 // `hermes kanban` CLI and agents use). REST rather than the CLI: one call per board instead of a ~0.8s Python start
 // per request, and the CLI refuses even `list` inside delegated agent contexts (its read path writes).
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { Backend } from './hermes.ts';
 import type { Project } from './store.ts';
 import { openStateDb } from './subagents.ts';
@@ -162,6 +164,40 @@ export function workerSession(profile: string | null, title: string, startedAt: 
       ORDER BY (title = ?) DESC, started_at LIMIT 1`).get(startedAt - 5, (endedAt ?? Date.now() / 1000) + 5, title) as { id: string } | undefined;
     return row?.id ?? null;
   } catch { return null; }
+}
+
+// ── dependency links (straight from the board's SQLite, read-only) ─────────
+// The /board payload only carries link COUNTS; the graph view needs the edges. Hermes keeps them in `task_links` of the
+// board's own db: `default` → <root>/kanban.db, others → <root>/kanban/boards/<slug>/kanban.db, where <root> is
+// HERMES_KANBAN_HOME, else the default Hermes root (boards are shared across profiles; kanban_db.kanban_home and
+// hermes_constants.get_default_hermes_root).
+export function kanbanDbPath(s: string, env: NodeJS.ProcessEnv = process.env, homedir = os.homedir()): string {
+  const native = path.join(homedir, '.hermes'), h = env.HERMES_HOME?.trim();
+  const root = env.HERMES_KANBAN_HOME?.trim()
+    || (!h || inside(path.resolve(h), native) ? native                                 // ~/.hermes, or a profile under it
+      : path.basename(path.dirname(h)) === 'profiles' ? path.dirname(path.dirname(h)) : h); // custom root (/x/profiles/p → /x)
+  return s === 'default' ? path.join(root, 'kanban.db') : path.join(root, 'kanban', 'boards', s, 'kanban.db');
+}
+
+export interface KanbanLink { parent: string; child: string }
+const linkDbs = new Map<string, DatabaseSync>();
+// node:sqlite opens a live WAL db read-only fine (Python's `mode=ro` doesn't). A missing db or table = no links.
+export function readLinks(file: string): KanbanLink[] {
+  if (!fs.existsSync(file)) { linkDbs.get(file)?.close(); linkDbs.delete(file); return []; }
+  try {
+    let db = linkDbs.get(file);
+    if (!db) { db = new DatabaseSync(file, { readOnly: true }); db.exec('PRAGMA busy_timeout = 2000'); linkDbs.set(file, db); }
+    return (db.prepare('SELECT parent_id AS parent, child_id AS child FROM task_links ORDER BY rowid').all() as any[])
+      .map(r => ({ parent: String(r.parent), child: String(r.child) }));
+  } catch (e: any) {
+    if (/no such table/.test(String(e?.message))) return [];
+    linkDbs.get(file)?.close(); linkDbs.delete(file);   // a replaced file: reopen next time
+    throw new KanbanError(502, `Could not read the board's links: ${e?.message ?? e}`);
+  }
+}
+
+export function boardLinks(s: string, env: NodeJS.ProcessEnv = process.env) {
+  return cached(`links:${s}`, 2000, async () => ({ links: readLinks(kanbanDbPath(s, env)) }));
 }
 
 // Mutations: one verb each, mapped onto the plugin's PATCH/POST so state transitions stay Hermes' own.

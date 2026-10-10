@@ -361,6 +361,7 @@ route('GET', '/api/kanban/boards', async () => {
   return { boards, current, matches: kanban.matchBoards(state.projects, boards, hermesProjects, kanban.realpathOr) };
 });
 route('GET', '/api/kanban/boards/:slug/tasks', async (p, _, u) => kanban.boardTasks(await kb(), kslug(p.slug), u.searchParams.get('archived') === '1'));
+route('GET', '/api/kanban/boards/:slug/links', async p => kanban.boardLinks(kslug(p.slug)));
 route('GET', '/api/kanban/boards/:slug/tasks/:id', async p => kanban.taskDetail(await kb(), kslug(p.slug), kanban.taskId(p.id)));
 route('POST', '/api/kanban/boards/:slug/tasks', async (p, b) => kanban.createTask(await kb(), kslug(p.slug), b));
 route('POST', '/api/kanban/boards/:slug/tasks/:id/:verb', async (p, b) => kanban.act(await kb(), kslug(p.slug), kanban.taskId(p.id), p.verb, b));
