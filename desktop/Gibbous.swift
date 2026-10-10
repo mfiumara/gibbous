@@ -10,6 +10,9 @@ import Carbon.HIToolbox
 // full screen; ⌃⌘F, the green button and View → Enter Full Screen still toggle it.
 final class Window: NSWindow {
   override func cancelOperation(_ sender: Any?) {}
+  // An Esc the page didn't preventDefault (a native <dialog> closing itself did that) also reaches the window's
+  // keyDown, which leaves full screen. Swallow it here too.
+  override func keyDown(with e: NSEvent) { if e.keyCode == 53 { return }; super.keyDown(with: e) }
 }
 
 // The page, minus the browser: no pinch zoom, swipes or link previews, and a context menu without Reload/Back/

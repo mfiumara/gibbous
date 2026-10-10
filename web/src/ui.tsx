@@ -207,7 +207,10 @@ export function Modal({ open, onClose, title, children, wide, bottom }: { open: 
     if (!open && d.open) { d.close(); const t = setTimeout(() => setMounted(false), 220); return () => clearTimeout(t); }
   }, [open]);
   return (
-    <dialog ref={ref} onClose={onClose} onClick={e => { if (e.target === ref.current) onClose(); }}
+    // Esc is handled here, not left to the dialog's built-in cancel: unhandled (not preventDefault'ed), Gibbous.app's
+    // window also takes the key as "leave full screen".
+    <dialog ref={ref} onClose={onClose} onCancel={e => e.preventDefault()} onClick={e => { if (e.target === ref.current) onClose(); }}
+      onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); } }}
       className={`sheet surface m-auto w-[calc(100%-24px)] ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl text-moon p-0 ${bottom ? 'dialog-bottom' : ''}`}>
       {mounted && <div className="p-6 space-y-4">
         <h2 className="text-[17px] font-bold tracking-[-.01em]">{title}</h2>
