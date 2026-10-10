@@ -4,8 +4,7 @@ import { api } from '../api';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
 import { Moon, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
-import { bindQueue, syncWithHermes, onQueuedSent } from './queue';
-import { reduce, checkpointFor, endedLabel, type Timeline, type Item } from './timeline';
+import { reduce, checkpointFor, endedLabel, withQueuedBubble, type Timeline, type Item } from './timeline';
 import { getCached, putCached, onCached, fromResume, reconcile, revive } from './cache';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
 import { useSubagents, SubagentLine, SubagentsPanel, SubagentCard } from './Subagents';
@@ -115,6 +114,7 @@ export function ThreadView({ id }: { id: string }) {
           if (ev.type === 'message.complete' && handsFree.on && typeof ev.payload?.text === 'string' && ev.payload.text) speak(ev.payload.text, () => dispatchEvent(new CustomEvent('gibbous:listen')));
           if (ev.type === 'preview.open' && ev.payload?.url) { setPreviewUrl(ev.payload.url); setPanel('preview'); }
           setTl(t => reduce(t, ev));
+          if ((ev.type === 'message.complete' || ev.type === 'message.start') && pendingSent.current.length) flushSent();
         };
         const offs = [rpc.onSession(session_id, onEv)];
         unsub = () => offs.forEach(f => f());
@@ -135,7 +135,6 @@ export function ThreadView({ id }: { id: string }) {
           anchor.current = row ? { id: row.dataset.k!, y: row.offsetTop - el!.scrollTop } : null;
         }
         initial.current = new Set(items.map(i => i.id));
-        bindQueue(id, rpc, r.session_id); syncWithHermes(id, r.queued?.user);
         setTl({ ...next, items });
         setSid(r.session_id);
         if (!prev.length) { stick.current = !SCROLL.has(id); restore.current = SCROLL.has(id); }
@@ -153,10 +152,24 @@ export function ThreadView({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, thread?.sessionId]);
 
-  // A queued message that just started its turn (queue.ts hands them to Hermes one at a time): show it as sent.
-  useEffect(() => onQueuedSent((thread, m) => {
-    if (thread === id) setTl(t => ({ ...t, items: [...t.items, { kind: 'user', id: `sent-${m.id}`, text: m.shown, at: Date.now() }] }));
-  }), [id]);
+  // A queued message the server just handed to Hermes (its turn starts now): show it as sent. The server's event can
+  // beat this tab's own message.complete for the turn before; then it waits for that end (or the new start), so the
+  // bubble never lands inside the previous reply.
+  const pendingSent = useRef<{ id: string; shown: string; at: number }[]>([]);
+  const flushSent = () => { const ms = pendingSent.current; pendingSent.current = []; setTimeout(() => setTl(t => ms.reduce((tt, m) => ({ ...tt, items: withQueuedBubble(tt.items, m) }), t))); };
+  useEffect(() => {
+    pendingSent.current = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const f = (e: Event) => {
+      const d = (e as CustomEvent<{ threadId: string; id: string; shown: string }>).detail;
+      if (d?.threadId !== id) return;
+      pendingSent.current.push({ id: d.id, shown: d.shown, at: Date.now() });
+      if (!tlRef.current.running) flushSent();
+      else { clearTimeout(timer); timer = setTimeout(() => { if (pendingSent.current.length) flushSent(); }, 4000); }
+    };
+    addEventListener('gibbous:queueSent', f);
+    return () => { removeEventListener('gibbous:queueSent', f); clearTimeout(timer); };
+  }, [id]);
 
   // A prefetch (sidebar hover/press) that lands while we still show skeletons: paint it now.
   useEffect(() => onCached(k => {

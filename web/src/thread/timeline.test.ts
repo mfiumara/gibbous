@@ -1,7 +1,7 @@
 // Replays a real Hermes event capture through the reducer: `node --test web/src/thread/timeline.test.ts`
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reduce, MOON_VERBS, fromHistory, fromStored, checkpointFor, parseUserText, withInflight, endedLabel, type Timeline } from './timeline.ts';
+import { reduce, MOON_VERBS, fromHistory, fromStored, checkpointFor, parseUserText, withInflight, endedLabel, withQueuedBubble, type Item, type Timeline } from './timeline.ts';
 
 const ev = (type: string, payload: any = {}) => ({ type, session_id: 's', payload });
 
@@ -149,4 +149,14 @@ test('a queued prompt that never ran (left behind by a Stop) is not shown as sen
     { role: 'assistant', text: '', timestamp: 110 } as never,
   ]);
   assert.deepEqual(items.filter(i => i.kind === 'user').map(i => (i as { text: string }).text), ['long job']);
+});
+
+test('a queued message shows once as sent, even when the resume already brought it in flight', () => {
+  const reply: Item[] = [{ kind: 'user', id: 'u1', text: 'first', at: 1 }, { kind: 'assistant', id: 'a1', text: 'ok' }, { kind: 'turn', id: 't1', at: 2 }];
+  const once = withQueuedBubble(reply, { id: 'q1', shown: 'next one', at: 3 });
+  assert.deepEqual(once.at(-1), { kind: 'user', id: 'sent-q1', text: 'next one', at: 3 });
+  assert.equal(withQueuedBubble(once, { id: 'q1', shown: 'next one' }), once);
+  const inflight: Item[] = [...reply, { kind: 'user', id: 'inflight', text: '@file:/x/a.ts\nnext one', at: 3 }];
+  assert.equal(withQueuedBubble(inflight, { id: 'q2', shown: 'next one' }), inflight);
+  assert.equal(withQueuedBubble(reply, { id: 'q3', shown: 'first' }).length, 4); // same text as an older, answered message
 });

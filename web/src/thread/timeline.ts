@@ -254,6 +254,17 @@ export function parseUserText(text: string) {
   return { images, files, body };
 }
 
+// A queued message the Gibbous server just handed to Hermes (its `queueSent` event): show it as sent, once. A resume
+// that landed first already has it as the in-flight user row (after the last reply), so that one isn't doubled.
+export function withQueuedBubble(items: Item[], m: { id: string; shown: string; at?: number }): Item[] {
+  const id = `sent-${m.id}`;
+  if (items.some(i => i.id === id)) return items;
+  const lastUser = items.findLastIndex(i => i.kind === 'user'), lastReply = items.findLastIndex(i => i.kind === 'assistant' || i.kind === 'turn');
+  const u = items[lastUser];
+  if (u?.kind === 'user' && lastUser > lastReply && parseUserText(u.text).body === parseUserText(m.shown).body) return items;
+  return [...items, { kind: 'user', id, text: m.shown, at: m.at ?? Date.now() }];
+}
+
 // Turn-footer tooltip: just the time for today's turns, the day too for older ones, the year only when it differs.
 export function endedLabel(at: number, now = Date.now()): string {
   const d = new Date(at), n = new Date(now);

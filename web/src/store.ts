@@ -122,6 +122,8 @@ rpc.onGibbous = (kind, data) => {
       else if (document.visibilityState === 'visible' && !(document.hasFocus() && showsTarget(data.url, location.hash))) s.toast({ title: data.title, body: data.body, url: data.url });
       break;
     }
+    // The server sent a queued prompt to Hermes: the open thread shows it as sent (ThreadView listens).
+    case 'queueSent': dispatchEvent(new CustomEvent('gibbous:queueSent', { detail: data })); break;
     case 'reload': s.load(); break;
     case 'build': useStore.setState({ build: data }); break;
   }

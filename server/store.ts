@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import type { QueueItem } from './queue.ts';
 
 export const GIBBOUS_HOME = process.env.GIBBOUS_HOME ?? `${process.env.HOME}/.gibbous`;
 // Migration from the project's working name (~/.phoebe): move the folder, rewrite absolute paths in state.
@@ -62,6 +63,8 @@ export interface Thread {
   // session, so Gibbous only reads it; "Continue in Gibbous" copies it into a thread Gibbous owns.
   source?: string; readOnly?: boolean;
   pinned?: boolean;                     // shown at the top of the sidebar
+  // Prompts typed while a turn runs (queue.ts): the server sends the head when a turn ends. A Stop pauses the line.
+  queue?: QueueItem[]; queuePaused?: boolean;
   status: ThreadStatus; lastText?: string; error?: string;
   createdAt: number; updatedAt: number;
 }
@@ -100,7 +103,10 @@ export function migrate(raw: any): State {
   return {
     ...rest,
     projects: (rest.projects ?? []).map(({ playbookId: _, ...p }: any) => p),
-    threads: (rest.threads ?? []).map(({ taskId: _a, planId: _b, planned: _c, parentId: _d, ...t }: any) => ({ ...t, role: 'chat' })),
+    threads: (rest.threads ?? []).map(({ taskId: _a, planId: _b, planned: _c, parentId: _d, queue, ...t }: any) => ({
+      ...t, role: 'chat',
+      ...(Array.isArray(queue) && queue.length ? { queue: queue.filter((m: any) => typeof m?.id === 'string' && typeof m?.text === 'string').map((m: any) => ({ id: m.id, text: m.text, shown: typeof m.shown === 'string' ? m.shown : m.text, at: Number(m.at) || 0 })) } : {}),
+    })),
     hosts: rest.hosts ?? [],
     settings: { ...defaultSettings(), ...settings, notify: { ...defaultSettings().notify, ...keep(notify, ['input', 'done', 'failure'] as const) } },
     push: { subs: [], ...rest.push },

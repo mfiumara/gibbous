@@ -23,6 +23,7 @@ import { listSubagents } from './subagents.ts';
 import { sessionDirs } from './sessionDirs.ts';
 import { openingMessage } from './titles.ts';
 import { liveBranch, prBadges, refreshPrs } from './prs.ts';
+import { MAX_QUEUE, MAX_TEXT as MAX_QUEUE_TEXT } from './queue.ts';
 
 const PORT = Number(process.env.GIBBOUS_PORT ?? 7878);
 const DIST = path.resolve(import.meta.dirname, '../web/dist');
@@ -203,6 +204,30 @@ route('POST', '/api/threads/:id/attach', async p => ({ session_id: await orch.wi
   return sid;
 }) }));
 route('POST', '/api/threads/:id/send', async (p, b) => { await orch.send(need(orch.thread(p.id), 'thread'), String(b.text)); return { ok: true }; });
+// The prompt queue (queue.ts): messages typed while a turn runs wait here, editable, and go out one turn at a time.
+const queueText = (v: unknown, what = 'text') => {
+  if (typeof v !== 'string' || !v.trim()) throw new HttpError(400, `${what} must be a non-empty string`);
+  if (v.length > MAX_QUEUE_TEXT) throw new HttpError(413, `${what} is too long`);
+  return v;
+};
+const queued = (p: Record<string, string>) => {
+  const t = need(orch.thread(p.id), 'thread');
+  if (t.readOnly) throw new HttpError(409, 'this conversation is read-only in Gibbous');
+  return { t, m: p.qid ? need(t.queue?.find(x => x.id === p.qid), 'queued message') : undefined };
+};
+route('POST', '/api/threads/:id/queue', (p, b) => {
+  const { t } = queued(p);
+  if ((t.queue?.length ?? 0) >= MAX_QUEUE) throw new HttpError(409, `the queue holds at most ${MAX_QUEUE} messages`);
+  return orch.enqueue(t, queueText(b.text), b.shown == null ? undefined : queueText(b.shown, 'shown'));
+});
+route('POST', '/api/threads/:id/queue/resume', async p => { await orch.resumeQueue(queued(p).t); return { ok: true }; });
+route('POST', '/api/threads/:id/queue/reorder', (p, b) => {
+  if (!Array.isArray(b.ids)) throw new HttpError(400, 'ids must be a list');
+  orch.reorderQueued(queued(p).t, b.ids.map(String)); return { ok: true };
+});
+route('PATCH', '/api/threads/:id/queue/:qid', (p, b) => { const { t, m } = queued(p); orch.editQueued(t, m!.id, queueText(b.text), b.shown == null ? undefined : queueText(b.shown, 'shown')); return { ok: true }; });
+route('DELETE', '/api/threads/:id/queue/:qid', p => { const { t, m } = queued(p); orch.removeQueued(t, m!.id); return { ok: true }; });
+route('POST', '/api/threads/:id/queue/:qid/now', async p => { const { t, m } = queued(p); await orch.sendQueuedNow(t, m!.id); return { ok: true }; });
 route('POST', '/api/threads/:id/interrupt', async p => { await orch.interrupt(need(orch.thread(p.id), 'thread')); return { ok: true }; });
 route('POST', '/api/threads/:id/archive', async (p, b) => { await orch.archiveThread(need(orch.thread(p.id), 'thread'), !!b.removeWorktree); return { ok: true }; });
 route('DELETE', '/api/threads/:id', async (p, _, u) => { await orch.deleteThread(need(orch.thread(p.id), 'thread'), u.searchParams.get('removeWorktree') === '1'); return { ok: true }; });

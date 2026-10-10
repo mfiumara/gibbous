@@ -40,6 +40,8 @@ export function fakeHermes(agent: Agent) {
       }, 5);
       return { status: 'streaming' };
     },
+    // Stops the running turn (its own reply never arrives in these tests: scripted turns that hang).
+    'session.interrupt': p => { setTimeout(() => emit('message.complete', p.session_id, { text: '', status: 'interrupted' }), 5); return { ok: true }; },
     'session.history': p => ({ messages: (byStored(p.session_id)?.prompts ?? []).map(t => ({ role: 'user', text: t })) }),
   };
   wss.on('connection', ws => {
@@ -56,5 +58,6 @@ export function fakeHermes(agent: Agent) {
   const port = () => (wss.address() as { port: number }).port;
   // Drop a runtime session the way Hermes' orphan reaper does (the stored session survives).
   const reap = (live: string) => { sessions.delete(live); };
-  return { port, reap, close: () => new Promise<void>(r => { for (const s of sockets) s.terminate(); wss.close(() => r()); }) };
+  const prompts = (storedId: string) => byStored(storedId)?.prompts ?? [];
+  return { port, reap, prompts, close: () => new Promise<void>(r => { for (const s of sockets) s.terminate(); wss.close(() => r()); }) };
 }

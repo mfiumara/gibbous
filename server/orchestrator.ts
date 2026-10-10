@@ -10,6 +10,7 @@ import { HermesClient, restGet, isStaleSession, type Backend } from './hermes.ts
 import { state, save, newId, type Thread, type Project } from './store.ts';
 import * as g from './git.ts';
 import { notify } from './push.ts';
+import * as Q from './queue.ts';
 
 export interface OpenRequest { id: string; method: string; params: any; threadId?: string; at: number; host?: string }
 
@@ -58,7 +59,7 @@ export class Orchestrator extends EventEmitter {
   thread(id: string) { return state.threads.find(t => t.id === id); }
   project(id?: string) { return state.projects.find(p => p.id === id); }
 
-  private touch(t: Thread, patch: Partial<Thread>) {
+  touch(t: Thread, patch: Partial<Thread>) {
     Object.assign(t, patch, { updatedAt: Date.now() });
     save();
     this.changed('thread', t);
@@ -84,6 +85,13 @@ export class Orchestrator extends EventEmitter {
       this.touch(t, { status: 'idle' });
       this.emit('turnDone', t);
       this.afterTurn(t);
+      this.drain(t);
+    }
+    // A queue left waiting on an idle thread (a turn end we never saw, a restart between turns): send its head.
+    for (const t of state.threads) {
+      if (t.readOnly || t.queuePaused || !t.queue?.length || (t.status !== 'idle' && t.status !== 'error') || Date.now() - t.updatedAt < 20_000) continue;
+      console.log(`[orch] ${t.id}: idle with ${t.queue.length} queued; sending the next one`);
+      this.drain(t);
     }
   }
 
@@ -107,6 +115,7 @@ export class Orchestrator extends EventEmitter {
           const last = [...(h.messages ?? [])].reverse().find((m: any) => m.role === 'assistant' && m.text);
           this.touch(t, { lastText: String(last?.text ?? '').slice(-4000) });
           this.afterTurn(t);
+          this.drain(t);
         }
         return r.session_id as string;
       }).finally(() => this.attaching.delete(t.sessionId));
@@ -181,6 +190,7 @@ export class Orchestrator extends EventEmitter {
       if (ev.type === 'session.usage') save();
     }
     if (ev.type === 'message.start') {
+      this.awaitingStart.delete(t.id);
       if (t.status !== 'needs_input') this.touch(t, { status: 'running', error: undefined });
     } else if (ev.type === 'message.complete') {
       const ok = (ev.payload?.status ?? 'complete') === 'complete';
@@ -192,11 +202,72 @@ export class Orchestrator extends EventEmitter {
       this.emit('turnDone', t);
       // A stop (or the interrupt before an edit/rewind) is not a finished turn worth a notification.
       if (ev.payload?.status !== 'interrupted') this.afterTurn(t);
+      this.turnEnded(t, ev.payload?.status ?? 'complete');
     } else if (ev.type === 'error') {
       this.touch(t, { status: 'error', error: String(ev.payload?.message ?? 'error') });
       this.emit('turnDone', t);
       this.afterTurn(t);
+      this.turnEnded(t, 'error');
     }
+  }
+
+  // ── the prompt queue (queue.ts) ─────────────────────────────────────────
+  private sendNowAfterStop = new Set<string>(); // thread ids whose next interrupted end is our own "send now"
+  private draining = new Set<string>();         // a queue send in flight
+  private awaitingStart = new Map<string, number>(); // sent from the queue, Hermes hasn't started it yet (→ when)
+
+  private turnEnded(t: Thread, status: string) {
+    const sendNow = this.sendNowAfterStop.delete(t.id);
+    const what = Q.onTurnEnd({ queue: t.queue, paused: t.queuePaused, sendNow }, status);
+    if (what === 'pause') this.touch(t, { queuePaused: true });
+    else if (what === 'send') { if (sendNow && t.queuePaused) t.queuePaused = undefined; this.drain(t); }
+  }
+
+  // Hand the head to Hermes. Only while the thread is idle, one at a time, and never twice for one turn end: a second
+  // end (duplicate complete, reconcile) before Hermes started the last one we sent is ignored for 30s.
+  async drain(t: Thread) {
+    if (t.readOnly || t.queuePaused || !t.queue?.length || t.status === 'running' || t.status === 'needs_input' || t.status === 'archived') return;
+    if (this.draining.has(t.id) || Date.now() - (this.awaitingStart.get(t.id) ?? 0) < 30_000) return;
+    const [head, ...rest] = t.queue;
+    this.draining.add(t.id);
+    this.awaitingStart.set(t.id, Date.now());
+    this.touch(t, { queue: rest.length ? rest : undefined });
+    this.changed('queueSent', { threadId: t.id, id: head.id, shown: head.shown });
+    try {
+      // queued: if Hermes is busy after all (a turn we didn't see start), it waits instead of redirecting that turn.
+      await this.send(t, head.text, { queued: true });
+    } catch (e: any) {
+      console.error(`[orch] ${t.id}: queued send failed`, e.message ?? e);
+      this.awaitingStart.delete(t.id);
+      this.touch(t, { queue: [head, ...(t.queue ?? [])], queuePaused: true }); // back in front; the user resumes
+    } finally { this.draining.delete(t.id); }
+  }
+
+  // A message typed while a turn runs. Idle: it goes out now.
+  async enqueue(t: Thread, text: string, shown = text): Promise<{ sent: boolean; id: string }> {
+    const m: Q.QueueItem = { id: newId('q'), text, shown, at: Date.now() };
+    if (t.status === 'running' || t.status === 'needs_input' || this.draining.has(t.id)) {
+      this.touch(t, { queue: Q.add(t.queue, m) });
+      return { sent: false, id: m.id };
+    }
+    this.changed('queueSent', { threadId: t.id, id: m.id, shown });
+    await this.send(t, text, { queued: true });
+    return { sent: true, id: m.id };
+  }
+  // Callers (main.ts routes) check that `qid` is still queued.
+  editQueued(t: Thread, qid: string, text: string, shown?: string) { this.touch(t, { queue: Q.edit(t.queue, qid, text, shown) }); }
+  removeQueued(t: Thread, qid: string) { const q = Q.remove(t.queue, qid); this.touch(t, { queue: q.length ? q : undefined, ...(q.length ? {} : { queuePaused: undefined }) }); }
+  reorderQueued(t: Thread, ids: string[]) { this.touch(t, { queue: Q.reorder(t.queue, ids) }); }
+  // "Send now": first in line and unpaused. A running turn is stopped and this goes out right after its end.
+  async sendQueuedNow(t: Thread, qid: string) {
+    this.touch(t, { queue: Q.toFront(t.queue, qid), queuePaused: undefined });
+    if (t.status !== 'running' && t.status !== 'needs_input') return this.drain(t);
+    this.sendNowAfterStop.add(t.id);
+    try { await this.interrupt(t); } catch (e) { this.sendNowAfterStop.delete(t.id); throw e; }
+  }
+  async resumeQueue(t: Thread) {
+    this.touch(t, { queuePaused: undefined });
+    await this.drain(t);
   }
 
   // ── threads ───────────────────────────────────────────────────────────
@@ -333,10 +404,10 @@ export class Orchestrator extends EventEmitter {
     }
   }
 
-  async send(t: Thread, text: string) {
+  async send(t: Thread, text: string, o: { queued?: boolean } = {}) {
     this.touch(t, { status: 'running', error: undefined });
     try {
-      await this.withLive(t, sid => this.cl(t).call('prompt.submit', { session_id: sid, text }));
+      await this.withLive(t, sid => this.cl(t).call('prompt.submit', { session_id: sid, text, ...(o.queued ? { queued: true } : {}) }));
     } catch (e: any) {
       this.touch(t, { status: 'error', error: e.message ?? String(e) });
       throw e;
