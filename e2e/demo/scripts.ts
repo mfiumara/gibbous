@@ -150,6 +150,28 @@ Both come straight from the limiter's decision.
 The 429 test now asserts both headers; the middleware suite passes.`, 320);
 };
 
+// The hosted demo's one scripted turn (record.ts → worker): reasoning, tool calls with inline diffs, tests, then an
+// approval before anything leaves the machine, and a streamed reply.
+export const DEMO_PROMPT = 'Add Retry-After and RateLimit-Reset headers to rejected requests, run the tests, and push the branch.';
+const demoTurn: Script = async t => {
+  await t.reason('Rejected requests should tell clients when to come back. The limiter\'s Decision already carries retryAfterMs and resetAt, so this is two headers in the middleware plus a test. Pushing is the last step, and that needs your OK.', 230);
+  await t.tool('read_file', { path: 'src/middleware.ts' }, { ms: 380, result: { content: '…' } });
+  await t.tool('patch', { path: 'src/middleware.ts' }, { ms: 650, edit: { path: 'src/middleware.ts', replace: [[MW_AFTER_FROM, MW_AFTER_TO]] } });
+  await t.tool('patch', { path: 'test/middleware.test.ts' }, { ms: 550, edit: { path: 'test/middleware.test.ts', replace: [[MW_TEST_FROM, MW_TEST_TO]] } });
+  await t.status('Running tests');
+  await t.tool('terminal', { command: 'pnpm vitest run' }, { ms: 1400, result: ok(' ✓ test/token-bucket.test.ts (3 tests) 4ms\n ✓ test/middleware.test.ts (2 tests) 7ms\n ✓ test/redis-store.test.ts (2 tests) 68ms\n\n Test Files  3 passed (3)\n      Tests  7 passed (7)') });
+  await t.tool('terminal', { command: 'git push -u origin retry-after-headers' }, {
+    ms: 1100, approval: { command: 'git push -u origin retry-after-headers', description: 'Pushes the new branch to the remote repository.' },
+    result: ok('To github.com:tidepool/tidepool.git\n * [new branch]      retry-after-headers -> retry-after-headers\nbranch \'retry-after-headers\' set up to track \'origin/retry-after-headers\'.'),
+  });
+  await t.say(`Done: rejected requests now tell clients when to retry.
+
+- **\`Retry-After\`** on every 429, in whole seconds (rounded up).
+- **\`RateLimit-Reset\`** on every response.
+
+Both come straight from the limiter's decision. The 429 test asserts both headers, all 7 tests pass, and the branch \`retry-after-headers\` is pushed.`, 320);
+};
+
 const flaky: Script = async t => {
   await t.reason('The Redis expiry test sleeps 60 ms for a 50 ms TTL. Redis checks PX expiry lazily plus a sampling sweep, but GET on an expired key always misses, so the sleep itself should be enough unless the clock between the test and the server drifts. Let me reproduce it under load first.', 230);
   await t.tool('read_file', { path: 'test/redis-store.test.ts' }, { ms: 300 });
@@ -285,6 +307,7 @@ const reviewer: Script = async t => {
 export function pick(prompt: string, _s: Session): Script {
   if (/strict code reviewer/.test(prompt)) return reviewer;
   if (/Commit nothing and do not push|A code reviewer looked at your changes/.test(prompt)) return worker;
+  if (prompt === DEMO_PROMPT) return demoTurn;
   if (/sliding-window/i.test(prompt)) return hero;
   if (/Retry-After/.test(prompt)) return retryAfter;
   if (/flaky/i.test(prompt)) return flaky;

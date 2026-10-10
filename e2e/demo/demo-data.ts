@@ -118,7 +118,8 @@ export function demoData(home: string, repos: { tide: string; docs: string }) {
 export function writeStateDb(hermesHome: string, sessions: Preload[], stored: Map<Preload, string>) {
   const SCHEMA = `CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL, model TEXT, model_config TEXT, parent_session_id TEXT, started_at REAL NOT NULL,
     ended_at REAL, end_reason TEXT, message_count INTEGER DEFAULT 0, tool_call_count INTEGER DEFAULT 0, input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0,
-    cwd TEXT, title TEXT, git_repo_root TEXT, last_activity_at REAL, last_activity_description TEXT);
+    cwd TEXT, title TEXT, git_repo_root TEXT, last_activity_at REAL, last_activity_description TEXT, billing_provider TEXT, api_call_count INTEGER DEFAULT 0,
+    cache_read_tokens INTEGER DEFAULT 0, cache_write_tokens INTEGER DEFAULT 0, reasoning_tokens INTEGER DEFAULT 0, estimated_cost_usd REAL, cost_status TEXT);
   CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT, timestamp REAL NOT NULL);`;
   const open = (file: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); const db = new DatabaseSync(file); db.exec(SCHEMA); return db; };
   const dbs = new Map<string, DatabaseSync>();
@@ -130,5 +131,17 @@ export function writeStateDb(hermesHome: string, sessions: Preload[], stored: Ma
       .run(stored.get(s)!, s.source, 'claude-sonnet-4-5', s.startedAt, s.rows.length, s.cwd ?? null, s.title, s.startedAt + s.rows.length * 40);
   }
   if (!dbs.size) dbs.set(path.join(hermesHome, 'state.db'), open(path.join(hermesHome, 'state.db')));
+  // A month of past usage (Settings → Usage, the Home glance): token counts and API-equivalent cost per session.
+  const main = dbs.get(path.join(hermesHome, 'state.db'))!;
+  const ins = main.prepare(`INSERT INTO sessions (id, source, model, billing_provider, started_at, message_count, tool_call_count, api_call_count, input_tokens, output_tokens,
+    cache_read_tokens, reasoning_tokens, estimated_cost_usd, cost_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const models: [string, string, number, number][] = [['claude-sonnet-4-5', 'anthropic', 3, 15], ['claude-haiku-4-5', 'anthropic', 1, 5], ['gpt-5', 'openai', 1.25, 10]];
+  const now = Date.now() / 1000;
+  for (let i = 0; i < 90; i++) {
+    const k = (i * 37) % 23, [model, provider, pin, pout] = models[i % 7 === 3 ? 2 : i % 4 === 1 ? 1 : 0];
+    const input = 60_000 + k * 9_000, output = 6_000 + k * 700, cache = input * 4, tools = 6 + (k % 15);
+    ins.run(`20260${9 + Math.floor(i / 60)}${String(10 + (i % 18)).padStart(2, '0')}_usage_${i}`, ['cli', 'desktop', 'desktop', 'discord', 'cli'][i % 5], model, provider,
+      now - (i / 3) * 86400 - k * 600, 8 + (k % 12), tools, tools + 3, input, output, cache, Math.round(output * 0.4), +((input * pin + output * pout + cache * pin * 0.1) / 1e6).toFixed(4), 'estimated');
+  }
   for (const db of dbs.values()) db.close();
 }

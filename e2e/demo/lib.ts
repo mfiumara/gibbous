@@ -101,7 +101,7 @@ export async function start(): Promise<Env> {
   const GH = path.join(DEMO, '.gibbous');
   const token = randomBytes(16).toString('hex');
   const data = demoData(DEMO, repos);
-  const fake = fakeHermes({ token, pick, titleFor, foreign: data.foreign, kanban: data.kanban });
+  const fake = fakeHermes({ token, pick, titleFor, foreign: data.foreign, kanban: data.kanban, home: DEMO });
   const stored = new Map(data.sessions.map(p => [p, fake.preload(p).stored]));
   writeStateDb(path.join(DEMO, '.hermes'), data.sessions, stored);
   const hport = await fake.listen();

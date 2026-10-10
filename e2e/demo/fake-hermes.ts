@@ -45,7 +45,8 @@ export interface KanbanData { board: { slug: string; name: string; description: 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session) => Script; model?: string; titleFor?: (input: string) => string;
-  foreign?: ForeignRow[]; kanban?: KanbanData }) {
+  foreign?: ForeignRow[]; kanban?: KanbanData; home?: string }) {
+  const home = o.home ?? os.homedir();   // sessions without a cwd sit here (the demo home, never the real one)
   const sockets = new Set<WebSocket>();
   const sessions = new Map<string, Session>();
   const pendingAnswers = new Map<string, (r: any) => void>();
@@ -197,7 +198,7 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
   }
 
   function preload(p: Preload): Session {
-    const s = newSession(p.cwd ?? os.homedir(), p.title);
+    const s = newSession(p.cwd ?? home, p.title);
     if (p.id) { sessions.delete(s.live); s.stored = p.id; s.live = `live_${p.id.slice(-6)}`; sessions.set(s.live, s); }
     s.source = p.source; s.startedAt = p.startedAt; s.profile = p.profile;
     p.rows.forEach((r, i) => push(s, { role: r.role, text: r.text }, r.at ?? p.startedAt + i * 40));
@@ -207,7 +208,7 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
   const methods: Record<string, (p: any) => unknown> = {
     'client.capabilities': () => ({ ok: true }),
     'session.create': p => {
-      const s = newSession(p.cwd ?? os.homedir(), p.title);
+      const s = newSession(p.cwd ?? home, p.title);
       return { session_id: s.live, stored_session_id: s.stored, message_count: 0, messages: [], info: info(s) };
     },
     'session.resume': p => {
@@ -257,16 +258,31 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
     'config.get': p => ({ value: ({ 'approvals.mode': 'manual' } as Record<string, string>)[p.key] ?? null }),
     'config.set': () => ({ ok: true }),
     'session.context_breakdown': () => ({ categories: [] }),
+    'groups.list': () => ({ rooms: [] }),
+    'mcp.servers.status': () => ({ servers: [] }),
+    'connectors.list': () => ({ available: false, connectors: [] }),
+    'vault.list': () => ({ items: [] }),
+    'vault.sources': () => ({ sources: [] }),
   };
   const titleFor = (input: string) => o.titleFor?.(input) ?? input.split(/\s+/).slice(0, 3).join(' ');
 
   const rest = (u: URL): unknown => {
     const p = u.pathname;
     if (p === '/api/status') return { version: '0.11.2', gateway_running: false };
-    if (p === '/api/hermes/update/check') return { update_available: false, current: '0.11.2', latest: '0.11.2' };
+    if (p === '/api/hermes/update/check') return { update_available: false, current: '0.11.2', latest: '0.11.2', install_method: 'git', current_version: '0.11.2', behind: 0, can_apply: true, message: 'On the latest release.' };
+    if (p.startsWith('/api/actions/')) return { running: false, exit_code: null, lines: [] };
     if (p === '/api/analytics/usage') {
       const days = Number(u.searchParams.get('days') ?? 7);
-      return { daily: Array.from({ length: days }, (_, i) => { const d = new Date(Date.now() - (days - 1 - i) * 86400000); return { day: d.toISOString().slice(0, 10), actual_cost: +(0.8 + ((i * 37) % 11) / 4).toFixed(2), estimated_cost: 0, sessions: 3 + (i % 5) }; }), totals: {} };
+      const daily = Array.from({ length: days }, (_, i) => { const d = new Date(Date.now() - (days - 1 - i) * 86400000); const k = (i * 37) % 11;
+        return { day: d.toISOString().slice(0, 10), input_tokens: 380_000 + k * 41_000, output_tokens: 42_000 + k * 5_200, cache_read_tokens: 1_100_000 + k * 90_000, actual_cost: +(0.8 + k / 4).toFixed(2), estimated_cost: +(0.8 + k / 4).toFixed(2), sessions: 3 + (i % 5), api_calls: 40 + k * 6 }; });
+      const sum = (f: (d: typeof daily[number]) => number) => daily.reduce((n, d) => n + f(d), 0);
+      const inp = sum(d => d.input_tokens), out = sum(d => d.output_tokens), cost = +sum(d => d.actual_cost).toFixed(2);
+      return { daily,
+        by_model: [{ model: 'claude-sonnet-4-5', input_tokens: Math.round(inp * .72), output_tokens: Math.round(out * .7), estimated_cost: +(cost * .78).toFixed(2), sessions: Math.round(sum(d => d.sessions) * .7) },
+          { model: 'claude-haiku-4-5', input_tokens: Math.round(inp * .2), output_tokens: Math.round(out * .22), estimated_cost: +(cost * .06).toFixed(2), sessions: Math.round(sum(d => d.sessions) * .2) },
+          { model: 'gpt-5', input_tokens: Math.round(inp * .08), output_tokens: Math.round(out * .08), estimated_cost: +(cost * .16).toFixed(2), sessions: Math.round(sum(d => d.sessions) * .1) }],
+        totals: { total_input: inp, total_output: out, total_cache_read: sum(d => d.cache_read_tokens), total_estimated_cost: cost, total_actual_cost: cost, total_sessions: sum(d => d.sessions), total_api_calls: sum(d => d.api_calls) },
+        tools: [{ tool: 'terminal', count: 412 }, { tool: 'read_file', count: 388 }, { tool: 'patch', count: 203 }, { tool: 'search_files', count: 150 }, { tool: 'write_file', count: 61 }, { tool: 'delegate_task', count: 18 }] };
     }
     if (p === '/api/sessions/search') return { results: [] };
     const mm = /^\/api\/sessions\/([^/]+)\/messages$/.exec(p);
@@ -277,7 +293,15 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
     }
     if (p.startsWith('/api/plugins/kanban')) return kanbanRest(p.slice('/api/plugins/kanban'.length), u);
     if (p === '/api/cron/jobs') return [];
-    if (p === '/api/skills') return [];
+    if (p === '/api/cron/delivery-targets') return { targets: [{ id: 'discord', name: 'Discord', home_target_set: true }] };
+    if (p === '/api/skills') return SKILLS;
+    if (p === '/api/messaging/platforms') return { platforms: PLATFORMS };
+    if (p === '/api/pairing') return { pending: [], approved: [{ platform: 'discord', user_id: '4021', username: 'tidepool-maintainer' }] };
+    if (p === '/api/learning/graph') return MEMORY;
+    if (p === '/api/config/schema') return CONFIG_SCHEMA;
+    if (p === '/api/config') return CONFIG;
+    if (p === '/api/config/raw') return { yaml: CONFIG_YAML };
+    if (p === '/api/env') return ENV;
     return {};
   };
 
@@ -356,3 +380,57 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
     session: (stored: string) => byAny(stored),
   };
 }
+
+// ── Settings screens: plausible Hermes answers so every tab renders (shapes from web/src/settings/*) ──────────
+const SKILLS = [
+  { name: 'github-pr-workflow', description: 'Branch, commit, open a PR and watch CI with gh.', category: 'github', enabled: true, provenance: 'bundled', usage: { total_count: 41 } },
+  { name: 'systematic-debugging', description: 'Understand a bug before fixing it: reproduce, isolate, fix, verify.', category: 'software-development', enabled: true, provenance: 'bundled', usage: { total_count: 23 } },
+  { name: 'test-driven-development', description: 'Red, green, refactor: tests before code.', category: 'software-development', enabled: true, provenance: 'hub', usage: { total_count: 12 } },
+  { name: 'release-notes', description: 'Draft release notes from merged PRs since the last tag.', category: 'productivity', enabled: true, provenance: 'agent', usage: { total_count: 5 } },
+  { name: 'arxiv', description: 'Search arXiv papers by keyword, author or category.', category: 'research', enabled: false, provenance: 'bundled', usage: { total_count: 0 } },
+];
+const PLATFORMS = [
+  { id: 'discord', name: 'Discord', description: 'Chat with the agent in DMs and channels.', enabled: true, configured: true, state: 'connected', home_channel: '#tidepool-dev',
+    env_vars: [{ key: 'DISCORD_BOT_TOKEN', required: true, is_set: true, redacted_value: '••••••••3f9a', is_password: true, description: 'Bot token from the Discord developer portal.' }] },
+  { id: 'telegram', name: 'Telegram', description: 'Talk to the agent from a Telegram bot.', enabled: false, configured: false, state: 'disabled',
+    env_vars: [{ key: 'TELEGRAM_BOT_TOKEN', required: true, is_set: false, is_password: true, description: 'Token from @BotFather.' }] },
+  { id: 'slack', name: 'Slack', description: 'A Slack app in your workspace.', enabled: false, configured: false, state: 'disabled',
+    env_vars: [{ key: 'SLACK_BOT_TOKEN', required: true, is_set: false, is_password: true }, { key: 'SLACK_APP_TOKEN', required: true, is_set: false, is_password: true }] },
+];
+const MEMORY = {
+  nodes: [
+    { id: 'memory:profile:p1', label: 'Prefers small PRs with a test per behaviour change.', kind: 'memory', memorySource: 'profile', timestamp: Date.now() / 1000 - 86400 * 6 },
+    { id: 'memory:profile:p2', label: 'Writes British English in docs; American in code identifiers.', kind: 'memory', memorySource: 'profile', timestamp: Date.now() / 1000 - 86400 * 12 },
+    { id: 'memory:memory:m1', label: 'tidepool: run `pnpm vitest run` for tests, `pnpm tsc --noEmit` for types.', kind: 'memory', memorySource: 'memory', timestamp: Date.now() / 1000 - 86400 * 2 },
+    { id: 'memory:memory:m2', label: 'The Redis tests need REDIS_URL; CI uses a service container.', kind: 'memory', memorySource: 'memory', timestamp: Date.now() / 1000 - 86400 * 4 },
+  ],
+  memory: [
+    { fingerprint: 'p1', body: 'Prefers small PRs with a test per behaviour change.', source: 'profile' },
+    { fingerprint: 'p2', body: 'Writes British English in docs; American in code identifiers.', source: 'profile' },
+    { fingerprint: 'm1', body: 'tidepool: run `pnpm vitest run` for tests, `pnpm tsc --noEmit` for types.', source: 'memory' },
+    { fingerprint: 'm2', body: 'The Redis tests need REDIS_URL; CI uses a service container.', source: 'memory' },
+  ],
+};
+const CONFIG_SCHEMA = {
+  category_order: ['model', 'agent', 'display', 'memory', 'terminal'],
+  fields: {
+    'model.default': { type: 'string', category: 'model', description: 'Model new sessions start with.' },
+    'model.provider': { type: 'select', category: 'model', options: ['anthropic', 'openai', 'openrouter'], description: 'Provider for the default model.' },
+    'agent.reasoning_effort': { type: 'select', category: 'agent', options: ['low', 'medium', 'high'], description: 'How long the model thinks before answering.' },
+    'agent.max_turns': { type: 'number', category: 'agent', description: 'Tool-call budget per turn.' },
+    'approvals.mode': { type: 'select', category: 'agent', options: ['manual', 'smart', 'off'], description: 'Ask before risky commands.' },
+    'display.busy_input_mode': { type: 'select', category: 'display', options: ['interrupt', 'queue'], description: 'What a message sent mid-turn does.' },
+    'display.streaming': { type: 'boolean', category: 'display', description: 'Stream replies as they are written.' },
+    'memory.enabled': { type: 'boolean', category: 'memory', description: 'Keep working notes between sessions.' },
+    'terminal.timeout': { type: 'number', category: 'terminal', description: 'Seconds before a foreground command is stopped.' },
+  },
+};
+const CONFIG = { model: { default: 'claude-sonnet-4-5', provider: 'anthropic' }, agent: { reasoning_effort: 'medium', max_turns: 90 }, approvals: { mode: 'manual' },
+  display: { busy_input_mode: 'interrupt', streaming: true }, memory: { enabled: true }, terminal: { timeout: 180 } };
+const CONFIG_YAML = 'model:\n  default: claude-sonnet-4-5\n  provider: anthropic\nagent:\n  reasoning_effort: medium\n  max_turns: 90\napprovals:\n  mode: manual\ndisplay:\n  busy_input_mode: interrupt\n  streaming: true\nmemory:\n  enabled: true\nterminal:\n  timeout: 180\n';
+const ENV = {
+  ANTHROPIC_API_KEY: { is_set: true, redacted_value: 'sk-ant-…7c2e', is_password: true, provider_label: 'Anthropic' },
+  OPENAI_API_KEY: { is_set: true, redacted_value: 'sk-…41d0', is_password: true, provider_label: 'OpenAI' },
+  OPENROUTER_API_KEY: { is_set: false, is_password: true, provider_label: 'OpenRouter' },
+  GITHUB_TOKEN: { is_set: true, redacted_value: 'ghp_…9b1f', is_password: true, description: 'Used by gh and the PR tools.' },
+};
