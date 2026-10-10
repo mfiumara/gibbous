@@ -11,6 +11,7 @@ import { state, save, newId, type Thread, type Project } from './store.ts';
 import * as g from './git.ts';
 import { notify } from './push.ts';
 import * as Q from './queue.ts';
+import { historyPage } from './history.ts';
 
 export interface OpenRequest { id: string; method: string; params: any; threadId?: string; at: number; host?: string }
 
@@ -353,6 +354,13 @@ export class Orchestrator extends EventEmitter {
     const b = t.host ? this.hostBackend(t.host) : await this.getBackend();
     if (!b) throw new Error('that host is not connected');
     return restGet<{ messages: any[]; pagination: { returned: number } }>(b, `/api/sessions/${encodeURIComponent(t.sessionId)}/messages?limit=500&order=latest&offset=${offset}`);
+  }
+
+  // A page of the thread's conversation for display (history.ts): the newest first, older ones by `offset`.
+  async history(t: Thread, o: { offset?: number; limit?: number; before?: number }) {
+    const b = t.host ? this.hostBackend(t.host) : await this.getBackend();
+    if (!b) throw new Error('that host is not connected');
+    return historyPage(b, t.sessionId, { ...o, profile: t.profile });
   }
 
   // Copy a read-only conversation into a new Gibbous-owned session (text turns only) and continue there.

@@ -264,6 +264,10 @@ route('POST', '/api/threads/retitle', async (_, b) => {
 // Model usage (tokens, sessions, API-equivalent cost) from every Hermes state.db, grouped for Settings → Usage.
 route('GET', '/api/usage', (_, __, u) => usage(parseDays(u.searchParams.get('days')), state.threads.filter(t => !t.host).map(t => ({ id: t.id, title: t.title, sessionId: t.sessionId }))));
 route('GET', '/api/threads/:id/subagents', p => { const t = need(orch.thread(p.id), 'thread'); return { subagents: t.host ? [] : listSubagents(t.sessionId, t.profile) }; });
+route('GET', '/api/threads/:id/history', (p, _, u) => {
+  const n = (k: string) => { const v = u.searchParams.get(k); return v == null || v === '' ? undefined : Number(v) || 0; };
+  return orch.history(need(orch.thread(p.id), 'thread'), { offset: n('offset'), limit: n('limit'), before: n('before') });
+});
 route('GET', '/api/threads/:id/transcript', (p, _, u) => orch.transcript(need(orch.thread(p.id), 'thread'), Number(u.searchParams.get('offset') ?? 0) || 0));
 route('POST', '/api/threads/:id/continue', p => orch.continueThread(need(orch.thread(p.id), 'thread')));
 // Reply to a gateway-owned conversation (Discord, Telegram…): the gateway runs the turn on its own session.
