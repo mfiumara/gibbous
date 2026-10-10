@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeAgents, agentCounts, agentName, QUIET_MS, type StoredSub, type LiveSub } from './agents.ts';
+import { mergeAgents, agentCounts, agentName, firstLine, QUIET_MS, type StoredSub, type LiveSub } from './agents.ts';
 
 const now = 1_000_000_000_000;
 const stored = (o: Partial<StoredSub>): StoredSub => ({ sessionId: 's1', parentSessionId: 'p', depth: 0, goal: 'Worker 1: do a thing', messages: 3, toolCalls: 1, tokens: 10, ...o });
@@ -36,7 +36,16 @@ test('names come from the goal prefix', () => {
   const [a] = mergeAgents([stored({ goal: 'Worker 4: rebuild and submit new candidate revisions' })], [], now);
   assert.equal(agentName(a, 3), 'Worker 4');
   const [b] = mergeAgents([stored({ goal: 'Audit the repo for dead code and report findings back' })], [], now);
-  assert.equal(agentName(b, 0), 'Audit the repo for');
+  assert.equal(agentName(b, 0), 'Audit the repo for dead code and');
+  const name = (goal: string) => agentName(mergeAgents([stored({ goal })], [], now)[0], 0);
+  assert.equal(name('Acme: make switching threads instant (no blank screen on every switch)'), 'Make switching threads instant');
+  assert.equal(name('Acme phone UX: menus as bottom sheets, and keep the composer glued'), 'Menus as bottom sheets');
+  assert.equal(name('Acme macOS app shell: translucent sidebar with traffic lights inside it. More text'), 'Translucent sidebar with traffic lights inside it');
+});
+
+test('firstLine skips markdown noise', () => {
+  assert.equal(firstLine('## Done\n\n**All good**: shipped'), 'Done');
+  assert.equal(firstLine(''), undefined);
 });
 
 test('siblings sort by name, numerically', () => {

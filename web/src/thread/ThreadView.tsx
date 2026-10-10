@@ -8,7 +8,7 @@ import { bindQueue, syncWithHermes, onQueuedSent } from './queue';
 import { reduce, checkpointFor, endedLabel, type Timeline, type Item } from './timeline';
 import { getCached, putCached, onCached, fromResume, reconcile, revive } from './cache';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
-import { useSubagents, SubagentLine, SubagentsPanel } from './Subagents';
+import { useSubagents, SubagentLine, SubagentsPanel, SubagentChip } from './Subagents';
 import { isLive } from './agents';
 import { Composer, type EditTarget } from './Composer';
 import { RequestCard } from './RequestCard';
@@ -58,7 +58,7 @@ export function ThreadView({ id }: { id: string }) {
   const [panel, setPanel] = useState<string | null>(() => wide() ? localStorage.getItem('gibbous.panel') || null : null);
   const [agentFocus, setAgentFocus] = useState<string>();
   const agents = useSubagents(id, tl.items, tl.running);
-  const openAgents = (key?: string) => { if (key) setAgentFocus(key); setPanel('agents'); };
+  const openAgents = (key?: string) => { setAgentFocus(key); setPanel('agents'); };
   const [limit, setLimit] = useState(PAGE);
   const [insert, setInsert] = useState<{ text: string; n: number }>();
   const [finding, setFinding] = useState(false);
@@ -321,7 +321,7 @@ export function ThreadView({ id }: { id: string }) {
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
             })}
-            {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
+            {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span><SubagentChip agents={agents} onOpen={() => openAgents()} />{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
             {thread.status === 'error' && !running && thread.error && !tl.items.some(i => i.kind === 'notice') && <p className="text-[13px] text-oxide select-text">{thread.error}</p>}
             {requests.map(r => <div key={r.id} className="animate-rise"><RequestCard r={r} /></div>)}
           </div>
@@ -336,7 +336,7 @@ export function ThreadView({ id }: { id: string }) {
               <ArrowDown size={13} />{running ? 'Follow output' : 'Latest'}
             </button>}
             <Composer dropped={dropped} draftKey={id} sid={sid} running={running} edit={edit} onCancelEdit={() => setEdit(undefined)} onNotice={notice} insert={insert} onStale={() => reopen.current()}
-              onEditLast={lastUser?.rowId != null ? () => setEdit({ rowId: lastUser.rowId, text: lastUser.text }) : undefined} todos={tl.todos} info={tl.info ?? {}} subagents={agents} onSubagents={() => openAgents()} usage={tl.usage} compacting={tl.compacting}
+              onEditLast={lastUser?.rowId != null ? () => setEdit({ rowId: lastUser.rowId, text: lastUser.text }) : undefined} todos={tl.todos} info={tl.info ?? {}} usage={tl.usage} compacting={tl.compacting}
               onSide={(taskId, mode, question) => setTl(t => ({ ...t, items: [...t.items, { kind: 'side', id: `side-${taskId}`, mode, question }] }))}
               onSent={text => setTl(t => ({ ...t, items: [...t.items, { kind: 'user', id: `sent-${Date.now()}`, text, at: Date.now() }] }))} />
           </div>

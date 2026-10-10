@@ -90,10 +90,21 @@ export function agentCounts(agents: Agent[]) {
   return c;
 }
 
-// "Worker 4: rebuild and submit …" → "Worker 4"; otherwise the first few words of the goal.
+// A short, readable name. "Worker 4: rebuild …" keeps "Worker 4"; otherwise the goal's first clause, minus a leading
+// "Project:" / "Project area:" label (every sibling shares it, so it says nothing): "Gibbous: make switching threads
+// instant (no blank …)" → "Make switching threads instant".
 export function agentName(a: Agent, i: number) {
-  const m = a.goal.match(/^([A-Z][\w-]*(?: [\w-]+)?\s*\d*)\s*:/);
-  if (m && m[1].length <= 24) return m[1].trim();
-  const words = a.goal.replace(/\s+/g, ' ').trim().split(' ').slice(0, 4).join(' ');
-  return words.length > 28 ? `Subagent ${i + 1}` : words || `Subagent ${i + 1}`;
+  const goal = a.goal.replace(/\s+/g, ' ').trim();
+  const worker = goal.match(/^([A-Z][\w-]*(?: [\w-]+)?\s+\d+)\s*:/);
+  if (worker) return worker[1].trim();
+  const body = goal.replace(/^[^:]{1,32}:\s+(?=\S)/, '');
+  const clause = body.split(/\s[(—–]|[.;:!?](?:\s|$)|,\s/)[0].trim();
+  const words = clause.split(' ').slice(0, 7).join(' ');
+  return words ? words[0].toUpperCase() + words.slice(1) : `Subagent ${i + 1}`;
+}
+
+// The first meaningful line of a finished subagent's report, for the overview card.
+export function firstLine(text?: string) {
+  const line = (text ?? '').split('\n').map(l => l.replace(/^[#>*\-\s]+|\*\*|`/g, '').trim()).find(l => l.length > 3);
+  return line ? line.slice(0, 220) : undefined;
 }

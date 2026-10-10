@@ -1,5 +1,5 @@
-// Subagents: a count chip in the composer, one quiet line per subagent in the timeline, and a side panel that pages
-// through each subagent's own transcript (swipe / two-finger scroll / ← → / the tabs).
+// Subagents: a count chip on the thread's status line, one quiet line per subagent in the timeline, and a side panel:
+// an overview of all of them (what each is doing or found), then one subagent's own transcript (← → between them).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Square, Send, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../api';
@@ -8,7 +8,7 @@ import { toastError } from '../store';
 import { IconButton, MoonLoader, Skeleton, inputCls, fmtTokens, fmtDuration, sameJson } from '../ui';
 import { fromStored, type Item, type StoredRow } from './timeline';
 import { AssistantMessage, ToolRow, ReasoningBlock, Markdown } from './Items';
-import { mergeAgents, agentCounts, agentName, isLive, type Agent, type AgentState, type StoredSub, type LiveSub } from './agents';
+import { mergeAgents, agentCounts, agentName, firstLine, isLive, type Agent, type AgentState, type StoredSub, type LiveSub } from './agents';
 
 // ── data ──────────────────────────────────────────────────────────────
 export function useSubagents(threadId: string, items: Item[], running: boolean): Agent[] {
@@ -42,16 +42,15 @@ function summaryLine(agents: Agent[]) {
   return [c.running && `${c.running} working`, c.queued && `${c.queued} queued`, c.done && `${c.done} done`, c.failed && `${c.failed} failed`, c.other && `${c.other} idle`].filter(Boolean).join(' · ');
 }
 
-// Composer chip: "◐ 3/7" — how many are working out of all of them; click for the panel.
+// Status-line chip, next to the thread's "Waxing…" line: the moon plus "1/7" (working / all). Opens the overview.
 export function SubagentChip({ agents, onOpen }: { agents: Agent[]; onOpen(): void }) {
   if (!agents.length) return null;
   const c = agentCounts(agents), active = c.running + c.queued;
   return (
-    <button onClick={onOpen} aria-label={`${agents.length} subagents: ${summaryLine(agents)}`}
-      data-tip={`${agents.length} subagent${agents.length > 1 ? 's' : ''} · ${summaryLine(agents)}\nClick to watch them side by side.`}
-      className={`press inline-flex items-center gap-1.5 h-8 px-1.5 sm:px-2 rounded-lg text-[12px] hover:bg-ridge flex-none ${active ? 'text-tide' : 'text-dust hover:text-moon'}`}>
-      {active ? <MoonLoader size={13} label="subagents working" /> : <Bot size={14} />}
-      <span className="tabular-nums">{active ? `${active}/${agents.length}` : agents.length}</span>
+    <button onClick={onOpen} aria-label={`${agents.length} subagents: ${summaryLine(agents)}`} data-tip={`${summaryLine(agents)}\nClick for the overview.`}
+      className={`press inline-flex items-center gap-1.5 h-6 px-2 -my-1 rounded-full text-[12px] font-mono tabular-nums border flex-none ${active ? 'text-tide border-tide/30 bg-tide/8 hover:bg-tide/15' : 'text-dust border-line hover:text-moon hover:bg-ridge'}`}>
+      {active ? <MoonLoader size={12} label="subagents working" /> : <Bot size={12} />}
+      {active ? `${active}/${agents.length}` : agents.length}
     </button>
   );
 }
@@ -62,71 +61,77 @@ export function SubagentLine({ item, agents, onOpen }: { item: LiveSub; agents: 
   const i = agents.indexOf(a);
   return (
     <button onClick={() => onOpen(a.key)} className="press w-[calc(100%+0.75rem)] -mx-1.5 px-1.5 py-1 flex items-center gap-2 rounded-md text-left text-[13px] text-dust hover:text-moon hover:bg-crater/70">
-      <Bot size={14} className="flex-none text-ash" />
-      <span className="font-mono text-moon/90 flex-none">{agentName(a, i < 0 ? item.index : i)}</span>
-      <span className="truncate min-w-0 text-ash">{a.activity ?? a.goal.replace(/^[^:]{1,24}:\s*/, '')}</span>
-      <span className="ml-auto pl-2 flex items-center gap-1.5 flex-none text-[11px] font-mono text-ash"><AgentDot a={a} size={7} />{label[a.state]}</span>
+      <AgentDot a={a} size={7} />
+      <span className="text-moon/90 truncate min-w-0">{agentName(a, i < 0 ? item.index : i)}</span>
+      {a.activity && <span className="truncate min-w-0 font-mono text-[11.5px] text-ash">{a.activity}</span>}
+      <span className="ml-auto pl-2 flex-none text-[11px] font-mono text-ash">{label[a.state]}</span>
     </button>
   );
 }
 
-// ── the panel ─────────────────────────────────────────────────────────
-export function SubagentsPanel({ agents, sid, focus, onFocus }: { agents: Agent[]; sid?: string; focus?: string; onFocus(key: string): void }) {
-  const pager = useRef<HTMLDivElement>(null);
-  const tabs = useRef<HTMLDivElement>(null);
-  const idx = Math.max(0, agents.findIndex(a => a.key === focus));
-  const scrolling = useRef(false);
+// ── the panel: an overview of every subagent; pick one for its transcript ─────────────────────────────────────────
+const elapsedOf = (a: Agent) => a.startedAt ? (a.endedAt ?? Date.now()) - a.startedAt : undefined;
 
-  // Focus from outside (chip, timeline line, tab) → scroll that page into view.
-  useEffect(() => {
-    const el = pager.current; if (!el || !agents.length) return;
-    const target = idx * el.clientWidth;
-    // Jump, don't animate: a smooth scroll fires scroll events mid-way that would re-focus the pages it passes.
-    if (Math.abs(el.scrollLeft - target) > 4) { scrolling.current = true; el.scrollLeft = target; setTimeout(() => { scrolling.current = false; }, 60); }
-    tabs.current?.children[idx]?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-  }, [idx, agents.length, focus]);
-  useEffect(() => { if (!focus && agents.length) onFocus((agents.find(isLive) ?? agents[0]).key); }, [focus, agents.length]);
-
-  useEffect(() => {
-    const el = pager.current; if (!el) return;
-    const ro = new ResizeObserver(() => { el.scrollLeft = idx * el.clientWidth; });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [idx]);
-
-  // Swiping (touch or trackpad) moves the focus to whichever page snapped in.
-  const onScroll = () => {
-    const el = pager.current; if (!el || scrolling.current) return;
-    const i = Math.round(el.scrollLeft / el.clientWidth);
-    if (agents[i] && agents[i].key !== focus) onFocus(agents[i].key);
-  };
-  const step = (d: number) => { const a = agents[Math.min(agents.length - 1, Math.max(0, idx + d))]; if (a) onFocus(a.key); };
-
+export function SubagentsPanel({ agents, sid, focus, onFocus }: { agents: Agent[]; sid?: string; focus?: string; onFocus(key?: string): void }) {
+  const [, tick] = useState(0);
+  // Running timers on the cards.
+  useEffect(() => { if (!agents.some(isLive)) return; const t = setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t); }, [agents]);
   if (!agents.length) return <p className="p-4 text-sm text-dust">No subagents in this thread yet. They show up here as soon as Hermes delegates work.</p>;
+  // Working ones first, then queued, failed, then the rest in their usual order; ← → in the detail follows this too.
+  const rank = (a: Agent) => a.state === 'running' ? 0 : a.state === 'queued' ? 1 : a.state === 'failed' ? 2 : 3;
+  const order = agents.map((a, i) => ({ a, i })).sort((x, y) => rank(x.a) - rank(y.a) || x.i - y.i);
+  const at = order.findIndex(o => o.a.key === focus);
+  if (at >= 0) return <AgentDetail order={order} at={at} sid={sid} onFocus={onFocus} />;
+  const c = agentCounts(agents);
+  return (
+    <div className="h-full overflow-y-auto" data-vim-list>
+      <div className="px-4 pt-4 pb-3">
+        {/* One moon per subagent: waxing while it works, full when done, red when it failed. */}
+        <div className="flex flex-wrap gap-1.5 mb-3">{agents.map((a, i) => <button key={a.key} onClick={() => onFocus(a.key)} data-tip={`${agentName(a, i)} · ${label[a.state]}`} className="press rounded-full"><AgentDot a={a} size={12} /></button>)}</div>
+        <p className="text-[15px] font-medium text-moon">{c.running + c.queued ? `${c.running + c.queued} of ${agents.length} working` : `All ${agents.length} finished`}</p>
+        <p className="mt-0.5 text-[12px] text-ash">{summaryLine(agents)}</p>
+      </div>
+      <ul className="px-2 pb-3 space-y-1.5">
+        {order.map(({ a, i }) => {
+          const ms = elapsedOf(a), live = isLive(a);
+          const line = live ? a.activity : a.state === 'failed' ? a.status : firstLine(a.summary ?? a.lastText);
+          return (
+            <li key={a.key}>
+              <button data-vim-item onClick={() => onFocus(a.key)}
+                className={`press w-full text-left rounded-xl px-3 py-2.5 border transition-colors ${live ? 'border-tide/25 bg-tide/[.04] hover:bg-tide/[.08]' : 'border-line/70 hover:bg-ridge/60'} focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-tide/60`}>
+                <span className="flex items-center gap-2">
+                  <AgentDot a={a} size={8} />
+                  <span className="flex-1 min-w-0 truncate text-[13.5px] text-moon">{agentName(a, i)}</span>
+                  {ms != null && <span className="flex-none font-mono text-[11.5px] tabular-nums text-ash">{fmtDuration(ms)}</span>}
+                </span>
+                {line && <span className={`mt-1 pl-[18px] text-[12.5px] line-clamp-2 ${live ? 'font-mono text-[11.5px] text-tide/90' : a.state === 'failed' ? 'text-oxide' : 'text-dust'}`}>{line}</span>}
+                <span className="mt-1 block pl-[18px] font-mono text-[11px] text-ash">{[label[a.state], a.toolCalls ? `${a.toolCalls} tools` : '', a.tokens ? `${fmtTokens(a.tokens)} tok` : '', a.model].filter(Boolean).join(' · ')}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+// One subagent full-height: back to the overview, ← → between siblings, its transcript below.
+function AgentDetail({ order, at, sid, onFocus }: { order: { a: Agent; i: number }[]; at: number; sid?: string; onFocus(key?: string): void }) {
+  const { a, i } = order[at], idx = at, agents = order;
+  const step = (d: number) => { const n = order[at + d]; if (n) onFocus(n.a.key); };
   return (
     <div className="h-full flex flex-col" tabIndex={-1}
-      onKeyDown={e => { if ((e.target as HTMLElement).closest('input, textarea')) return; if (e.key === 'ArrowLeft' || e.key === 'h') { e.preventDefault(); step(-1); } if (e.key === 'ArrowRight' || e.key === 'l') { e.preventDefault(); step(1); } }}>
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-line flex-none">
+      onKeyDown={e => { if ((e.target as HTMLElement).closest('input, textarea')) return;
+        if (e.key === 'ArrowLeft' || e.key === 'h') { e.preventDefault(); step(-1); } if (e.key === 'ArrowRight' || e.key === 'l') { e.preventDefault(); step(1); }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onFocus(undefined); } }}>
+      <div className="flex items-center gap-1 h-11 px-2 flex-none border-b border-line/70">
+        <button onClick={() => onFocus(undefined)} className="press inline-flex items-center gap-1 h-7 pl-1 pr-2 rounded-lg text-[12.5px] text-dust hover:text-moon hover:bg-ridge"><ChevronLeft size={15} />All subagents</button>
+        <span className="flex-1" />
+        <span className="font-mono text-[11.5px] text-ash tabular-nums mr-1">{idx + 1} / {agents.length}</span>
         <IconButton label="Previous subagent" kbd="←" onClick={() => step(-1)} disabled={idx === 0}><ChevronLeft size={15} /></IconButton>
-        <div ref={tabs} className="flex-1 min-w-0 flex gap-1 overflow-x-auto [scrollbar-width:none]">
-          {agents.map((a, i) => (
-            <button key={a.key} onClick={() => onFocus(a.key)} aria-pressed={i === idx} data-tip={a.goal.slice(0, 200)}
-              className={`press h-7 px-2 rounded-md inline-flex items-center gap-1.5 whitespace-nowrap flex-none text-[12px] ${i === idx ? 'bg-ridge text-moon' : 'text-dust hover:text-moon'}`}
-              style={a.depth ? { marginLeft: 6 } : undefined}>
-              <AgentDot a={a} size={7} />{agentName(a, i)}
-            </button>
-          ))}
-        </div>
         <IconButton label="Next subagent" kbd="→" onClick={() => step(1)} disabled={idx === agents.length - 1}><ChevronRight size={15} /></IconButton>
       </div>
-      <p className="px-3 py-1 text-[11.5px] text-ash border-b border-line flex-none">{agents.length} subagents · {summaryLine(agents)}</p>
-      <div ref={pager} onScroll={onScroll} className="flex-1 min-h-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory [scrollbar-width:none] overscroll-x-contain">
-        {agents.map((a, i) => (
-          <section key={a.key} aria-label={agentName(a, i)} className="snap-start snap-always flex-none w-full h-full min-w-0">
-            {Math.abs(i - idx) <= 1 ? <AgentPage a={a} name={agentName(a, i)} sid={sid} active={i === idx} /> : null}
-          </section>
-        ))}
-      </div>
+      <div className="flex-1 min-h-0"><AgentPage key={a.key} a={a} name={agentName(a, i)} sid={sid} active /></div>
     </div>
   );
 }

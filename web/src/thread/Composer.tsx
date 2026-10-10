@@ -6,8 +6,6 @@ import { useAttachments, AttachmentChips, filesFrom, takeHandoff } from '../atta
 import { useRpc, isStaleSession, type RpcError } from '../rpc';
 import { useCompletions } from './completions';
 import { ModelPicker, ApprovalChip, ContextMeter } from './ModelPicker';
-import { SubagentChip } from './Subagents';
-import type { Agent } from './agents';
 import type { SessionLiveInfo, Usage } from '../hermes/contract';
 import { toastError, useStore } from '../store';
 import { useQueue, enqueue, discard, requeue, sendNow as sendQueuedNow, type Queued } from './queue';
@@ -29,14 +27,13 @@ interface Props {
   onSent?(text: string): void; // shown in the timeline right away; Hermes only echoes it on resume
   info?: SessionLiveInfo; // live model/reasoning/approvals for the picker; omit to hide them
   usage?: Usage;
-  subagents?: Agent[]; onSubagents?(): void;
   compacting?: boolean;
 }
 
 
 const touch = matchMedia('(pointer: coarse)').matches;
 
-export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice, placeholder, insert, onStale, onEditLast, todos, onSide, onSent, draftKey, dropped, info, usage, compacting, subagents, onSubagents }: Props) {
+export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice, placeholder, insert, onStale, onEditLast, todos, onSide, onSent, draftKey, dropped, info, usage, compacting }: Props) {
   const rpc = useRpc();
   const [mode, setMode] = useState<'send' | 'steer' | 'btw' | 'background'>('send');
   const [modeMenu, setModeMenu] = useState(false);
@@ -252,7 +249,6 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
             </Menu>
           </div>
           {sid && info !== undefined && <><ModelPicker info={info} sid={sid} /><ApprovalChip info={info} sid={sid} /></>}
-          {!!subagents?.length && onSubagents && <SubagentChip agents={subagents} onOpen={onSubagents} />}
           <span className="ml-auto" />
           {(usage?.context_percent != null || compacting) && <ContextMeter usage={usage} compacting={compacting} />}
           {canDictate && <button onClick={listen} aria-label={listening ? 'Stop dictation' : 'Dictate'} aria-pressed={listening} data-tip={listening ? 'Listening… click to stop' : 'Dictate'}
