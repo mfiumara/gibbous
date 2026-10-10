@@ -5,7 +5,8 @@ import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
 import { Moon, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
 import { reduce, checkpointFor, endedLabel, withQueuedBubble, type Timeline, type Item } from './timeline';
-import { getCached, putCached, onCached, fromResume, reconcile, revive } from './cache';
+import { getCached, putCached, onCached, mergeTail, prependOlder, reconcile, revive, type Paging } from './cache';
+import { firstPage, resumeWith, olderPages } from './load';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
 import { useSubagents, SubagentsPanel, SubagentGroup } from './Subagents';
 import { isLive } from './agents';
@@ -82,18 +83,23 @@ export function ThreadView({ id }: { id: string }) {
   const fresh = useRef(false); // this open has Hermes' answer (vs. the cached copy painted on switch)
   const anchor = useRef<{ id: string; y: number } | null>(null); // reading position across the background refresh
   const tlRef = useRef(tl); tlRef.current = tl;
+  const [page, setPage] = useState<Paging>(); // older history still on the server ("Show earlier" fetches it)
+  const pageRef = useRef(page); pageRef.current = page;
+  const older = useRef<Promise<Item[]> | null>(null);
   const limitRef = useRef(limit); limitRef.current = limit;
 
   // Switching threads resets during render (not in an effect), so the first frame already shows the new thread:
   // its cached timeline if we have one, else skeletons. Hermes' fresh copy replaces it in the background.
   const key = `${id}:${thread?.sessionId}`;
   const [shown, setShown] = useState('');
+  const shownRef = useRef(''); shownRef.current = key;
   if (shown !== key) {
     setShown(key);
     const c = thread ? getCached(id) : undefined;
     const hit = c && c.session === thread!.sessionId ? c : undefined;
     setTl(hit ? revive(hit, thread!.status === 'running') : { items: [], running: false });
-    setSid(undefined); setLimit(PAGE); setEdit(undefined); setCheckpoints(hit?.checkpoints); setLoading(!hit);
+    setSid(undefined); setLimit(PAGE); setEdit(undefined); setCheckpoints(hit?.checkpoints); setLoading(!hit); setPage(hit?.page);
+    pageRef.current = hit?.page; older.current = null;
     initial.current = new Set(hit?.tl.items.map(i => i.id));
     fresh.current = false; anchor.current = null;
     stick.current = !SCROLL.has(id); restore.current = SCROLL.has(id);
@@ -106,8 +112,11 @@ export function ThreadView({ id }: { id: string }) {
     if (!thread) return;
     let cancelled = false;
     let unsub = () => {};
+    let busy = false;
     const open = async () => {
+      busy = true;
       try {
+        const hist = firstPage(id); // doesn't need the live session: runs alongside the attach
         const { session_id } = await api.post<{ session_id: string }>(`/api/threads/${id}/attach`);
         if (cancelled) return;
         unsub();
@@ -122,12 +131,17 @@ export function ThreadView({ id }: { id: string }) {
         };
         const offs = [rpc.onSession(session_id, onEv)];
         unsub = () => offs.forEach(f => f());
-        const r = await rpc.call('session.resume', { session_id: thread.sessionId, ...(thread.profile ? { profile: thread.profile } : {}) });
+        const { r, tl: next, page: fresh0 } = await resumeWith(rpc, thread, hist);
         if (cancelled) return;
         if (r.session_id !== session_id) offs.push(rpc.onSession(r.session_id, onEv)); // reaped in between
-        const next = fromResume(r), prev = tlRef.current.items;
-        // Rows already on screen (from the cache) keep their ids and DOM, so the swap is invisible.
-        const items = reconcile(prev, next.items);
+        const prev = tlRef.current.items;
+        // Rows already on screen (from the cache) keep their ids and DOM, so the swap is invisible; older rows loaded
+        // before (cache, "Show earlier") stay in front of the fresh newest page.
+        let { items, kept } = mergeTail(prev, next.items);
+        // Older rows without a cursor (a trimmed cache entry) would be fetched again: keep just the fresh page then.
+        if (kept && !pageRef.current) { items = reconcile(prev, next.items); kept = false; }
+        const pg = kept ? pageRef.current! : fresh0;
+        setPage(pg); pageRef.current = pg;
         if (prev.length && !stick.current) {
           // Reading back in the thread: keep the rendered window's first row so nothing above the viewport moves,
           // and remember the first visible row to re-pin it after the commit.
@@ -146,12 +160,15 @@ export function ThreadView({ id }: { id: string }) {
       } catch (e) {
         toastError(e);
       } finally {
+        busy = false;
         if (!cancelled) setLoading(false);
       }
     };
     reopen.current = open;
     open();
-    const offReady = rpc.onReady(open);
+    // A reconnect re-resumes. Not while an open is in flight: on a cold start the socket's first ready lands while
+    // the first open waits for it, and a second open doubled every request (two full resumes per page load).
+    const offReady = rpc.onReady(() => { if (!busy) open(); });
     return () => { cancelled = true; unsub(); offReady(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, thread?.sessionId]);
@@ -181,11 +198,32 @@ export function ThreadView({ id }: { id: string }) {
     if (!c || c.session !== thread?.sessionId) return;
     initial.current = new Set(c.tl.items.map(i => i.id));
     setTl(revive(c, useStore.getState().threads.find(t => t.id === id)?.status === 'running')); setCheckpoints(c.checkpoints); setLoading(false);
+    setPage(c.page); pageRef.current = c.page;
   }), [id, thread?.sessionId]);
 
   // Keep this thread's cache entry current as live events reduce the timeline (only once Hermes answered this open,
   // so a stale copy is never re-stamped as fresh).
-  useEffect(() => { if (sid && thread) putCached(id, { tl, session: thread.sessionId, checkpoints }); }, [tl, sid, checkpoints]);
+  useEffect(() => { if (sid && thread) putCached(id, { tl, session: thread.sessionId, checkpoints, page }); }, [tl, sid, checkpoints, page]);
+
+  // Older history from the server, in front of what's loaded (one page, or everything for an export).
+  const loadOlder = (all = false) => {
+    const p = pageRef.current;
+    if (!p?.more) return Promise.resolve(tlRef.current.items);
+    if (older.current) return older.current;
+    const k = key;
+    const run = olderPages(id, p, all, tlRef.current.items[0]?.kind !== 'user').then(o => {
+      const items = prependOlder(tlRef.current.items, o.items);
+      if (shownRef.current !== k) return items;
+      const el = scroller.current;
+      if (el && !stick.current) keepFromBottom.current = el.scrollHeight - el.scrollTop; // hold the reading position
+      setTl(t => ({ ...t, items: prependOlder(t.items, o.items) }));
+      if (!all) setLimit(l => l + o.items.length); // an export loads everything but renders only what it needs
+      setPage(o.page); pageRef.current = o.page;
+      return items;
+    }, e => { toastError(e); return tlRef.current.items; }).finally(() => { older.current = null; });
+    older.current = run;
+    return run;
+  };
 
   // File checkpoints (Hermes snapshots before each turn's first edit); refreshed whenever a turn ends.
   const loadCheckpoints = useCallback(() => {
@@ -263,7 +301,8 @@ export function ThreadView({ id }: { id: string }) {
   };
   const exportThread = async (kind: 'md' | 'html' | 'share') => {
     const name = thread.title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'thread';
-    if (kind === 'md') return download(`${name}.md`, toMarkdown(thread.title, tl.items), 'text/markdown');
+    const all = await loadOlder(true); // the whole conversation, not just the pages on screen
+    if (kind === 'md') return download(`${name}.md`, toMarkdown(thread.title, all), 'text/markdown');
     setLimit(1e9); // render the whole conversation before snapshotting
     await new Promise(r => setTimeout(r, 300));
     const html = await toHtml(thread.title, content.current!);
@@ -313,7 +352,12 @@ export function ThreadView({ id }: { id: string }) {
             if (!loading) { if (stick.current) SCROLL.delete(id); else SCROLL.set(id, el.scrollHeight - el.scrollTop); } }}
           className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden outline-none">
           <div ref={content} className="mx-auto max-w-3xl px-4 py-6 space-y-3">
-            {tl.items.length > limit && <button onClick={() => { const el = scroller.current!; stick.current = false; keepFromBottom.current = el.scrollHeight - el.scrollTop; setLimit(l => l + PAGE); }} className="press mx-auto block label hover:text-moon rounded-md px-2 py-1">Show earlier ({tl.items.length - limit})</button>}
+            {(tl.items.length > limit || page?.more) && <button onClick={() => {
+              const el = scroller.current!; stick.current = false;
+              // Rendered rows first; past them, the next page from the server.
+              if (tl.items.length > limit) { keepFromBottom.current = el.scrollHeight - el.scrollTop; setLimit(l => l + PAGE); }
+              else loadOlder();
+            }} className="press mx-auto block label hover:text-moon rounded-md px-2 py-1">Show earlier{tl.items.length > limit ? ` (${tl.items.length - limit})` : ''}</button>}
             {loading && !tl.items.length && <div className="space-y-5 pt-2" aria-label="Loading conversation">
               <div className="flex justify-end"><Skeleton className="h-9 w-2/5 rounded-2xl" /></div>
               <div className="space-y-2"><Skeleton className="h-3.5 w-11/12" /><Skeleton className="h-3.5 w-4/5" /><Skeleton className="h-3.5 w-2/3" /></div>
