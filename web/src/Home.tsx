@@ -6,6 +6,8 @@ import { useAttachments, AttachmentChips, filesFrom, handOff } from './attachmen
 import { useCompletions } from './thread/completions';
 import { Button, IconButton, Modal, Moon, Switch, inputCls, go, ago, sourceLabel, useDraft, NO_PREDICT } from './ui';
 import { haptic } from './iosBridge';
+import { useUsage } from './useUsage';
+import { glance } from './usage';
 
 // The old single shared Home draft held already-sent text (its clear was dropped on unmount).
 localStorage.removeItem('gibbous.draft.home');
@@ -146,8 +148,20 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
           </div>}
         </div>
       </div>
+      <UsageGlance />
     </div>
   );
+}
+
+// One quiet line pinned to the bottom of the screen (outside the centred column, so it never moves the composer),
+// linking to Settings → Usage. Hidden when there's nothing to say or the window is short (phone keyboard open).
+function UsageGlance() {
+  const g = glance(useUsage('7'));
+  if (!g) return null;
+  return <a href="#/settings/usage" data-tip="Open usage"
+    className="press animate-fade absolute bottom-[max(.9rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 max-w-[calc(100%-2rem)] truncate whitespace-nowrap px-3 py-1 rounded-full text-[12px] text-ash hover:text-dust tabular-nums [@media(max-height:560px)]:hidden">
+    {g.tokens}{g.model && <span className="hidden sm:inline"> · {g.model}</span>}{g.cost && <> · {g.cost}</>}
+  </a>;
 }
 
 export function AddProjectDialog({ open, onClose }: { open: boolean; onClose(): void }) {
