@@ -99,7 +99,9 @@ try {
   await page.keyboard.press('Escape');
 
   // An app, not a page: chrome isn't selectable and has no browser context menu; messages and fields keep both.
-  await visit(page, '#/', 'e2e');
+  // #/new: on an empty state plain #/ may show the first-run import picker, which has no message box.
+  await visit(page, '#/new', 'e2e');
+  await page.waitForSelector('textarea', { timeout: 5000 }).catch(() => {});
   const feel = await page.evaluate(() => {
     const sel = (e: Element | null) => e ? getComputedStyle(e).userSelect : 'missing';
     const menu = (e: Element | null) => { const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); e?.dispatchEvent(ev); return ev.defaultPrevented; };

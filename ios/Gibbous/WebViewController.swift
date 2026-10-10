@@ -261,6 +261,8 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
   private func notify(_ d: [String: Any]) {
     // In the foreground the page shows its own toast; the shell only speaks for a backgrounded app.
     guard UIApplication.shared.applicationState != .active else { log.notice("notify skipped: app is active"); return }
+    // With APNs registered the server pushes the same notification; posting it locally too would show it twice.
+    guard !UIApplication.shared.isRegisteredForRemoteNotifications else { log.notice("notify skipped: APNs delivers it"); return }
     let content = UNMutableNotificationContent()
     content.title = d["title"] as? String ?? "Gibbous"
     content.body = d["body"] as? String ?? ""
