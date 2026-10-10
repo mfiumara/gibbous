@@ -63,7 +63,21 @@ export async function setSync(sources: string[], on: boolean, label: string) {
     await api.patch('/api/settings', { syncSources: [...synced] });
     if (on) {
       const r = await api.post<{ added: number }>('/api/sync');
-      s.toast({ title: `${label} sessions are in the sidebar`, body: r.added ? `Added ${r.added}. New ones appear automatically.` : 'New ones appear automatically.' });
+      s.toast({ title: `${label} sessions are in the sidebar`, body: r.added ? `Added ${r.added}. New ones appear automatically.` : 'New ones appear automatically.',
+        action: r.added ? { label: 'Undo', run: () => { setSync(sources, false, label).then(() => removeSynced(sources)); } } : undefined });
+    } else {
+      // Switching off stops new ones; the ones already in the sidebar go too (they're read-only copies of sessions that
+      // stay under Sessions). Threads you have moved into a project are kept.
+      const n = await removeSynced(sources);
+      s.toast({ title: `${label} sessions stopped syncing`, body: n ? `Removed ${n} from the sidebar. They're still under Sessions.` : undefined });
     }
   } catch (e) { toastError(e); }
+}
+
+// Read-only threads mirrored from these sources, not filed into a project: remove them from the sidebar.
+export async function removeSynced(sources: string[]) {
+  const want = new Set(sources);
+  const gone = useStore.getState().threads.filter(t => t.readOnly && t.source && want.has(t.source) && !t.projectId);
+  for (const t of gone) await api.del(`/api/threads/${t.id}`).catch(() => {});
+  return gone.length;
 }
