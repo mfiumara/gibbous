@@ -240,6 +240,8 @@ export function ThreadView({ id }: { id: string }) {
   if (!thread) return <Empty title="Thread not found">It may have been deleted. <button className="text-tide underline" onClick={() => go('/')}>Start a new thread</button></Empty>;
 
   const items = tl.items.length > limit ? tl.items.slice(-limit) : tl.items;
+  // Live subagents while the turn has moved past the delegation: one card, at the bottom.
+  const liveBelow = agents.some(isLive) && items.at(-1)?.kind !== 'subagent';
   const running = tl.running || thread.status === 'running';
   // The parent blocked on delegate_task does nothing itself: say what it's waiting for.
   const liveAgents = agents.filter(isLive).length;
@@ -336,6 +338,8 @@ export function ThreadView({ id }: { id: string }) {
                   // One card with every subagent of the thread, at the latest delegation; earlier rows render nothing.
                   // (Matching live rows to stored sessions shrank the card to 1/1 once events arrived.)
                   if (items.slice(i + 1).some(x => x.kind === 'subagent')) return null;
+                  // While they work and the turn has moved on, the card follows the work at the bottom instead (never both).
+                  if (liveBelow) return null;
                   return <div key={it.id} className={anim} data-k={it.id}><SubagentGroup agents={agents} all={agents} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>;
                 }
                 case 'side': return <div key={it.id} className={anim} data-k={it.id}><SideCard item={it} /></div>;
@@ -345,7 +349,7 @@ export function ThreadView({ id }: { id: string }) {
             })}
             {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
             {/* Working subagents whose card isn't already right above (stored-only, or the delegation scrolled up). */}
-            {agents.some(isLive) && items.at(-1)?.kind !== 'subagent' && <div className="mt-2"><SubagentGroup agents={agents} all={agents} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>}
+            {liveBelow && <div className="mt-2"><SubagentGroup agents={agents} all={agents} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>}
             {thread.status === 'error' && !running && thread.error && !tl.items.some(i => i.kind === 'notice') && <p className="text-[13px] text-oxide select-text">{thread.error}</p>}
             {requests.map(r => <div key={r.id} className="animate-rise"><RequestCard r={r} /></div>)}
           </div>
