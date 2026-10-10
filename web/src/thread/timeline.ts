@@ -12,7 +12,7 @@ export type Item =
       childSessionId?: string; tokens?: number; duration?: number; index: number; count: number; parentId?: string; depth?: number }
   | { kind: 'notice'; id: string; text: string; tone: 'info' | 'error' }
   | { kind: 'side'; id: string; mode: 'btw' | 'background'; question: string; text?: string }
-  | { kind: 'turn'; id: string; ms?: number; tokens?: number; cost?: number };   // footer under a finished reply
+  | { kind: 'turn'; id: string; ms?: number; tokens?: number; cost?: number; at?: number };   // footer under a finished reply; at = end (ms)
 
 export interface Timeline {
   items: Item[]; running: boolean; status?: string; turnStartedAt?: number;
@@ -27,7 +27,7 @@ const uid = (p: string) => `${p}-${++n}`;
 export function fromHistory(messages: TranscriptMessage[], running = false): Item[] {
   const items: Item[] = [];
   let start: number | undefined, end: number | undefined;
-  const footer = () => { if (start && end && end > start) items.push({ kind: 'turn', id: uid('tn'), ms: (end - start) * 1000 }); };
+  const footer = () => { if (start && end && end > start) items.push({ kind: 'turn', id: uid('tn'), ms: (end - start) * 1000, at: end * 1000 }); };
   for (const m of messages) {
     if (m.display_kind === 'hidden') continue;
     if (m.role === 'user') {
@@ -205,7 +205,7 @@ export function reduce(t: Timeline, ev: HermesEvent): Timeline {
       const u = p.usage as Usage | undefined, was = t.usage;
       const tokens = u?.total != null && was?.total != null ? u.total - was.total : undefined;
       const cost = u?.cost_usd != null && was?.cost_usd != null ? u.cost_usd - was.cost_usd : undefined;
-      if (t.turnStartedAt || tokens) items = [...items, { kind: 'turn', id: uid('tn'), ms: t.turnStartedAt ? Date.now() - t.turnStartedAt : undefined, tokens: tokens && tokens > 0 ? tokens : undefined, cost: cost && cost > 0 ? cost : undefined }];
+      if (t.turnStartedAt || tokens) items = [...items, { kind: 'turn', id: uid('tn'), at: Date.now(), ms: t.turnStartedAt ? Date.now() - t.turnStartedAt : undefined, tokens: tokens && tokens > 0 ? tokens : undefined, cost: cost && cost > 0 ? cost : undefined }];
       return { ...t, items, running: false, status: undefined, usage: p.usage ?? t.usage, turnStartedAt: undefined, compacting: false };
     }
     case 'error':
@@ -249,4 +249,13 @@ export function parseUserText(text: string) {
     return t !== '[screenshot]';
   }).join('\n').replace(/@file:(\S+)/g, (_, p) => p.split('/').pop()!).trim();   // inline mentions read as names
   return { images, files, body };
+}
+
+// Turn-footer tooltip: just the time for today's turns, the day too for older ones, the year only when it differs.
+export function endedLabel(at: number, now = Date.now()): string {
+  const d = new Date(at), n = new Date(now);
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === n.toDateString()) return `Ended at ${time}`;
+  const day = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', ...(d.getFullYear() !== n.getFullYear() ? { year: 'numeric' } : {}) });
+  return `Ended ${day}, ${time}`;
 }

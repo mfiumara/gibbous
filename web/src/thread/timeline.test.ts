@@ -1,7 +1,7 @@
 // Replays a real Hermes event capture through the reducer: `node --test web/src/thread/timeline.test.ts`
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reduce, MOON_VERBS, fromHistory, fromStored, checkpointFor, parseUserText, withInflight, type Timeline } from './timeline.ts';
+import { reduce, MOON_VERBS, fromHistory, fromStored, checkpointFor, parseUserText, withInflight, endedLabel, type Timeline } from './timeline.ts';
 
 const ev = (type: string, payload: any = {}) => ({ type, session_id: 's', payload });
 
@@ -126,4 +126,18 @@ test('compaction status drives the compacting flag until the next status or the 
   assert.equal(t.compacting, true);
   t = reduce(t, ev('message.complete', { text: 'ok', status: 'complete' }));
   assert.equal(t.compacting, false);
+});
+
+test('endedLabel: time today, day for older turns, year only when it differs', () => {
+  const now = new Date(2026, 9, 9, 22, 0).getTime();
+  const today = endedLabel(new Date(2026, 9, 9, 21, 43).getTime(), now);
+  assert.match(today, /^Ended at /); assert.ok(today.includes('43'));
+  const older = endedLabel(new Date(2026, 9, 7, 9, 5).getTime(), now);
+  assert.match(older, /^Ended .*7.*, /); assert.ok(!older.includes('2026'));
+  assert.ok(endedLabel(new Date(2025, 0, 2, 9, 5).getTime(), now).includes('2025'));
+});
+
+test('history turn footers carry their end time', () => {
+  const items = fromHistory([{ role: 'user', text: 'hi', timestamp: 100 } as never, { role: 'assistant', text: 'yo', timestamp: 160 } as never]);
+  const f = items.at(-1)!; assert.equal(f.kind, 'turn'); if (f.kind === 'turn') assert.equal(f.at, 160_000);
 });

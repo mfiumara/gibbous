@@ -4,7 +4,7 @@ import { api } from '../api';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
 import { Moon, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
-import { reduce, checkpointFor, type Timeline, type Item } from './timeline';
+import { reduce, checkpointFor, endedLabel, type Timeline, type Item } from './timeline';
 import { getCached, putCached, onCached, fromResume, reconcile, revive } from './cache';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
 import { useSubagents, SubagentLine, SubagentsPanel } from './Subagents';
@@ -314,7 +314,7 @@ export function ThreadView({ id }: { id: string }) {
                 case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} /></div>;
                 case 'subagent': return <div key={it.id} className={anim} data-k={it.id}><SubagentLine item={it} agents={agents} onOpen={openAgents} /></div>;
                 case 'side': return <div key={it.id} className={anim} data-k={it.id}><SideCard item={it} /></div>;
-                case 'turn': return <p key={it.id} className="flex justify-end items-center gap-1.5 font-mono text-[11.5px] text-dust -mt-2 select-none"><Clock size={11} />{[it.ms != null && fmtDuration(it.ms), it.tokens && `${fmtTokens(it.tokens)} tokens`, it.cost && fmtUsd(it.cost)].filter(Boolean).join(' · ')}</p>;
+                case 'turn': return <p key={it.id} data-tip={it.at ? endedLabel(it.at) : undefined} className="flex justify-end items-center gap-1.5 font-mono text-[11.5px] text-dust -mt-2 select-none"><Clock size={11} />{[it.ms != null && fmtDuration(it.ms), it.tokens && `${fmtTokens(it.tokens)} tokens`, it.cost && fmtUsd(it.cost)].filter(Boolean).join(' · ')}</p>;
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
             })}
