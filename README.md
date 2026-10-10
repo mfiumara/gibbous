@@ -34,6 +34,11 @@ Open the login link from `~/.gibbous/login-url` once per browser, or use Gibbous
   - Every Hermes session, filterable by source. *Keep in sidebar* mirrors a whole source, such as Discord.
   - Claude Code and Codex sessions can be imported too.
   - Search covers all transcripts.
+- **iPhone app push (APNs)**: the iOS app registers its device token with the server; sending needs an APNs auth key. In the Apple Developer portal (paid membership) open *Certificates, Identifiers & Profiles → Keys*, add a key with *Apple Push Notifications service (APNs)* enabled, download the `AuthKey_<KEYID>.p8` once, put it in `~/.gibbous/`, and create `~/.gibbous/apns.json`:
+  ```json
+  { "keyId": "<KEYID>", "teamId": "6726M85H57", "bundleId": "dev.gibbous.ios", "keyPath": "AuthKey_<KEYID>.p8" }
+  ```
+  `keyPath` may be absolute or relative to `~/.gibbous`. Optional `"production": true|false` forces the APNs host; by default each device's own environment decides (debug builds = sandbox, TestFlight/App Store = production). Changes are picked up without a restart; without the file APNs stays off. `GIBBOUS_APNS_HOST`/`GIBBOUS_APNS_CA` are for testing against a local HTTP/2 server only.
 - **Discord and other surfaces** are read-only: they belong to the gateway. If the gateway API server is on, you can reply from Gibbous, and the reply goes through the gateway. *Continue in Gibbous* forks a conversation into a thread you own.
 - **Rooms**: group chats between Hermes profiles.
 - **Hosts**: other machines running Hermes, reached over SSH tunnels.
