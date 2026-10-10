@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { api, ApiError, type PrBadge, type Project, type Thread, type Task, type Settings, type OpenRequest, type Playbook, type PlanDraft, type Schedule, type Host } from './api';
 import { rpc } from './rpc';
+import { showsTarget } from './notify';
 
 interface Toast { id: number; title: string; body?: string; url?: string; tone?: 'error' | 'info'; action?: { label: string; run(): void } }
 
@@ -120,7 +121,7 @@ rpc.onGibbous = (kind, data) => {
       // Inside the macOS app: native notification whenever the window isn't focused.
       const bridge = (window as any).webkit?.messageHandlers?.gibbousNotify;
       if (bridge && (!document.hasFocus() || data.test)) bridge.postMessage(data); // the test always shows a real banner
-      else if (document.visibilityState === 'visible') s.toast({ title: data.title, body: data.body, url: data.url });
+      else if (document.visibilityState === 'visible' && !(document.hasFocus() && showsTarget(data.url, location.hash))) s.toast({ title: data.title, body: data.body, url: data.url });
       break;
     }
     case 'reload': s.load(); break;

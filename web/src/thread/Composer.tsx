@@ -12,6 +12,7 @@ import type { SessionLiveInfo, Usage } from '../hermes/contract';
 import { toastError, useStore } from '../store';
 
 export interface EditTarget { rowId?: number; text: string }
+interface Queued { shown: string; message: string; images: boolean }
 
 interface Props {
   draftKey?: string;  // where the unsent text is kept (the thread id)
@@ -73,15 +74,34 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
   // Offline (or the session isn't attached yet): hold the message and send it the moment we're back.
   const connected = useStore(s => s.connected);
   const [waiting, setWaiting] = useState(false);
-  // Messages sent while a turn runs wait in Hermes' queue; show them until that turn ends and they go out.
-  const [queued, setQueued] = useState<string[]>([]);
-  const wasRunning = useRef(running);
-  useEffect(() => { if (wasRunning.current && !running && queued.length) { queued.forEach(q => onSent?.(q)); setQueued([]); } wasRunning.current = running; }, [running]);
+  // Messages sent while a turn runs wait in Hermes' queue; show them until that turn ends and they go out. `message` is
+  // what Hermes got (with @file refs); images live on the session, so those can't be re-sent by "send now".
+  const [queued, setQueued] = useState<Queued[]>([]);
+  const wasRunning = useRef(running), runningRef = useRef(running);
+  runningRef.current = running;
+  useEffect(() => { if (wasRunning.current && !running && queued.length) { queued.forEach(q => onSent?.(q.shown)); setQueued([]); } wasRunning.current = running; }, [running]);
   useEffect(() => setQueued([]), [sid]);
   useEffect(() => { if (!running && mode === 'steer') setMode('send'); }, [running]);
   // A first message started on Home (with attachments) arrives here and goes out as soon as the session is up.
   useEffect(() => { const h = draftKey ? takeHandoff(draftKey) : undefined; if (h) { setDraft(h.text); setFiles(h.files); setWaiting(true); } }, [draftKey]);
   useEffect(() => { if (waiting && connected && sid && !busy) { setWaiting(false); submitRef.current(); } }, [waiting, connected, sid, busy]);
+
+  // "Send now" on a queued message: Hermes has no way to pull one message out of its queue, so stop the turn (which
+  // clears the queue), send this one, then queue the others again in their original order.
+  async function sendNow(i: number) {
+    if (!sid || busy) return;
+    const pick = queued[i], rest = queued.filter((_, j) => j !== i);
+    setBusy(true); setQueued([]);
+    try {
+      await rpc.call('session.interrupt', { session_id: sid });
+      for (let k = 0; runningRef.current && k < 50; k++) await new Promise(r => setTimeout(r, 100));
+      const r = await rpc.call('prompt.submit', { session_id: sid, text: pick.message, queued: true });
+      if (r.status === 'queued') rest.unshift(pick); else onSent?.(pick.shown);
+      const again: Queued[] = [];
+      for (const q of rest) { await rpc.call('prompt.submit', { session_id: sid, text: q.message, queued: true }); again.push(q); }
+      setQueued(again);
+    } catch (e) { toastError(e); setQueued([pick, ...rest]); } finally { setBusy(false); }
+  }
 
   async function submit() {
     const body = text.trim();
@@ -120,7 +140,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
           try {
             const r = await rpc.call('prompt.submit', params);
             const shown = body || files.map(f => f.name).join(', ');
-            if (r.status === 'queued') setQueued(q => [...q, shown]);
+            if (r.status === 'queued') setQueued(q => [...q, { shown, message, images: files.some(f => f.kind === 'image') }]);
             else if (!edit) onSent?.(shown);
             if (r.status === 'steered' || r.status === 'redirected') toast({ title: r.status === 'steered' ? 'Sent as guidance to the running turn' : 'Redirected the running turn' });
             if (mode === 'steer') setMode('send');
@@ -175,8 +195,18 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
       {completions.list()}
       {queued.length > 0 && (
         <div role="status" className="mb-2 mx-1 rounded-xl border border-tide/50 bg-tide/10 px-3 py-2 animate-rise">
-          <p className="flex items-center gap-2 text-[12.5px] font-medium text-tide"><Clock size={13} className="animate-pulse" />Queued · sends when this turn finishes</p>
-          {queued.map((q, i) => <p key={i} className="mt-1 text-[13px] text-moon line-clamp-2 whitespace-pre-wrap">{q}</p>)}
+          <p className="flex items-center gap-2 text-[12.5px] font-medium text-tide"><Clock size={13} className="animate-pulse" />
+            {queued.length === 1 ? 'Queued · sends when this turn finishes' : `${queued.length} messages queued · each goes out as its own turn, in order`}</p>
+          {/* One card per prompt, numbered, so several queued messages never read as one long message. */}
+          <ol className="mt-1.5 space-y-1">{queued.map((q, i) => (
+            <li key={i} className="flex items-start gap-2 rounded-lg bg-basalt/50 border border-tide/20 pl-2 pr-1 py-1 animate-rise">
+              {queued.length > 1 && <span className="mt-[3px] flex-none size-4 grid place-items-center rounded-full bg-tide/20 font-mono text-[10px] text-tide tabular-nums">{i + 1}</span>}
+              <p className="flex-1 min-w-0 text-[13px] text-moon line-clamp-2 whitespace-pre-wrap select-text">{q.shown}</p>
+              {!q.images && <button type="button" aria-label="Send now" disabled={busy} onClick={() => sendNow(i)}
+                data-tip="Send now: stops the current turn and sends this message right away"
+                className="press flex-none size-6 grid place-items-center rounded-full text-tide hover:bg-tide/20 disabled:opacity-40"><ArrowUp size={13} strokeWidth={2.5} /></button>}
+            </li>
+          ))}</ol>
         </div>
       )}
       {!!openTodos.length && running && (
