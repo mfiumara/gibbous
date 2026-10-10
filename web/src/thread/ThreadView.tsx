@@ -314,7 +314,7 @@ export function ThreadView({ id }: { id: string }) {
                 case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} /></div>;
                 case 'subagent': return <div key={it.id} className={anim} data-k={it.id}><SubagentLine item={it} agents={agents} onOpen={openAgents} /></div>;
                 case 'side': return <div key={it.id} className={anim} data-k={it.id}><SideCard item={it} /></div>;
-                case 'turn': return <p key={it.id} data-tip={it.at ? endedLabel(it.at) : undefined} className="flex justify-end items-center gap-1.5 font-mono text-[11.5px] text-dust -mt-2 select-none"><Clock size={11} />{[it.ms != null && fmtDuration(it.ms), it.tokens && `${fmtTokens(it.tokens)} tokens`, it.cost && fmtUsd(it.cost)].filter(Boolean).join(' · ')}</p>;
+                case 'turn': return <p key={it.id} className="flex justify-end -mt-2 select-none"><span data-tip={it.at ? endedLabel(it.at) : undefined} className="inline-flex items-center gap-1.5 font-mono text-[11.5px] text-dust">{/* tip on the text, not the full-width row, so it anchors here */}<Clock size={11} />{[it.ms != null && fmtDuration(it.ms), it.tokens && `${fmtTokens(it.tokens)} tokens`, it.cost && fmtUsd(it.cost)].filter(Boolean).join(' · ')}</span></p>;
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
             })}
