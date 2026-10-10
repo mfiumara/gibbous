@@ -1,17 +1,17 @@
-// Everything that runs on its own, in one place: Hermes scheduled jobs and Gibbous board schedules.
+// Everything that runs on its own, in one place: Hermes scheduled jobs.
 // What's next, what's failing, and the controls to run, pause or edit each one.
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Pause, Play, Zap, History, Pencil, KanbanSquare, Bot, AlertTriangle, CalendarClock } from 'lucide-react';
-import { api, hermes, type Schedule } from './api';
-import { useStore, toastError, NONE } from './store';
+import { Plus, Pause, Play, Zap, History, Pencil, Bot, AlertTriangle, CalendarClock } from 'lucide-react';
+import { hermes } from './api';
+import { useStore, toastError } from './store';
 import { Button, IconButton, MoonLoader, ago } from './ui';
 import { PageHeader } from './Inbox';
 import { JobEditor, Runs, sched, type Job, type Draft, type Target } from './settings/Jobs';
-import { nextRun, describeCron } from '../../server/cron.ts';
+import { describeCron } from '../../server/cron.ts';
 
 interface Row {
-  key: string; kind: 'hermes' | 'board'; name: string; when: string; next?: number; last?: number;
-  status: 'ok' | 'failed' | 'paused' | 'never'; error?: string; target: string; job?: Job; schedule?: Schedule;
+  key: string; kind: 'hermes'; name: string; when: string; next?: number; last?: number;
+  status: 'ok' | 'failed' | 'paused' | 'never'; error?: string; target: string; job: Job;
 }
 
 const at = (ms?: number) => ms ? new Date(ms).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -19,8 +19,6 @@ const until = (ms: number) => { const m = Math.round((ms - Date.now()) / 60_000)
 
 export function AutomationsView() {
   const toast = useStore(s => s.toast);
-  const schedules = useStore(s => s.schedules ?? NONE);
-  const projects = useStore(s => s.projects);
   const [jobs, setJobs] = useState<Job[]>();
   const [targets, setTargets] = useState<Target[]>([]);
   const [editing, setEditing] = useState<Draft | null>(null);
@@ -45,39 +43,24 @@ export function AutomationsView() {
         error: j.last_error ?? j.last_delivery_error ?? undefined, target: target(j.deliver),
       };
     }),
-    ...schedules.map(s => {
-      let next: number | undefined;
-      try { next = s.enabled ? nextRun(s.cron) ?? undefined : undefined; } catch { /* bad expression: shown as-is */ }
-      return {
-        key: `b:${s.id}`, kind: 'board' as const, name: s.title, when: describeCron(s.cron), schedule: s, next, last: s.lastRun,
-        status: !s.enabled ? 'paused' as const : s.lastRun ? 'ok' as const : 'never' as const,
-        target: `${projects.find(p => p.id === s.projectId)?.name ?? 'project'} board`,
-      };
-    }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [jobs, schedules, projects, targets]);
+  ], [jobs, targets]);
 
   const soon = rows.filter(r => r.next && r.next - Date.now() < 24 * 3600_000).sort((a, b) => a.next! - b.next!);
   const failing = rows.filter(r => r.status === 'failed');
   const recent = rows.filter(r => r.last).sort((a, b) => b.last! - a.last!).slice(0, 8);
 
   const act = (j: Job, a: 'pause' | 'resume' | 'trigger') => hermes.post(`cron/jobs/${j.id}/${a}`).then(() => { toast({ title: a === 'trigger' ? `Running ${j.name ?? j.id} now` : a === 'pause' ? `Paused ${j.name ?? j.id}` : `Resumed ${j.name ?? j.id}` }); load(); }, toastError);
-  const toggleBoard = (s: Schedule) => api.patch(`/api/schedules/${s.id}`, { enabled: !s.enabled }).catch(toastError);
   const edit = (j: Job) => hermes.get<Job>(`cron/jobs/${j.id}`).then(full => setEditing({ id: j.id, name: full.name ?? '', schedule: sched(full), prompt: full.prompt ?? '', deliver: full.deliver ?? 'local', skills: (full.skills ?? []).join(', ') }), toastError);
 
-  const Kind = ({ r }: { r: Row }) => r.kind === 'hermes'
-    ? <span className="label inline-flex items-center gap-1 text-ash" data-tip="Hermes scheduled job"><Bot size={11} />hermes</span>
-    : <span className="label inline-flex items-center gap-1 text-ash" data-tip="Gibbous board schedule: creates a task"><KanbanSquare size={11} />board</span>;
+  const Kind = (_: { r: Row }) => <span className="label inline-flex items-center gap-1 text-ash" data-tip="Hermes scheduled job"><Bot size={11} />hermes</span>;
   const dot = (r: Row) => ({ ok: 'bg-sprout', failed: 'bg-oxide', paused: 'bg-ash', never: 'bg-tide/60' })[r.status];
 
-  const actions = (r: Row) => r.job ? <>
+  const actions = (r: Row) => <>
     <IconButton label="Run now" onClick={() => act(r.job!, 'trigger')}><Zap size={14} /></IconButton>
     <IconButton label="Run history" onClick={() => setRuns(r.job!)}><History size={14} /></IconButton>
     <IconButton label="Edit" onClick={() => edit(r.job!)}><Pencil size={14} /></IconButton>
     <IconButton label={r.status === 'paused' ? 'Resume' : 'Pause'} onClick={() => act(r.job!, r.status === 'paused' ? 'resume' : 'pause')}>{r.status === 'paused' ? <Play size={14} /> : <Pause size={14} />}</IconButton>
-  </> : <>
-    <IconButton label="Open board" onClick={() => { location.hash = `/board/${r.schedule!.projectId}`; }}><KanbanSquare size={14} /></IconButton>
-    <IconButton label={r.status === 'paused' ? 'Resume' : 'Pause'} onClick={() => toggleBoard(r.schedule!)}>{r.status === 'paused' ? <Play size={14} /> : <Pause size={14} />}</IconButton>
   </>;
 
   return (

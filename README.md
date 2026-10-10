@@ -1,6 +1,6 @@
 # Gibbous
 
-A cockpit for the Hermes agent running on this Mac: parallel threads in git worktrees, a task board with an automatic review loop, live diffs, a terminal, and approvals from your phone.
+A cockpit for the Hermes agent running on this Mac: parallel threads in git worktrees, each project's Hermes kanban board, live diffs, a terminal, and approvals from your phone.
 
 ## Install
 
@@ -24,14 +24,12 @@ Open the login link from `~/.gibbous/login-url` once per browser, or use Gibbous
 - **Panels** (`⌘\`):
   - Changes: diff, line comments, revert, commit, sync with base, PR status, and *Fix CI*.
   - Files (edit in place), Terminal (tabs for your project scripts), Preview (local dev servers).
-  - Processes, Session (context breakdown, checkpoints, subagent tree), Team, and Screen.
-- **Board** (per project), as columns or a dependency graph with the critical path:
-  - *Plan* drafts tasks with dependencies. You edit the draft, then accept it.
-  - Queued tasks run in parallel worktrees. A reviewer agent loops with the author up to the round limit.
-  - A **playbook** sets the planner prompt, review passes, reviewer model, test gate, budget and finish action (manual, merge or PR).
-  - **Schedules** create recurring tasks from cron expressions.
-- **Inbox**: every approval, question and finished task in one place. With notifications on, these also arrive as push notifications (per-kind toggles in Settings).
-- **Coordinator**: a *Lead* thread on Home splits work across worker threads it can watch. Its team appears in the Team panel. This is the `gibbous_*` MCP tools, which any Hermes session can use, Telegram included.
+  - Processes, Session (context breakdown, checkpoints, subagent tree), and Screen.
+- **Kanban**: Gibbous has no task system of its own; it shows Hermes' kanban (`hermes kanban`), through the API the kanban dashboard plugin mounts on `hermes serve`.
+  - A project's board is the Hermes board whose default workdir is the project folder (or inside it), or one you link by hand.
+  - Columns follow Hermes' statuses, live. A card opens its body, dependencies, comments, activity and the worker's session (read-only). Create, comment, block/unblock, assign and archive from there; j/k walk cards, h/l columns.
+  - *Kanban* in the sidebar lists every board.
+- **Inbox**: every approval, question and finished thread in one place. With notifications on, these also arrive as push notifications (per-kind toggles in Settings).
 - **Hermes history and search**:
   - Every Hermes session, filterable by source. *Keep in sidebar* mirrors a whole source, such as Discord.
   - Claude Code and Codex sessions can be imported too.
@@ -42,7 +40,7 @@ Open the login link from `~/.gibbous/login-url` once per browser, or use Gibbous
 - **Settings → Hermes**:
   - Usage and cost charts, profiles, skills, MCP servers (with OAuth), scheduled jobs, messaging platforms, memory, the vault and password managers, raw config.
   - Update: one click, then a compatibility check.
-- **Settings → Maintenance**: stuck tasks, orphaned worktrees, backup and restore, and a redacted debug bundle for bug reports.
+- **Settings → Maintenance**: orphaned worktrees, backup and restore, and a redacted debug bundle for bug reports.
 - Night and light themes, three densities, and reduced motion. Gibbous.app adds a menu-bar status item, a Dock badge, native notifications, launch at login, and ⌃⌥Space to summon it.
 
 ## Uninstall
@@ -62,9 +60,10 @@ browser / Gibbous.app / phone PWA
 gibbous server (server/, 127.0.0.1:7878)
   ├─ pipes Hermes JSON-RPC through verbatim; mixes in gibbous.event frames
   ├─ orchestrator: own Hermes connection, attached to every thread
-  │    → owns approvals/questions, thread status, task queue, review loop
-  ├─ git/worktrees, PTY terminals, web push, MCP endpoint (/mcp)
-  └─ ~/.gibbous/state.json (projects, threads, tasks, settings)
+  │    → owns approvals/questions, thread status
+  ├─ kanban: Hermes' kanban plugin API (/api/plugins/kanban) → /api/kanban/*
+  ├─ git/worktrees, PTY terminals, web push
+  └─ ~/.gibbous/state.json (projects, threads, settings)
         │
 hermes serve (spawned detached on :9120, survives Gibbous restarts)
 ```
@@ -78,7 +77,7 @@ hermes serve (spawned detached on :9120, survives Gibbous restarts)
 ```sh
 GIBBOUS_ALLOWED_HOSTS=localhost:5173 node server/main.ts   # or `pnpm --filter server dev`
 pnpm --filter web dev                                      # Vite on :5173, proxies to the server
-pnpm test && pnpm typecheck   # unit tests + the orchestrator against a fake Hermes (server/fake-hermes.ts)
+pnpm test && pnpm typecheck   # unit tests + thread lifecycle against a fake Hermes (server/fake-hermes.ts)
 pnpm build && pnpm e2e        # headless Chrome on an isolated instance (temp state, :7979); sends no prompts
 ```
 

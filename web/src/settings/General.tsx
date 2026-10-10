@@ -28,14 +28,6 @@ export function GeneralTab() {
           {providers.map(p => <optgroup key={p.slug} label={p.name}>{p.models!.slice(0, 60).map(m => <option key={m} value={`${p.slug}\u0000${m}`}>{m}</option>)}</optgroup>)}
         </select>
       </Field>
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Field label="Parallel tasks">
-          <input type="number" min={1} max={16} className={inputCls} value={settings.maxConcurrent} onChange={e => patch({ maxConcurrent: Number(e.target.value) })} />
-        </Field>
-        <Field label="Review rounds" hint="0 turns review off.">
-          <input type="number" min={0} max={5} className={inputCls} value={settings.autoReview ? settings.maxReviewRounds : 0} onChange={e => { const n = Number(e.target.value); patch({ maxReviewRounds: n, autoReview: n > 0 }); }} />
-        </Field>
-      </div>
     </Section>
     <Section title="Approvals" description="Your Hermes profile setting; it applies to the CLI and Discord too.">
       {approvals && <Segmented label="Approval mode" value={approvals} onChange={setMode} options={[
@@ -44,7 +36,7 @@ export function GeneralTab() {
     </Section>
     <Snippets />
     <Section title="Housekeeping">
-      <Row title="Archive idle chats" description="Board agents and pinned threads are never archived.">
+      <Row title="Archive idle chats" description="Pinned threads are never archived.">
         <select className={inputCls + ' py-1.5 w-36'} value={settings.autoArchiveDays ?? 0} onChange={e => patch({ autoArchiveDays: Number(e.target.value) })}>
           {[[0, 'Never'], [7, 'After 7 days'], [14, 'After 14 days'], [30, 'After 30 days'], [90, 'After 90 days']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>

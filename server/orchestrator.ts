@@ -1,15 +1,13 @@
-// Gibbous orchestration: threads (Hermes sessions bound to a workspace), tasks, run queue, review loop, planner.
+// Gibbous threads: Hermes sessions bound to a workspace. Work orchestration lives in Hermes' kanban (kanban.ts).
 // Gibbous's own Hermes connection attaches to every thread, so it sees turn ends and owns server→client
 // requests (approvals, clarify, …) whether or not a browser is open.
 import { openingMessage, cleanTitle, SHORT_TITLE_PROMPT } from './titles.ts';
 import { EventEmitter } from 'node:events';
-import { spawn, execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { HermesClient, restGet, isStaleSession, type Backend } from './hermes.ts';
-import { state, save, newId, type Thread, type Task, type Project, type ThreadRole, type Playbook, type PlanDraft } from './store.ts';
-import { BUILTIN_PLAYBOOKS, reviewPrompt, workerPrompt, extractPlanJson } from './playbooks.ts';
-import { parseCron } from './cron.ts';
+import { state, save, newId, type Thread, type Project } from './store.ts';
 import * as g from './git.ts';
 import { notify } from './push.ts';
 
@@ -31,12 +29,11 @@ export class Orchestrator extends EventEmitter {
     this.timers.push(setInterval(() => this.syncSources().catch(e => console.error('[orch] sync', e.message ?? e)), 60_000));
     hc.on('ready', () => this.syncSources(5000).catch(() => {}));
     this.addClient('local', hc);
-    this.timers.push(setInterval(() => this.tick().catch(e => console.error('[orch] tick', e)), Number(process.env.GIBBOUS_TICK_MS ?? 3000)));
   }
   private timers: NodeJS.Timeout[] = [];
   stop() { this.timers.forEach(clearInterval); for (const c of this.clients.values()) c.stop(); }
 
-  // Every host's events and questions flow into the same thread/task state; replies go back on the same client.
+  // Every host's events and questions flow into the same thread state; replies go back on the same client.
   addClient(id: string, c: HermesClient) {
     this.clients.set(id, c);
     c.on('ready', () => this.onReady(id));
@@ -59,27 +56,13 @@ export class Orchestrator extends EventEmitter {
   changed(kind: string, data?: unknown) { this.emit('change', { kind, data }); }
 
   thread(id: string) { return state.threads.find(t => t.id === id); }
-  task(id: string) { return state.tasks.find(t => t.id === id); }
   project(id?: string) { return state.projects.find(p => p.id === id); }
-  playbooks() { return [...BUILTIN_PLAYBOOKS, ...state.playbooks]; }
-  playbook(id?: string): Playbook | undefined { return id ? this.playbooks().find(p => p.id === id) : undefined; }
-  draft(id: string) { return state.plans.find(p => p.id === id); }
-  taskUsage(t: Task) {
-    const ths = state.threads.filter(x => x.taskId === t.id);
-    return { tokens: ths.reduce((n, x) => n + (x.usage?.tokens ?? 0), 0), costUsd: ths.reduce((n, x) => n + (x.usage?.costUsd ?? 0), 0) };
-  }
 
   private touch(t: Thread, patch: Partial<Thread>) {
     Object.assign(t, patch, { updatedAt: Date.now() });
     save();
     this.changed('thread', t);
   }
-  private touchTask(t: Task, patch: Partial<Task>) {
-    Object.assign(t, patch, { updatedAt: Date.now() });
-    save();
-    this.changed('task', t);
-  }
-
   private async onReady(host = 'local') {
     // Re-attach anything that may still be doing work so we keep seeing its events.
     for (const t of state.threads) {
@@ -100,7 +83,7 @@ export class Orchestrator extends EventEmitter {
       console.log(`[orch] ${t.id}: Hermes finished the turn without telling us; marking idle`);
       this.touch(t, { status: 'idle' });
       this.emit('turnDone', t);
-      this.afterTurn(t, !r.inflight?.error).catch(e => console.error('[orch] reconcile', e));
+      this.afterTurn(t);
     }
   }
 
@@ -118,12 +101,12 @@ export class Orchestrator extends EventEmitter {
         const missedEnd = t.status === 'running' && !r.running && !r.open_requests?.length;
         const status = (r.open_requests?.length ? 'needs_input' : r.running ? 'running' : (t.status === 'archived' ? 'archived' : t.status === 'error' ? 'error' : 'idle'));
         if (status !== t.status) this.touch(t, { status });
-        // The turn finished while we weren't attached: replay its end so tasks/reviews/plans advance.
+        // The turn finished while we weren't attached: replay its end (lastText, the "done" notification).
         if (missedEnd) {
           const h = await this.cl(t).call('session.history', { session_id: r.session_id }).catch(() => ({ messages: [] }));
           const last = [...(h.messages ?? [])].reverse().find((m: any) => m.role === 'assistant' && m.text);
           this.touch(t, { lastText: String(last?.text ?? '').slice(-4000) });
-          this.afterTurn(t, !r.inflight?.error).catch(e => console.error('[orch] catch-up', e));
+          this.afterTurn(t);
         }
         return r.session_id as string;
       }).finally(() => this.attaching.delete(t.sessionId));
@@ -195,7 +178,7 @@ export class Orchestrator extends EventEmitter {
     if ((ev.type === 'session.usage' || ev.type === 'message.complete') && ev.payload?.usage) {
       const u = ev.payload.usage;
       t.usage = { tokens: u.total ?? ((u.prompt ?? 0) + (u.completion ?? 0)), costUsd: u.cost_usd ?? t.usage?.costUsd ?? 0 };
-      if (ev.type === 'session.usage') { save(); this.checkBudget(t); }
+      if (ev.type === 'session.usage') save();
     }
     if (ev.type === 'message.start') {
       if (t.status !== 'needs_input') this.touch(t, { status: 'running', error: undefined });
@@ -207,19 +190,19 @@ export class Orchestrator extends EventEmitter {
         error: ok ? undefined : String(ev.payload?.error ?? ev.payload?.status ?? 'failed'),
       });
       this.emit('turnDone', t);
-      // A stop (or the interrupt before an edit/rewind) is not a task outcome; the next turn decides.
-      if (ev.payload?.status !== 'interrupted') await this.afterTurn(t, ok);
+      // A stop (or the interrupt before an edit/rewind) is not a finished turn worth a notification.
+      if (ev.payload?.status !== 'interrupted') this.afterTurn(t);
     } else if (ev.type === 'error') {
       this.touch(t, { status: 'error', error: String(ev.payload?.message ?? 'error') });
       this.emit('turnDone', t);
-      await this.afterTurn(t, false);
+      this.afterTurn(t);
     }
   }
 
   // ── threads ───────────────────────────────────────────────────────────
   async createThread(o: {
     projectId?: string; title?: string; autoTitle?: boolean; prompt?: string; worktree?: boolean; base?: string;
-    role?: ThreadRole; taskId?: string; cwd?: string; model?: string; provider?: string; parentId?: string; planId?: string; profile?: string; host?: string;
+    cwd?: string; model?: string; provider?: string; profile?: string; host?: string;
   }): Promise<Thread> {
     const profile = o.profile ?? (state.settings.profile || undefined);
     const host = o.host && o.host !== 'local' ? o.host : undefined;
@@ -245,7 +228,7 @@ export class Orchestrator extends EventEmitter {
     });
     const t: Thread = {
       id: newId('th'), projectId: project?.id, title, autoTitle: o.autoTitle || title === 'New thread' || undefined, sessionId: r.stored_session_id, cwd, worktree,
-      role: o.role ?? 'chat', taskId: o.taskId, parentId: o.parentId, planId: o.planId, profile, host, status: 'idle', createdAt: Date.now(), updatedAt: Date.now(),
+      role: 'chat', profile, host, status: 'idle', createdAt: Date.now(), updatedAt: Date.now(),
     };
     state.threads.unshift(t);
     this.live.set(t.sessionId, r.session_id);
@@ -379,287 +362,15 @@ export class Orchestrator extends EventEmitter {
   }
 
   async deleteThread(t: Thread, removeWorktree = false) {
-    const task = t.taskId ? this.task(t.taskId) : undefined;
-    if (task && task.status !== 'done' && task.status !== 'failed' && task.status !== 'backlog')
-      throw new Error(`"${task.title}" still uses this thread; finish or delete the task first`);
     await this.archiveThread(t, removeWorktree).catch(() => {});
     state.threads = state.threads.filter(x => x.id !== t.id);
     save();
     this.changed('thread-deleted', { id: t.id });
   }
 
-  // Wait until every listed thread is idle/error (or timeout). Used by the MCP `wait_for_threads` tool.
-  waitIdle(ids: string[], timeoutMs: number): Promise<Thread[]> {
-    const done = () => ids.every(id => { const s = this.thread(id)?.status; return !s || s === 'idle' || s === 'error' || s === 'archived'; });
-    const result = () => ids.map(id => this.thread(id)).filter(Boolean) as Thread[];
-    if (done()) return Promise.resolve(result());
-    return new Promise(resolve => {
-      const finish = () => { clearTimeout(timer); this.off('change', check); resolve(result()); };
-      const check = () => { if (done()) finish(); };
-      const timer = setTimeout(finish, timeoutMs);
-      this.on('change', check);
-    });
-  }
-
-  // ── tasks ─────────────────────────────────────────────────────────────
-  createTask(o: { projectId: string; title: string; prompt: string; deps?: string[]; worktree?: boolean; status?: Task['status']; playbookId?: string; scheduleId?: string }): Task {
-    if (!this.project(o.projectId)) throw new Error('unknown project');
-    const t: Task = {
-      id: newId('tk'), projectId: o.projectId, title: o.title, prompt: o.prompt, deps: o.deps ?? [],
-      worktree: o.worktree ?? true, status: o.status ?? 'backlog', reviewRounds: 0, playbookId: o.playbookId, scheduleId: o.scheduleId,
-      createdAt: Date.now(), updatedAt: Date.now(),
-    };
-    state.tasks.push(t);
-    save();
-    this.changed('task', t);
-    return t;
-  }
-
-  updateTask(t: Task, patch: Partial<Pick<Task, 'title' | 'prompt' | 'deps' | 'worktree' | 'status'>>) {
-    this.touchTask(t, patch);
-  }
-
-  deleteTask(t: Task) {
-    state.tasks = state.tasks.filter(x => x.id !== t.id);
-    for (const o of state.tasks) o.deps = o.deps.filter(d => d !== t.id);
-    save();
-    this.changed('task-deleted', { id: t.id });
-  }
-
-  private running() {
-    return state.tasks.filter(t => t.status === 'running' || t.status === 'reviewing' || t.status === 'testing').length;
-  }
-
-  // The run queue: start queued tasks whose deps are done, up to maxConcurrent.
-  private lastScheduleMinute = 0;
-  private async tick() {
-    if (!this.hc.ready) return;
-    const minute = Math.floor(Date.now() / 60_000);
-    if (minute !== this.lastScheduleMinute) { this.lastScheduleMinute = minute; this.fireSchedules(new Date(minute * 60_000)); }
-    for (const t of state.tasks) {
-      if (this.running() >= state.settings.maxConcurrent) return;
-      if (t.status !== 'queued') continue;
-      const deps = t.deps.map(d => this.task(d));
-      if (deps.some(d => d && d.status === 'failed')) { this.touchTask(t, { status: 'failed', reviewNotes: 'a dependency failed' }); continue; }
-      if (deps.some(d => d && d.status !== 'done')) continue;
-      await this.startTask(t);
-    }
-  }
-
-  async startTask(t: Task) {
-    // A retry/re-queue starts from scratch: fresh worktree, fresh reviewer, rounds reset.
-    for (const id of [t.threadId, t.reviewThreadId]) { const x = id && this.thread(id); if (x && x.status !== 'archived') this.archiveThread(x).catch(() => {}); }
-    this.touchTask(t, { status: 'running', threadId: undefined, reviewThreadId: undefined, reviewRounds: 0, verdict: undefined, reviewNotes: undefined, testRuns: 0, startedAt: Date.now(), finishedAt: undefined });
-    try {
-      const deps = t.deps.map(d => this.task(d)).filter(Boolean) as Task[];
-      const th = await this.createThread({
-        projectId: t.projectId, title: t.title, worktree: t.worktree, role: 'worker', taskId: t.id,
-        prompt: workerPrompt(t, deps.map(d => d.title), this.playbook(t.playbookId)),
-      });
-      this.touchTask(t, { threadId: th.id });
-    } catch (e: any) {
-      this.touchTask(t, { status: 'failed', reviewNotes: e.message ?? String(e) });
-    }
-  }
-
-  private async afterTurn(th: Thread, ok: boolean) {
-    const task = th.taskId ? this.task(th.taskId) : undefined;
-    if (th.role === 'planner') { if (ok && !th.planned) { this.touch(th, { planned: true }); this.finishPlan(th); } return; }
-    if (!task) {
-      if (th.role === 'chat' || th.role === 'coordinator') notify({ kind: 'done', title: `✓ ${th.title}`, body: (th.lastText ?? '').slice(0, 180), url: `/#/t/${th.id}`, tag: `done-${th.id}` });
-      return;
-    }
-    if (th.role === 'worker' && task.status === 'running') {
-      if (!ok) { this.touchTask(task, { status: 'failed', reviewNotes: th.error }); notify({ kind: 'failure', title: `✗ ${task.title}`, body: th.error ?? 'failed', url: `/#/board/${task.projectId}` }); return; }
-      if (this.reviewRounds(task) > 0) return this.startReview(task, th);
-      return this.postApprove(task, th);
-    } else if (th.role === 'reviewer' && task.status === 'reviewing') {
-      const text = th.lastText ?? '';
-      const verdict = /VERDICT:\s*APPROVE/i.test(text) ? 'approve' : 'changes';
-      const notes = text.split(/VERDICT:/i)[1]?.replace(/^\s*(APPROVE|CHANGES)\s*/i, '').trim() || text.slice(-2000);
-      if (verdict === 'approve') { this.touchTask(task, { verdict, reviewNotes: notes }); return this.postApprove(task, this.thread(task.threadId!) ?? th); }
-      if (task.reviewRounds < this.reviewRounds(task)) {
-        const worker = task.threadId ? this.thread(task.threadId) : undefined;
-        if (worker) {
-          this.touchTask(task, { status: 'running', verdict, reviewNotes: notes });
-          await this.send(worker, `A code reviewer looked at your changes and asked for fixes:\n\n${notes}\n\nAddress every point, then stop.`);
-          return;
-        }
-      }
-      this.touchTask(task, { status: 'review', verdict, reviewNotes: notes });
-      notify({ kind: 'task', title: `⚠ Needs attention: ${task.title}`, body: notes.slice(0, 180), url: `/#/board/${task.projectId}` });
-    } else if (th.role === 'worker' && task.status === 'testing') {
-      if (ok) return this.postApprove(task, th);
-    }
-  }
-
-  private reviewRounds(task: Task) {
-    const pb = this.playbook(task.playbookId);
-    return pb ? pb.reviewRounds : state.settings.autoReview ? state.settings.maxReviewRounds : 0;
-  }
-
-  // After approval (or when there is no review): run the playbook's test gate, then its finish action.
-  private async postApprove(task: Task, worker: Thread) {
-    const pb = this.playbook(task.playbookId);
-    const script = pb?.testScript ? this.project(task.projectId)?.scripts?.find(s => s.name === pb.testScript) : undefined;
-    if (script) {
-      this.touchTask(task, { status: 'testing' });
-      const r = await runCapture(script.command, worker.cwd, 15 * 60_000);
-      if (!r.ok) {
-        if ((task.testRuns ?? 0) < 2) {
-          this.touchTask(task, { testRuns: (task.testRuns ?? 0) + 1 });
-          await this.send(worker, `The test gate \`${script.command}\` failed:\n\n\`\`\`\n${r.output}\n\`\`\`\n\nFix the failures, then stop.`);
-          return;
-        }
-        this.touchTask(task, { status: 'review', reviewNotes: `Tests still failing after ${task.testRuns} fix attempts:\n\n${r.output.slice(-3000)}` });
-        notify({ kind: 'failure', title: `✗ Tests failing: ${task.title}`, body: script.command, url: `/#/board/${task.projectId}` });
-        return;
-      }
-    }
-    this.touchTask(task, { status: 'review' });
-    if (pb && pb.finish !== 'manual') {
-      try { await this.mergeTask(task, pb.finish); notify({ kind: 'task', title: `✓ ${pb.finish === 'pr' ? 'PR opened' : 'Merged'}: ${task.title}`, body: task.mergedAs ?? '', url: task.mergedAs?.startsWith('http') ? task.mergedAs : `/#/board/${task.projectId}` }); return; }
-      catch (e: any) { this.touchTask(task, { reviewNotes: `${task.reviewNotes ?? ''}\n\nAutomatic ${pb.finish} failed: ${e.message}`.trim() }); }
-    }
-    notify({ kind: 'task', title: `${task.verdict === 'approve' ? '✓ Approved' : 'Ready for review'}: ${task.title}`, body: (task.reviewNotes ?? worker.lastText ?? '').slice(0, 180), url: `/#/board/${task.projectId}` });
-  }
-
-  // Budget caps: interrupt a task's agents once its spend passes the playbook's limit.
-  private checkBudget(t: Thread) {
-    const task = t.taskId ? this.task(t.taskId) : undefined;
-    const cap = task ? this.playbook(task.playbookId)?.budgetUsd : undefined;
-    if (!task || !cap || task.status === 'failed' || task.status === 'done') return;
-    const spent = this.taskUsage(task).costUsd;
-    if (spent <= cap) return;
-    for (const x of state.threads.filter(x => x.taskId === task.id && x.status === 'running')) this.interrupt(x).catch(() => {});
-    this.touchTask(task, { status: 'failed', reviewNotes: `Stopped: spent $${spent.toFixed(2)}, over the $${cap.toFixed(2)} budget.` });
-    notify({ kind: 'failure', title: `Budget reached: ${task.title}`, body: `$${spent.toFixed(2)} of $${cap.toFixed(2)}`, url: `/#/board/${task.projectId}` });
-  }
-
-  async startReview(task: Task, worker: Thread) {
-    const pb = this.playbook(task.playbookId);
-    const prompt = reviewPrompt(task, worker.worktree?.base, pb);
-    this.touchTask(task, { status: 'reviewing', reviewRounds: task.reviewRounds + 1 });
-    const existing = task.reviewThreadId ? this.thread(task.reviewThreadId) : undefined;
-    try {
-      if (existing) await this.send(existing, `The author addressed your previous feedback. Review again from scratch.\n\n${prompt}`);
-      else {
-        const rv = await this.createThread({ projectId: task.projectId, title: `Review: ${task.title}`, cwd: worker.cwd, role: 'reviewer', taskId: task.id, prompt, model: pb?.reviewer?.model || undefined, provider: pb?.reviewer?.provider || undefined });
-        this.touchTask(task, { reviewThreadId: rv.id });
-      }
-    } catch (e: any) {
-      this.touchTask(task, { status: 'review', reviewNotes: `review could not start: ${e.message}` });
-    }
-  }
-
-  private merging = new Set<string>();
-  async mergeTask(task: Task, mode: 'merge' | 'pr') {
-    const p = this.project(task.projectId);
-    const th = task.threadId ? this.thread(task.threadId) : undefined;
-    if (!p || !th) throw new Error('task has no thread');
-    if (task.status !== 'review') throw new Error(`task is ${task.status}, not ready to merge`);
-    const busy = [th, task.reviewThreadId ? this.thread(task.reviewThreadId) : undefined].find(x => x && (x.status === 'running' || x.status === 'needs_input'));
-    if (busy) throw new Error(`"${busy.title}" is still working; wait for it or stop it first`);
-    if (this.merging.has(task.id)) throw new Error('already merging');
-    this.merging.add(task.id);
-    try { const r = await this.doMerge(task, mode, p, th); this.touchTask(task, { finishedAt: Date.now() }); return r; } finally { this.merging.delete(task.id); }
-  }
-
-  private async doMerge(task: Task, mode: 'merge' | 'pr', p: Project, th: Thread) {
-    const msg = `${task.title}\n\n${task.prompt.slice(0, 2000)}\n\n(gibbous task ${task.id})`;
-    if (!th.worktree) {
-      await g.commitAll(th.cwd, msg);
-      this.touchTask(task, { status: 'done', mergedAs: 'committed in place' });
-      return task;
-    }
-    await g.commitAll(th.worktree.path, msg);
-    if (mode === 'pr') {
-      const url = await g.pushAndPr(th.worktree.path, th.worktree.branch, th.worktree.base, task.title, `${task.prompt}\n\n${task.reviewNotes ? `Review notes:\n${task.reviewNotes}\n\n` : ''}🤖 Orchestrated by Gibbous on Hermes`);
-      this.touchTask(task, { status: 'done', mergedAs: url });
-    } else {
-      const sha = await g.mergeBranch(p.path, th.worktree.branch, th.worktree.base, `Merge ${th.worktree.branch}: ${task.title}`);
-      this.touchTask(task, { status: 'done', mergedAs: sha.slice(0, 10) });
-      await g.removeWorktree(p.path, th.worktree, true).catch(() => {});
-      for (const id of [task.threadId, task.reviewThreadId]) { const x = id && this.thread(id); if (x) await this.archiveThread(x); }
-    }
-    return task;
-  }
-
-  // ── planner: goal → draft plan → (you edit) → tasks ──────────────────
-  async plan(projectId: string, goal: string, playbookId?: string) {
-    const pb = this.playbook(playbookId ?? this.project(projectId)?.playbookId);
-    // Playbooks without a planner (e.g. "Quick fix") go straight onto the board as one queued task.
-    if (pb && !pb.plan) return { task: this.createTask({ projectId, title: goal.split('\n')[0].slice(0, 80), prompt: goal, playbookId: pb.id, status: 'queued' }) };
-    const prompt = `You are the planning lead for this repository (current directory). Goal:\n\n"""${goal}"""\n\n` +
-      `Investigate the codebase as needed (read-only, do not modify files), then split the goal into small, independently ` +
-      `implementable tasks for parallel coding agents, each working in its own git worktree. Prefer few, well-scoped tasks; ` +
-      `only add dependencies when a task truly needs another merged first. Don't tell agents to commit, push or open PRs; Gibbous does that.${pb?.planPrompt ? `\n\n${pb.planPrompt}` : ''}\n\n` +
-      'Reply with a short plan summary and then ONE fenced ```json block of the form ' +
-      '{"tasks":[{"key":"a","title":"…","prompt":"full, self-contained instructions for the agent","deps":["other key"]}]}.';
-    const draft: PlanDraft = { id: newId('pl'), projectId, goal, threadId: '', playbookId: pb?.id, status: 'drafting', tasks: [], createdAt: Date.now(), updatedAt: Date.now() };
-    state.plans.push(draft);
-    const th = await this.createThread({ projectId, title: `Plan: ${goal.slice(0, 60)}`, role: 'planner', prompt, planId: draft.id });
-    draft.threadId = th.id;
-    save(); this.changed('plan', draft);
-    return th;
-  }
-
-  private finishPlan(th: Thread) {
-    const draft = th.planId ? this.draft(th.planId) : undefined;
-    const text = th.lastText ?? '';
-    if (!draft) return;
-    try {
-      const parsed = extractPlanJson(text) as { tasks: { key: string; title: string; prompt: string; deps?: string[] }[] };
-      Object.assign(draft, { status: 'ready', error: undefined, summary: text.split('```json')[0].trim().slice(-2000), tasks: parsed.tasks.map(t => ({ key: String(t.key), title: t.title, prompt: t.prompt, deps: (t.deps ?? []).map(String) })), updatedAt: Date.now() });
-      save(); this.changed('plan', draft);
-      notify({ kind: 'plan', title: `Plan ready: ${draft.tasks.length} tasks`, body: draft.goal.slice(0, 120), url: `/#/board/${draft.projectId}` });
-    } catch (e: any) {
-      // Surface it on the draft (with re-plan) instead of leaving it "planning" forever.
-      Object.assign(draft, { status: 'ready', error: e.message, tasks: [], updatedAt: Date.now() });
-      save(); this.changed('plan', draft);
-      notify({ kind: 'failure', title: 'Plan could not be read', body: e.message, url: `/#/board/${draft.projectId}` });
-    }
-  }
-
-  // Turn a reviewed draft into board tasks (keys → ids for dependencies).
-  acceptPlan(draft: PlanDraft, tasks = draft.tasks, queue = false) {
-    const ids = new Map<string, string>();
-    const made = tasks.map(x => { const t = this.createTask({ projectId: draft.projectId, title: x.title, prompt: x.prompt, playbookId: draft.playbookId, status: queue ? 'queued' : 'backlog' }); ids.set(x.key, t.id); return [t, x] as const; });
-    for (const [t, x] of made) this.updateTask(t, { deps: x.deps.map(k => ids.get(k)).filter(Boolean) as string[] });
-    Object.assign(draft, { status: 'accepted', tasks, updatedAt: Date.now() });
-    save(); this.changed('plan', draft);
-    const th = this.thread(draft.threadId);
-    if (th) this.archiveThread(th).catch(() => {});
-    return made.map(([t]) => t);
-  }
-
-  async replan(draft: PlanDraft, feedback: string) {
-    const th = this.thread(draft.threadId);
-    if (!th) throw new Error('planner thread is gone');
-    Object.assign(draft, { status: 'drafting', updatedAt: Date.now() });
-    this.touch(th, { planned: false });
-    save(); this.changed('plan', draft);
-    await this.send(th, `Revise the plan based on this feedback, and reply again with a summary and ONE fenced json block in the same format:\n\n${feedback}`);
-  }
-
-  discardPlan(draft: PlanDraft) {
-    Object.assign(draft, { status: 'discarded', updatedAt: Date.now() });
-    save(); this.changed('plan', draft);
-    const th = this.thread(draft.threadId);
-    if (th) this.archiveThread(th).catch(() => {});
-  }
-
-  // ── schedules: recurring tasks ────────────────────────────────────────
-  private fireSchedules(now: Date) {
-    for (const sc of state.schedules) {
-      if (!sc.enabled) continue;
-      let match = false;
-      try { match = parseCron(sc.cron)(now); } catch { continue; }
-      if (!match || (sc.lastRun && Math.floor(sc.lastRun / 60_000) === Math.floor(now.getTime() / 60_000))) continue;
-      sc.lastRun = now.getTime();
-      this.createTask({ projectId: sc.projectId, title: `${sc.title} · ${now.toLocaleDateString()}`, prompt: sc.prompt, playbookId: sc.playbookId, scheduleId: sc.id, status: 'queued' });
-      save(); this.changed('schedule', sc);
-    }
+  // A chat turn finished: tell your devices (in-app toast, push, the Mac app).
+  private afterTurn(th: Thread) {
+    notify({ kind: 'done', title: `✓ ${th.title}`, body: (th.lastText ?? '').slice(0, 180), url: `/#/t/${th.id}`, tag: `done-${th.id}` });
   }
 
   // ── maintenance: things that quietly go wrong ─────────────────────────
@@ -670,16 +381,7 @@ export class Orchestrator extends EventEmitter {
     for (const repo of fs.existsSync(root) ? fs.readdirSync(root) : []) {
       for (const wt of fs.readdirSync(path.join(root, repo))) { const p = path.join(root, repo, wt); if (!used.has(p)) orphans.push(p); }
     }
-    const hour = 3600_000;
-    const stuck = state.tasks.filter(t => {
-      if (t.status !== 'running' && t.status !== 'reviewing' && t.status !== 'testing') return false;
-      const agents = state.threads.filter(x => x.taskId === t.id);
-      const busy = agents.some(x => x.status === 'running' || x.status === 'needs_input');
-      const idle = !busy && Date.now() - t.updatedAt > 10 * 60_000;           // nothing running, yet not advanced
-      const hung = agents.some(x => x.status === 'running' && Date.now() - x.updatedAt > 2 * hour); // no events for hours
-      return idle || hung;
-    }).map(t => ({ id: t.id, title: t.title, status: t.status, projectId: t.projectId, idleMinutes: Math.round((Date.now() - t.updatedAt) / 60_000) }));
-    return { orphans, stuck };
+    return { orphans };
   }
 
   async removeOrphan(dir: string) {
@@ -705,15 +407,6 @@ export class Orchestrator extends EventEmitter {
     this.changed('project', p);
     return p;
   }
-}
-
-// Run a command, keep the last ~200 lines of output; used by the test gate.
-export function runCapture(cmd: string, cwd: string, timeoutMs: number): Promise<{ ok: boolean; output: string }> {
-  return new Promise(resolve => {
-    execFile('/bin/zsh', ['-lc', cmd], { cwd, timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
-      resolve({ ok: !err, output: `${stdout}\n${stderr}`.trim().split('\n').slice(-200).join('\n') });
-    });
-  });
 }
 
 export function runScript(script: string, cwd: string): Promise<void> {

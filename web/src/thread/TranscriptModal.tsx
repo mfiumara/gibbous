@@ -6,13 +6,13 @@ import { Modal, Skeleton } from '../ui';
 import { fromStored, type StoredRow, type Item } from './timeline';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage } from './Items';
 
-export function TranscriptModal({ sessionId, title, onClose }: { sessionId: string | null; title: string; onClose(): void }) {
+export function TranscriptModal({ sessionId, title, onClose, profile }: { sessionId: string | null; title: string; onClose(): void; profile?: string }) {
   const [items, setItems] = useState<Item[]>();
   useEffect(() => {
     if (!sessionId) return;
     setItems(undefined);
-    api.get<{ messages: StoredRow[] }>(`/api/sessions/${encodeURIComponent(sessionId)}/transcript`).then(r => setItems(fromStored(r.messages)), e => { toastError(e); setItems([]); });
-  }, [sessionId]);
+    api.get<{ messages: StoredRow[] }>(`/api/sessions/${encodeURIComponent(sessionId)}/transcript${profile ? `?profile=${encodeURIComponent(profile)}` : ''}`).then(r => setItems(fromStored(r.messages)), e => { toastError(e); setItems([]); });
+  }, [sessionId, profile]);
   return (
     <Modal open={!!sessionId} onClose={onClose} title={title} wide>
       <div className="max-h-[65vh] overflow-y-auto space-y-3 pr-1">

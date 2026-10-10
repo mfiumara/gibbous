@@ -1,5 +1,5 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Inbox, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react';
+import { Plus, Inbox, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type PrBadge } from './api';
@@ -9,7 +9,6 @@ import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, r
 import { parentOf } from './screens';
 import { quiet } from './screenTransition';
 
-const roleTag: Partial<Record<Thread['role'], string>> = { reviewer: 'review', planner: 'plan', coordinator: 'lead', worker: 'task' };
 // Navigating from the open drawer: the drawer slides away itself, so the screen change gets no transition on top.
 const close = () => { if (useStore.getState().sidebar) quiet(); useStore.setState({ sidebar: false }); };
 
@@ -92,7 +91,6 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
         <span className={`truncate flex-1 ${unread ? 'font-bold text-moon' : ''}`}>{t.title}</span>
         {unread && <span className="size-1.5 rounded-full bg-tide flex-none"><span className="sr-only">unread</span></span>}
         {t.pinned && <Pin size={11} className="text-ash flex-none" aria-label="pinned" />}
-        {roleTag[t.role] && <span className="label text-[9px] text-ash">{roleTag[t.role]}</span>}
         <span className="text-[11px] text-ash group-hover:opacity-0 transition-opacity">{ago(t.updatedAt)}</span>
         {pr && <PrLine pr={pr} />}
       </a>
@@ -131,7 +129,7 @@ function Section({ id, title, count, accent, collapsed, toggle, actions, icon, h
         {drag && <GripVertical size={11} aria-hidden className="absolute -left-1 text-ash opacity-0 group-hover/s:opacity-60 pointer-coarse:hidden" />}
         {href ? <>
           <button onClick={() => toggle(id)} aria-expanded={!collapsed} aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`} className="press grid place-items-center size-4 -ml-0.5">{chevron}</button>
-          <a href={href} onClick={onNavigate} aria-current={active ? 'page' : undefined} data-tip="Open board" className="flex items-center gap-1.5 min-w-0 flex-1 hover:[&>.label]:text-moon">{label}</a>
+          <a href={href} onClick={onNavigate} aria-current={active ? 'page' : undefined} data-tip="Open the project's Hermes kanban" className="flex items-center gap-1.5 min-w-0 flex-1 hover:[&>.label]:text-moon">{label}</a>
         </> : <button onClick={() => toggle(id)} aria-expanded={!collapsed} className="flex items-center gap-1.5 min-w-0 flex-1 text-left">{chevron}{label}</button>}
         {actions && <span className="flex opacity-0 group-hover/s:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity">{actions}</span>}
       </div>
@@ -165,7 +163,7 @@ function useSidebarWidth() {
 }
 
 export function Sidebar({ route, onAddProject }: { route: Route; onAddProject(): void }) {
-  const { projects, threads, requests, tasks, connected, hermesReady, sidebar, hosts } = useStore(useShallow(s => ({ projects: s.projects, threads: s.threads, requests: s.requests, tasks: s.tasks, connected: s.connected, hermesReady: s.hermesReady, sidebar: s.sidebar, hosts: s.hosts })));
+  const { projects, threads, requests, connected, hermesReady, sidebar, hosts } = useStore(useShallow(s => ({ projects: s.projects, threads: s.threads, requests: s.requests, connected: s.connected, hermesReady: s.hermesReady, sidebar: s.sidebar, hosts: s.hosts })));
   const width = useSidebarWidth();
   // Rows are memoized: a minute tick keeps their "5m" ages current.
   const [minute, setMinute] = useState(0);
@@ -284,7 +282,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
     return [...m.entries()];
   }, [visible]);
   const activeId = route.name === 'thread' ? route.id : undefined;
-  const inboxCount = requests.length + tasks.filter(t => t.status === 'review').length;
+  const inboxCount = requests.length;
   const status = !connected ? { cls: 'bg-oxide', text: 'Reconnecting' } : !hermesReady ? { cls: 'bg-halo animate-pulse', text: 'Hermes starting' } : null;
 
   const nav = (href: string, icon: React.ReactNode, label: string, active: boolean, badge?: number) => (
@@ -355,9 +353,6 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
         {hosts.length > 0 && <p className="flex items-center gap-1.5 pl-2 text-[11px] font-bold text-dust"><Laptop size={12} />This Mac</p>}
         {shown.map((p, pi) => {
           const list = visible.filter(t => t.projectId === p.id);
-          // Board agents (workers, reviewers, planners) fold into one row unless one is open.
-          const isAgent = (t: Thread) => t.role !== 'chat' && t.role !== 'coordinator' && t.id !== activeId;
-          const own = list.filter(t => !isAgent(t)), agents = list.filter(isAgent);
           const boardActive = route.name === 'board' && route.projectId === p.id;
           return (
             <Section key={p.id} id={p.id} title={p.name} accent={list.filter(t => t.status === 'running').length} collapsed={!!collapsed[p.id]} toggle={toggle}
@@ -381,16 +376,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
                   </Menu>
                 </span>
               </>}>
-              {own.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}
-              {agents.length > 0 && <>
-                <button onClick={() => toggle(`agents:${p.id}`)} aria-expanded={!!collapsed[`agents:${p.id}`]}
-                  className="press w-full flex items-center gap-2.5 pl-3 pr-2 py-[5px] pointer-coarse:py-2 rounded-lg text-[13px] text-ash hover:text-moon hover:bg-ridge/40">
-                  <span className="flex -space-x-0.5">{agents.slice(0, 4).map(t => <Moon key={t.id} thread={t.status} size={7} />)}</span>
-                  <span className="flex-1 text-left">{agents.length} task agent{agents.length > 1 ? 's' : ''}</span>
-                  <ChevronDown size={12} className={`transition-transform ${collapsed[`agents:${p.id}`] ? '' : '-rotate-90'}`} />
-                </button>
-                {collapsed[`agents:${p.id}`] && <div className="pl-3 space-y-px animate-fade">{agents.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}</div>}
-              </>}
+              {list.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}
             </Section>
           );
         })}
@@ -426,6 +412,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
           className={`press group relative flex items-center gap-2.5 rounded-lg text-[13.5px] w-full px-3 py-1.5 pointer-coarse:py-2.5 ${showArchived ? 'text-tide bg-tide/10 hover:bg-tide/15' : 'text-dust hover:text-moon hover:bg-ridge/55'}`}>
           <Archive size={15} /><span className="flex-1 text-left">{showArchived ? 'Viewing archived' : 'Archived'}</span>{showArchived && <X size={14} className="opacity-70" />}
         </button>
+        {nav('#/kanban', <KanbanSquare size={15} />, 'Kanban', route.name === 'kanban')}
         {nav('#/automations', <CalendarClock size={15} />, 'Automations', route.name === 'automations')}
         {nav('#/rooms', <Users size={15} />, 'Rooms', route.name === 'rooms')}
         {nav('#/sessions', <History size={15} />, 'Hermes history', route.name === 'sessions')}

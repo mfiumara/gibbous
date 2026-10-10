@@ -1,6 +1,6 @@
 // App state: a mirror of the server's Gibbous state, kept fresh by gibbous.event frames.
 import { create } from 'zustand';
-import { api, ApiError, type PrBadge, type Project, type Thread, type Task, type Settings, type OpenRequest, type Playbook, type PlanDraft, type Schedule, type Host } from './api';
+import { api, ApiError, type PrBadge, type Project, type Thread, type Settings, type OpenRequest, type Host } from './api';
 import { rpc } from './rpc';
 import { showsTarget } from './notify';
 
@@ -8,8 +8,7 @@ interface Toast { id: number; title: string; body?: string; url?: string; tone?:
 
 interface S {
   loaded: boolean; authed: boolean | null; connected: boolean;
-  projects: Project[]; threads: Thread[]; tasks: Task[]; requests: OpenRequest[];
-  playbooks: Playbook[]; plans: PlanDraft[]; schedules: Schedule[];
+  projects: Project[]; threads: Thread[]; requests: OpenRequest[];
   settings?: Settings; hermesReady: boolean; hermes?: { ready: boolean; version?: string; updateAvailable?: boolean; gatewayRunning?: boolean }; gatewayReplies?: boolean;
   hosts: (Host & { connected: boolean })[]; tailnetUrl: string | null; tailnetLogin: string | null; vapidPublicKey: string;
   build?: string | null; // web build the server serves now (see LOADED_BUILD)
@@ -35,7 +34,7 @@ const upsert = <T extends { id: string }>(list: T[], item: T, front = false) => 
 let toastId = 0;
 export const useStore = create<S>((set, get) => ({
   loaded: false, authed: null, connected: false,
-  projects: [], threads: [], tasks: [], requests: [], playbooks: [], plans: [], schedules: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {},
+  projects: [], threads: [], requests: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {},
   toasts: [], sidebar: false, palette: false,
   hiddenProjects: JSON.parse(localStorage.getItem('gibbous.hiddenProjects') ?? '[]'),
   setHiddenProjects(ids) { localStorage.setItem('gibbous.hiddenProjects', JSON.stringify(ids)); set({ hiddenProjects: ids }); },
@@ -105,13 +104,8 @@ rpc.onGibbous = (kind, data) => {
   switch (kind) {
     case 'thread': useStore.setState({ threads: upsert(s.threads, data, true) }); break;
     case 'thread-deleted': useStore.setState({ threads: s.threads.filter(t => t.id !== data.id) }); break;
-    case 'task': useStore.setState({ tasks: upsert(s.tasks, data) }); break;
-    case 'task-deleted': useStore.setState({ tasks: s.tasks.filter(t => t.id !== data.id) }); break;
     case 'project': useStore.setState({ projects: upsert(s.projects, data) }); break;
     case 'requests': useStore.setState({ requests: data }); break;
-    case 'plan': useStore.setState({ plans: data.status === 'drafting' || data.status === 'ready' ? upsert(s.plans, data) : s.plans.filter(p => p.id !== data.id) }); break;
-    case 'schedule': useStore.setState({ schedules: upsert(s.schedules, data) }); break;
-    case 'playbooks': useStore.setState({ playbooks: data }); break;
     case 'hosts': useStore.setState({ hosts: data }); break;
     case 'prs': useStore.setState({ prs: data }); break;
     case 'settings': useStore.setState({ settings: data }); break;

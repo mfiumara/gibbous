@@ -2,14 +2,14 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal, flushSync } from 'react-dom';
 import { screenChange } from './screenTransition';
 import { Download, X } from 'lucide-react';
-import { api, type ThreadStatus, type TaskStatus } from './api';
+import { api, type ThreadStatus, type KanbanStatus } from './api';
 import { useStore, toastError } from './store';
 import { SHEET_QUERY, decide, offset, dismiss } from './sheet';
 import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel } from './moon';
 
 // ── routing (hash-based so the PWA works from any path) ────────────────
 export type Route =
-  | { name: 'home'; projectId?: string; host?: string } | { name: 'thread'; id: string } | { name: 'board'; projectId: string }
+  | { name: 'home'; projectId?: string; host?: string } | { name: 'thread'; id: string } | { name: 'board'; projectId: string } | { name: 'kanban'; slug?: string }
   | { name: 'inbox' } | { name: 'sessions' } | { name: 'search'; q: string } | { name: 'settings'; tab: string } | { name: 'rooms'; id?: string } | { name: 'automations' };
 
 export function parse(h: string): Route {
@@ -17,6 +17,7 @@ export function parse(h: string): Route {
   const [, a, b] = path.split('/');
   if (a === 't' && b) return { name: 'thread', id: b };
   if (a === 'board' && b) return { name: 'board', projectId: b };
+  if (a === 'kanban') return { name: 'kanban', slug: b || undefined };
   if (a === 'new') return { name: 'home', projectId: b, host: new URLSearchParams(query).get('host') ?? undefined };
   if (a === 'search') return { name: 'search', q: new URLSearchParams(query).get('q') ?? '' };
   if (a === 'settings') return { name: 'settings', tab: b ?? '' }; // '' = the section list (phones); desktop shows General
@@ -128,11 +129,13 @@ export function Logo({ size = 16 }: { size?: number }) {
 // ── moon phase status glyph ─────────────────────────────────────────────
 type Phase = 'new' | 'crescent' | 'running' | 'half' | 'full' | 'eclipse';
 const threadPhase: Record<ThreadStatus, Phase> = { idle: 'full', running: 'running', needs_input: 'half', error: 'eclipse', archived: 'new' };
-const taskPhase: Record<TaskStatus, Phase> = { backlog: 'new', queued: 'crescent', running: 'running', reviewing: 'running', testing: 'running', review: 'half', done: 'full', failed: 'eclipse' };
+// Hermes kanban: waiting = new, queued for a worker = crescent, blocked/review = waiting on someone (half).
+const kanbanPhase: Record<KanbanStatus, Phase> = { triage: 'new', todo: 'new', scheduled: 'crescent', ready: 'crescent', running: 'running', blocked: 'half', review: 'half', done: 'full', archived: 'new' };
 const phaseLabel: Record<Phase, string> = { new: 'not started', crescent: 'queued', running: 'working', half: 'needs you', full: 'done', eclipse: 'error' };
 
-export function Moon({ thread, task, size = 10 }: { thread?: ThreadStatus; task?: TaskStatus; size?: number }) {
-  const phase: Phase = thread ? threadPhase[thread] : task ? taskPhase[task] : 'new';
+export function Moon({ thread, kanban, size = 10 }: { thread?: ThreadStatus; kanban?: KanbanStatus; size?: number }) {
+  const phase: Phase = thread ? threadPhase[thread] : kanban ? kanbanPhase[kanban] : 'new';
+  const label = kanban ?? phaseLabel[phase];
   const style: Record<Phase, React.CSSProperties> = {
     new: { boxShadow: 'inset 0 0 0 1.25px var(--color-ash)' },
     crescent: { boxShadow: `inset ${-size * 0.32}px 0 0 0 var(--color-dust), inset 0 0 0 1px var(--color-ash)` },
@@ -141,7 +144,7 @@ export function Moon({ thread, task, size = 10 }: { thread?: ThreadStatus; task?
     full: { background: 'radial-gradient(circle at 35% 35%, var(--color-moon), color-mix(in srgb, var(--color-moon) 75%, var(--color-ash)))' },
     eclipse: { boxShadow: 'inset 0 0 0 2px var(--color-oxide)', background: 'color-mix(in srgb, var(--color-oxide) 15%, transparent)' },
   };
-  return <span role="img" aria-label={phaseLabel[phase]} data-tip={phaseLabel[phase]}
+  return <span role="img" aria-label={label} data-tip={label}
     className={`moon transition-[background,box-shadow] duration-500 ${phase === 'running' ? 'moon-running' : ''} ${phase === 'half' ? 'moon-needs' : ''}`}
     style={{ width: size, height: size, ...style[phase] }} />;
 }
@@ -195,7 +198,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 }
 
 // Native <dialog> (focus trap, Escape, backdrop) with enter/exit motion; content stays mounted while it closes.
-export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
+export function Modal({ open, onClose, title, children, wide, bottom }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean; bottom?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [mounted, setMounted] = useState(open);
   useEffect(() => {
@@ -205,7 +208,7 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   }, [open]);
   return (
     <dialog ref={ref} onClose={onClose} onClick={e => { if (e.target === ref.current) onClose(); }}
-      className={`sheet surface m-auto w-[calc(100%-24px)] ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl text-moon p-0`}>
+      className={`sheet surface m-auto w-[calc(100%-24px)] ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-2xl text-moon p-0 ${bottom ? 'dialog-bottom' : ''}`}>
       {mounted && <div className="p-6 space-y-4">
         <h2 className="text-[17px] font-bold tracking-[-.01em]">{title}</h2>
         {children}

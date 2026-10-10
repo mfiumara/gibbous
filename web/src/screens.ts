@@ -2,9 +2,10 @@
 // route change gets, and where the back-swipe underlay sits. The DOM sides are screenTransition.ts and BackSwipe.tsx.
 import type { Route } from './ui';
 
-// 0 = a top-level list (home, inbox, settings list…), 1 = something opened from one (a thread, a board, a section).
+// 0 = a top-level list (home, inbox, settings list, the kanban index…), 1 = something opened from one (a thread, a board, a section).
 export function depth(r: Route): number {
   if (r.name === 'thread' || r.name === 'board') return 1;
+  if (r.name === 'kanban') return r.slug ? 1 : 0;
   if (r.name === 'settings') return r.tab ? 1 : 0;
   if (r.name === 'rooms') return r.id ? 1 : 0;
   return 0;
@@ -14,6 +15,7 @@ export function depth(r: Route): number {
 export function parentOf(r: Route): string | null {
   if (r.name === 'settings') return r.tab ? '/settings' : null;
   if (r.name === 'rooms') return r.id ? '/rooms' : null;
+  if (r.name === 'kanban') return r.slug ? '/kanban' : null;
   return depth(r) ? '/' : null;
 }
 

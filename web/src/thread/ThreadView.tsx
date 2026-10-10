@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { FolderGit2, FileCode2, SquareTerminal, Gauge, X, ArrowDown, Globe, Activity, Users, MonitorPlay, ChevronLeft, Paperclip, Clock, Bot } from 'lucide-react';
+import { FolderGit2, FileCode2, SquareTerminal, Gauge, X, ArrowDown, Globe, Activity, MonitorPlay, ChevronLeft, Paperclip, Clock, Bot } from 'lucide-react';
 import { api } from '../api';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
@@ -26,7 +26,6 @@ const SessionPanel = lazy(() => import('../panels/SessionPanel').then(m => ({ de
 const PreviewPanel = lazy(() => import('../panels/PreviewPanel').then(m => ({ default: m.PreviewPanel })));
 const ProcessesPanel = lazy(() => import('../panels/ProcessesPanel').then(m => ({ default: m.ProcessesPanel })));
 const ScreenPanel = lazy(() => import('../panels/ScreenPanel').then(m => ({ default: m.ScreenPanel })));
-const TeamPanel = lazy(() => import('../panels/TeamPanel').then(m => ({ default: m.TeamPanel })));
 import { filesFrom } from '../attachments';
 import { findLocalUrls } from '../panels/preview-urls';
 
@@ -214,13 +213,11 @@ export function ThreadView({ id }: { id: string }) {
   useEffect(() => { if (panel) localStorage.setItem('gibbous.lastPanel', panel); }, [panel]);
 
   const refreshKey = useMemo(() => tl.items.filter(i => i.kind === 'tool' && i.status !== 'running').length + (tl.running ? 0 : 1e6), [tl]);
-  const hasTeam = useStore(s => s.threads.some(t => t.parentId === id));
   const hasAgents = agents.length > 0 || panel === 'agents';
   const panels = useMemo(() => [
-    ...(thread?.role === 'coordinator' || hasTeam ? [{ id: 'team', label: 'Team', icon: Users }] : []),
     ...(hasAgents ? [{ id: 'agents', label: 'Subagents', icon: Bot }] : []),
     ...PANELS,
-  ], [thread?.role, hasTeam, hasAgents]);
+  ], [hasAgents]);
   const users = useMemo(() => tl.items.filter((i): i is Extract<Item, { kind: 'user' }> => i.kind === 'user'), [tl.items]);
 
   if (!thread) return <Empty title="Thread not found">It may have been deleted. <button className="text-tide underline" onClick={() => go('/')}>Start a new thread</button></Empty>;
@@ -269,7 +266,6 @@ export function ThreadView({ id }: { id: string }) {
     panel === 'terminal' ? <TerminalPanel thread={thread} project={project} /> :
     panel === 'preview' ? <PreviewPanel url={previewUrl} setUrl={setPreviewUrl} suggestions={findLocalUrls(tl.items.flatMap(i => i.kind === 'tool' ? [JSON.stringify(i.result ?? '')] : i.kind === 'assistant' ? [i.text] : []))} /> :
     panel === 'processes' ? <ProcessesPanel sid={sid} /> :
-    panel === 'team' ? <TeamPanel thread={thread} /> :
     panel === 'screen' ? <ScreenPanel sid={sid} /> :
     panel === 'agents' ? <SubagentsPanel agents={agents} sid={sid} focus={agentFocus} onFocus={setAgentFocus} /> :
     <SessionPanel tl={tl} sid={sid} checkpoints={checkpoints} onRestore={revert} onChanged={loadCheckpoints} />

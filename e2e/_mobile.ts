@@ -10,8 +10,8 @@ const threads = state.threads.filter((t: any) => t.status !== 'archived').sort((
 const project = state.projects[0];
 const routes: [string, string][] = [
   ['home', '#/'], ['new-project', `#/new/${project?.id}`], ['inbox', '#/inbox'], ['sessions', '#/sessions'], ['search', '#/search?q=fix'],
-  ['automations', '#/automations'], ['rooms', '#/rooms'], ['board', `#/board/${project?.id}`], ['settings', '#/settings'],
-  ...['general', 'appearance', 'notifications', 'phone', 'coordinator', 'playbooks', 'maintenance', 'usage', 'profiles', 'skills', 'mcp', 'jobs', 'platforms', 'memory', 'vault', 'config', 'hosts', 'update'].map(t => [`settings-${t}`, `#/settings/${t}`] as [string, string]),
+  ['automations', '#/automations'], ['rooms', '#/rooms'], ['kanban', '#/kanban'], ['board', `#/board/${project?.id}`], ['settings', '#/settings'],
+  ...['general', 'appearance', 'notifications', 'phone', 'maintenance', 'usage', 'profiles', 'skills', 'mcp', 'jobs', 'platforms', 'memory', 'vault', 'config', 'hosts', 'update'].map(t => [`settings-${t}`, `#/settings/${t}`] as [string, string]),
   ...threads.slice(0, 3).map((t: any, i: number) => [`thread${i}`, `#/t/${t.id}`] as [string, string]),
 ];
 const only = process.env.ONLY?.split(',');

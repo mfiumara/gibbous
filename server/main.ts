@@ -1,4 +1,4 @@
-// Gibbous server: auth, REST, browser↔Hermes WebSocket pipe, terminals, MCP, static web app.
+// Gibbous server: auth, REST, browser↔Hermes WebSocket pipe, terminals, Hermes kanban, static web app.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,12 +9,11 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { ensureBackend, upstreamUrl, restGet, HermesClient, type Backend } from './hermes.ts';
 import { ensureRemoteBackend, closeHost, testHost } from './hosts.ts';
 import { Orchestrator } from './orchestrator.ts';
-import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Playbook, type Schedule, type Host } from './store.ts';
-import { nextRun } from './cron.ts';
+import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Host } from './store.ts';
+import * as kanban from './kanban.ts';
 import { gatewayChat, gatewayAvailable } from './gateway.ts';
 import { MESSAGING_SOURCES } from './sources.ts';
 import { attachTerminal } from './pty.ts';
-import { handleMcp } from './mcp.ts';
 import { subscribe, vapidPublicKey, notify, notifications } from './push.ts';
 import * as g from './git.ts';
 import { smoke } from './smoke.ts';
@@ -143,9 +142,8 @@ async function readBody(req: http.IncomingMessage): Promise<any> {
 
 function publicState() {
   return {
-    projects: state.projects, threads: state.threads, tasks: state.tasks, settings: state.settings,
+    projects: state.projects, threads: state.threads, settings: state.settings,
     gatewayReplies: gatewayAvailable(), hosts: hostStatus(),
-    playbooks: orch.playbooks(), plans: state.plans.filter(p => p.status === 'drafting' || p.status === 'ready'), schedules: state.schedules,
     requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
@@ -173,25 +171,18 @@ route('POST', '/api/projects/order', (_, b) => {
 });
 route('PATCH', '/api/projects/:id', (p, b) => {
   const pr = need(orch.project(p.id), 'project');
-  for (const k of ['name', 'baseBranch', 'setupScript', 'scripts', 'playbookId'] as const) if (k in b) (pr as any)[k] = b[k];
+  for (const k of ['name', 'baseBranch', 'setupScript', 'scripts'] as const) if (k in b) (pr as any)[k] = b[k];
+  if ('kanbanBoard' in b) pr.kanbanBoard = b.kanbanBoard ? kanban.slug(b.kanbanBoard) : undefined;
   save(); orch.changed('project', pr); return pr;
 });
 route('DELETE', '/api/projects/:id', p => {
   state.projects = state.projects.filter(x => x.id !== p.id);
-  state.tasks = state.tasks.filter(t => t.projectId !== p.id);
   for (const t of state.threads) if (t.projectId === p.id) t.projectId = undefined;
   save(); orch.changed('reload'); return { ok: true };
 });
 route('GET', '/api/projects/:id/branches', async p => g.branches(need(orch.project(p.id), 'project').path));
 
-route('POST', '/api/threads', async (_, b) => {
-  if (b.role !== 'coordinator') return orch.createThread(b);
-  // A lead thread: told its own id so the threads it spawns (gibbous_spawn_thread) are linked back to it.
-  const t = await orch.createThread({ ...b, prompt: undefined });
-  await orch.send(t, `You are leading a team of coding agents through Gibbous. Your Gibbous thread id is ${t.id}; pass it as parent_thread_id whenever you call gibbous_spawn_thread. ` +
-    `Break the work down, spawn workers (each gets its own git worktree), wait for them with gibbous_wait, inspect results with gibbous_thread_diff, send fixes with gibbous_send, and report back.\n\nThe goal:\n\n${b.prompt ?? ''}`);
-  return t;
-});
+route('POST', '/api/threads', (_, b) => orch.createThread(b));
 
 route('PATCH', '/api/threads/:id', (p, b) => {
   const t = need(orch.thread(p.id), 'thread');
@@ -255,12 +246,12 @@ route('GET', '/api/diagnostics', () => {
   const bundle = {
     gibbous: pkg.version, node: process.version, os: `${os.type()} ${os.release()} ${os.arch()}`, uptimeMin: Math.round(process.uptime() / 60),
     hermes: { ready: hc.ready, ...health }, hosts: hostStatus().map(h => ({ name: h.name, connected: h.connected })),
-    counts: { projects: state.projects.length, threads: state.threads.length, tasks: state.tasks.length, plans: state.plans.length, schedules: state.schedules.length, pushDevices: state.push.subs.length },
+    counts: { projects: state.projects.length, threads: state.threads.length, pushDevices: state.push.subs.length },
     stateBytes: fs.statSync(path.join(GIBBOUS_HOME, 'state.json'), { throwIfNoEntry: false })?.size ?? 0,
     settings: state.settings,
     logs: { gibbous: tail(path.join(GIBBOUS_HOME, 'gibbous.log')), hermesServe: tail(path.join(GIBBOUS_HOME, 'hermes-serve.log'), 60) },
   };
-  return { text: redact(JSON.stringify(bundle, null, 2), [secret.accessToken, secret.mcpToken, backend?.token ?? '']) };
+  return { text: redact(JSON.stringify(bundle, null, 2), [secret.accessToken, backend?.token ?? '']) };
 });
 route('GET', '/api/smoke', async () => smoke(hc, backend ?? await getBackend()));
 route('POST', '/api/sync', async () => ({ added: await orch.syncSources(5000) }));
@@ -330,58 +321,17 @@ route('GET', '/api/threads/:id/file', async (p, _, u) => {
   return { path: f, content: fs.readFileSync(f, 'utf8') };
 });
 
-route('POST', '/api/tasks', (_, b) => orch.createTask(b));
-route('PATCH', '/api/tasks/:id', (p, b) => {
-  const t = need(orch.task(p.id), 'task');
-  const allowed = ['title', 'prompt', 'deps', 'worktree', 'status'] as const;
-  orch.updateTask(t, Object.fromEntries(allowed.filter(k => k in b).map(k => [k, b[k]])));
-  return t;
+// Hermes kanban (kanban.ts): boards, their tasks, and the few actions a person takes on a card.
+const kb = async () => backend ?? await getBackend();
+const kslug = (s: string) => kanban.slug(s);
+route('GET', '/api/kanban/boards', async () => {
+  const { boards, current, hermesProjects } = await kanban.listBoards(await kb());
+  return { boards, current, matches: kanban.matchBoards(state.projects, boards, hermesProjects, kanban.realpathOr) };
 });
-route('DELETE', '/api/tasks/:id', p => { orch.deleteTask(need(orch.task(p.id), 'task')); return { ok: true }; });
-route('POST', '/api/tasks/:id/merge', (p, b) => orch.mergeTask(need(orch.task(p.id), 'task'), b.mode === 'pr' ? 'pr' : 'merge'));
-route('POST', '/api/tasks/:id/review', async p => {
-  const t = need(orch.task(p.id), 'task');
-  const w = need(t.threadId ? orch.thread(t.threadId) : undefined, 'worker thread');
-  orch.updateTask(t, { status: 'running' });
-  await orch.startReview(t, w);
-  return t;
-});
-route('POST', '/api/plan', async (_, b) => orch.plan(String(b.projectId), String(b.goal), b.playbookId || undefined));
-const plan = (id: string) => need(orch.draft(id), 'plan');
-route('PATCH', '/api/plans/:id', (p, b) => { const d = plan(p.id); if (Array.isArray(b.tasks)) d.tasks = b.tasks; d.updatedAt = Date.now(); save(); orch.changed('plan', d); return d; });
-route('POST', '/api/plans/:id/accept', (p, b) => orch.acceptPlan(plan(p.id), Array.isArray(b.tasks) ? b.tasks : undefined, !!b.queue));
-route('POST', '/api/plans/:id/replan', async (p, b) => { await orch.replan(plan(p.id), String(b.feedback ?? '')); return { ok: true }; });
-route('POST', '/api/plans/:id/discard', p => { orch.discardPlan(plan(p.id)); return { ok: true }; });
-
-// Playbooks (built-ins are read-only; custom ones live in state).
-const PB_FIELDS = ['name', 'description', 'plan', 'planPrompt', 'workerNote', 'writeTests', 'reviewRounds', 'reviewer', 'reviewPasses', 'testScript', 'finish', 'budgetUsd'] as const;
-route('POST', '/api/playbooks', (_, b) => {
-  const pb = { id: newId('pb'), name: 'New playbook', description: '', plan: true, writeTests: false, reviewRounds: 2, reviewPasses: ['correctness'], finish: 'manual', ...Object.fromEntries(PB_FIELDS.filter(k => k in b).map(k => [k, b[k]])) } as Playbook;
-  state.playbooks.push(pb); save(); orch.changed('playbooks', orch.playbooks()); return pb;
-});
-route('PATCH', '/api/playbooks/:id', (p, b) => {
-  const pb = state.playbooks.find(x => x.id === p.id);
-  if (!pb) throw new HttpError(400, 'built-in playbooks are read-only; duplicate it first');
-  for (const k of PB_FIELDS) if (k in b) (pb as any)[k] = b[k];
-  save(); orch.changed('playbooks', orch.playbooks()); return pb;
-});
-route('DELETE', '/api/playbooks/:id', p => { state.playbooks = state.playbooks.filter(x => x.id !== p.id); save(); orch.changed('playbooks', orch.playbooks()); return { ok: true }; });
-
-// Schedules: recurring tasks on the board.
-route('POST', '/api/schedules', (_, b) => {
-  nextRun(String(b.cron)); // validates
-  const sc: Schedule = { id: newId('sc'), projectId: String(b.projectId), title: String(b.title), prompt: String(b.prompt), cron: String(b.cron), playbookId: b.playbookId || undefined, enabled: true, createdAt: Date.now() };
-  need(orch.project(sc.projectId), 'project');
-  state.schedules.push(sc); save(); orch.changed('schedule', sc); return sc;
-});
-route('PATCH', '/api/schedules/:id', (p, b) => {
-  const sc = need(state.schedules.find(x => x.id === p.id), 'schedule');
-  if ('cron' in b) nextRun(String(b.cron));
-  for (const k of ['title', 'prompt', 'cron', 'playbookId', 'enabled'] as const) if (k in b) (sc as any)[k] = b[k];
-  save(); orch.changed('schedule', sc); return sc;
-});
-route('DELETE', '/api/schedules/:id', p => { state.schedules = state.schedules.filter(x => x.id !== p.id); save(); orch.changed('reload'); return { ok: true }; });
-route('GET', '/api/schedules/next', (_, __, u) => { try { return { next: nextRun(u.searchParams.get('cron') ?? '') }; } catch (e: any) { return { error: e.message }; } });
+route('GET', '/api/kanban/boards/:slug/tasks', async (p, _, u) => kanban.boardTasks(await kb(), kslug(p.slug), u.searchParams.get('archived') === '1'));
+route('GET', '/api/kanban/boards/:slug/tasks/:id', async p => kanban.taskDetail(await kb(), kslug(p.slug), kanban.taskId(p.id)));
+route('POST', '/api/kanban/boards/:slug/tasks', async (p, b) => kanban.createTask(await kb(), kslug(p.slug), b));
+route('POST', '/api/kanban/boards/:slug/tasks/:id/:verb', async (p, b) => kanban.act(await kb(), kslug(p.slug), kanban.taskId(p.id), p.verb, b));
 
 // Unified diff of two texts (config editor: "review before saving").
 route('POST', '/api/diff', async (_, b) => {
@@ -420,7 +370,12 @@ route('GET', '/api/maintenance', () => orch.maintenance());
 route('POST', '/api/maintenance/remove', async (_, b) => { await orch.removeOrphan(String(b.path)); return orch.maintenance(); });
 
 // Read-only transcript of any Hermes session (subagent children, linked sessions).
-route('GET', '/api/sessions/:sid/transcript', async p => restGet(backend ?? await getBackend(), `/api/sessions/${encodeURIComponent(p.sid)}/messages?limit=500&order=latest`));
+// ?profile= reads another profile's sessions (kanban workers run under the assignee's profile).
+route('GET', '/api/sessions/:sid/transcript', async (p, _, u) => {
+  const profile = u.searchParams.get('profile') ?? '';
+  if (profile && !/^[\w-]{1,64}$/.test(profile)) throw new HttpError(400, 'invalid profile');
+  return restGet(backend ?? await getBackend(), `/api/sessions/${encodeURIComponent(p.sid)}/messages?limit=500&order=latest${profile ? `&profile=${encodeURIComponent(profile)}` : ''}`);
+});
 
 
 route('POST', '/api/requests/:id/answer', (p, b) => { orch.answer(decodeURIComponent(p.id), b.result); return { ok: true }; });
@@ -430,9 +385,6 @@ route('PATCH', '/api/settings', (_, b) => {
   if (typeof b.model === 'string') s.model = b.model;
   if (typeof b.provider === 'string') s.provider = b.provider;
   if (typeof b.profile === 'string') s.profile = b.profile;
-  if (Number.isFinite(b.maxConcurrent)) s.maxConcurrent = Math.max(1, Math.min(16, b.maxConcurrent | 0));
-  if (typeof b.autoReview === 'boolean') s.autoReview = b.autoReview;
-  if (Number.isFinite(b.maxReviewRounds)) s.maxReviewRounds = Math.max(0, Math.min(5, b.maxReviewRounds | 0));
   if (Array.isArray(b.syncSources)) s.syncSources = b.syncSources.map(String).filter(Boolean);
   if (b.notify && typeof b.notify === 'object') for (const k of Object.keys(s.notify) as (keyof typeof s.notify)[]) if (typeof b.notify[k] === 'boolean') s.notify[k] = b.notify[k];
   if (Array.isArray(b.snippets)) s.snippets = b.snippets.filter((x: any) => x && typeof x.name === 'string' && typeof x.text === 'string' && x.name.trim())
@@ -456,19 +408,6 @@ route('POST', '/api/media/save', (_, b) => {
 route('POST', '/api/media/reveal', (_, b) => { execFile('open', ['-R', mediaPath(String(b.path ?? ''))]); return { ok: true }; });
 route('POST', '/api/push/subscribe', (_, b) => { subscribe(b); return { ok: true }; });
 route('POST', '/api/push/test', () => { notify({ kind: 'input', title: 'Gibbous', body: 'Notifications work.', url: '/', test: true }); return { ok: true }; });
-
-route('GET', '/api/mcp/info', () => ({ url: `http://127.0.0.1:${PORT}/mcp`, token: secret.mcpToken }));
-route('POST', '/api/mcp/register', async () => {
-  // Idempotent: replace an existing entry (fresh URL/token), then reload so Hermes picks up the current tool schemas.
-  const add = () => hc.call('mcp.servers.add', { name: 'gibbous', config: { url: `http://127.0.0.1:${PORT}/mcp`, enabled: true }, bearer_token: secret.mcpToken });
-  const r = await add().catch(async (e: any) => {
-    if (!/already exists/i.test(e?.message ?? '')) throw e;
-    await hc.call('mcp.servers.remove', { name: 'gibbous' });
-    return add();
-  });
-  await hc.call('reload.mcp', {}).catch(() => {});
-  return r;
-});
 
 route('GET', '/api/fs/ls', (_, __, u) => {
   const dir = path.resolve(u.searchParams.get('path') || process.env.HOME!);
@@ -545,12 +484,6 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse) {
   try {
     u = new URL(req.url ?? '/', 'http://x');
     if (!hostOk(req)) throw new HttpError(421, 'host not allowed');
-    if (u.pathname === '/mcp') {
-      const bearer = String(req.headers.authorization ?? '').replace(/^Bearer /, '');
-      if (!eq(bearer, secret.mcpToken)) throw new HttpError(401, 'bad token');
-      if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }).end(); return; }
-      return await handleMcp(req, res, orch, await readBody(req));
-    }
     if (u.pathname === '/login') {
       const t = u.searchParams.get('token') ?? '';
       if (!eq(t, secret.accessToken)) throw new HttpError(401, 'bad token');
@@ -604,7 +537,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse) {
     }
     serveStatic(u, res);
   } catch (e: any) {
-    const status = e instanceof HttpError ? e.status : 500;
+    const status = e instanceof HttpError || e instanceof kanban.KanbanError ? e.status : 500;
     if (status === 500) console.error('[http]', req.method, u.pathname, e);
     if (!res.headersSent) res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: e.message ?? String(e) }));

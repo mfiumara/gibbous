@@ -4,7 +4,7 @@ import fs from 'node:fs';
 export function redact(text: string, known: string[] = []) {
   for (const k of known) if (k && k.length >= 8) text = text.split(k).join('[redacted]');
   return text
-    .replace(/(Bearer\s+|token=|[?&]key=|"(?:api_?key|token|password|secret|accessToken|mcpToken)"\s*:\s*")[^\s"&]+/gi, '$1[redacted]')
+    .replace(/(Bearer\s+|token=|[?&]key=|"(?:api_?key|token|password|secret|accessToken)"\s*:\s*")[^\s"&]+/gi, '$1[redacted]')
     .replace(/\b(sk|pk|ghp|gho|xox[abp]|AKIA)[-_A-Za-z0-9]{12,}/g, '[redacted]')
     .replace(/\b[a-f0-9]{32,}\b/gi, '[redacted]');
 }

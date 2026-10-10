@@ -17,7 +17,8 @@ export function subscribe(sub: any) {
   save();
 }
 
-export type NotifyKind = 'input' | 'done' | 'task' | 'failure' | 'plan';
+import type { NotifyKind } from './store.ts';
+export type { NotifyKind };
 
 // In-app toasts always fire; push respects the per-kind preferences in Settings.
 export function notify(n: { title: string; body: string; url?: string; tag?: string; kind: NotifyKind; test?: boolean }) {

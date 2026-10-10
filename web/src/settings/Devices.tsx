@@ -1,25 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Copy, Smartphone } from 'lucide-react';
 import { renderSVG } from 'uqr';
-import { api } from '../api';
-import { rpc } from '../rpc';
+import { api, type Settings } from '../api';
 import { useStore, toastError } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { Button, Switch } from '../ui';
 import { Section, Row } from './common';
-import type { McpServerSummary } from '../hermes/contract';
 
 function b64ToBytes(b64: string) {
   const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(s, c => c.charCodeAt(0));
 }
 
-const KINDS: { key: 'input' | 'done' | 'task' | 'failure' | 'plan'; title: string; description: string }[] = [
+const KINDS: { key: keyof Settings['notify']; title: string; description: string }[] = [
   { key: 'input', title: 'Needs you', description: 'Approvals, questions, passwords.' },
-  { key: 'done', title: 'Thread finished', description: 'A chat or coordinator thread completed its turn.' },
-  { key: 'task', title: 'Task ready for review', description: 'A board task passed (or failed) review.' },
-  { key: 'plan', title: 'Plan ready', description: 'A planner turned your goal into tasks.' },
-  { key: 'failure', title: 'Failures', description: 'A task or thread errored.' },
+  { key: 'done', title: 'Thread finished', description: 'A thread completed its turn.' },
+  { key: 'failure', title: 'Failures', description: 'Alerts such as the monthly budget passing.' },
 ];
 
 export function NotificationsTab() {
@@ -70,25 +66,4 @@ export function PhoneTab() {
       </div>
     </Section>
   </>;
-}
-
-export function CoordinatorTab() {
-  const toast = useStore(s => s.toast);
-  const [mcp, setMcp] = useState<McpServerSummary[]>();
-  const load = () => rpc.call('mcp.servers.list', {}).then(r => setMcp(r.servers)).catch(() => setMcp([]));
-  useEffect(() => { load(); }, []);
-  const ours = mcp?.find(m => m.name === 'gibbous');
-  const register = async () => {
-    try { await api.post('/api/mcp/register'); toast({ title: 'Gibbous tools added to Hermes', body: 'New sessions can spawn and coordinate threads.' }); load(); }
-    catch (e) { toastError(e); }
-  };
-  return (
-    <Section title="Coordinator tools" description="Lets any Hermes session, Discord and the CLI included, start and manage Gibbous threads."
-      aside={ours ? <Button size="sm" onClick={register}>Re-register</Button> : <Button tone="primary" onClick={register}>Add to Hermes</Button>}>
-      {ours && <p className="text-sm text-sprout">Added to Hermes as <span className="font-mono">gibbous</span>{ours.enabled ? '' : ' (disabled)'}.</p>}
-      <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1 font-mono text-[12px] text-dust">
-        {['gibbous_spawn_thread', 'gibbous_wait', 'gibbous_read_thread', 'gibbous_thread_diff', 'gibbous_send', 'gibbous_create_tasks', 'gibbous_list_tasks', 'gibbous_list_threads'].map(t => <li key={t}>{t}</li>)}
-      </ul>
-    </Section>
-  );
 }
