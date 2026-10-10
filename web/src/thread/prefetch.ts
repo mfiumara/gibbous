@@ -2,7 +2,8 @@
 import { api } from '../api';
 import { rpcFor } from '../rpc';
 import { useStore } from '../store';
-import { getCached, putCached, fromResume } from './cache';
+import { getCached, putCached } from './cache';
+import { firstPage, resumeWith } from './load';
 
 const FRESH_MS = 15_000; // a recent copy is good enough: opening the thread refreshes it anyway
 const inflight = new Set<string>();
@@ -18,10 +19,11 @@ export async function prefetch(threadId: string) {
   try {
     // Same order as ThreadView: Gibbous's server attaches first so it owns the live session (approvals stay
     // answerable); our resume then joins that live session instead of starting a second one.
+    const hist = firstPage(threadId);
     await api.post(`/api/threads/${threadId}/attach`);
-    const r = await rpcFor(t.host).call('session.resume', { session_id: t.sessionId, ...(t.profile ? { profile: t.profile } : {}) });
+    const { tl, page } = await resumeWith(rpcFor(t.host), t, hist);
     if ((getCached(threadId)?.at ?? 0) > started) return; // opened meanwhile and ThreadView already has newer data
-    putCached(threadId, { tl: fromResume(r), session: t.sessionId, checkpoints: c?.session === t.sessionId ? c.checkpoints : undefined }, true);
+    putCached(threadId, { tl, page, session: t.sessionId, checkpoints: c?.session === t.sessionId ? c.checkpoints : undefined }, true);
   } catch { /* best effort: opening the thread loads it the normal way */ }
   finally { inflight.delete(threadId); }
 }
