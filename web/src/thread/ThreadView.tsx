@@ -331,7 +331,7 @@ export function ThreadView({ id }: { id: string }) {
                   const cp = checkpointFor(it.at, users[idx + 1]?.at, checkpoints?.list ?? []);
                   return <div key={it.id} className={anim} data-k={it.id}><UserMessage item={it} onEdit={it.rowId != null ? () => setEdit({ rowId: it.rowId, text: it.text }) : undefined} onRevert={cp ? () => revert(cp) : undefined} /></div>;
                 }
-                case 'assistant': return <div key={it.id} className={anim} data-k={it.id}><AssistantMessage item={it} endOfTurn={items[i + 1]?.kind === 'turn'} /></div>;
+                case 'assistant': return <div key={it.id} className={anim} data-k={it.id}><AssistantMessage item={it} endOfTurn={items[i + 1]?.kind === 'turn'} tail={running && i === items.length - 1} /></div>;
                 case 'reasoning': return <div key={it.id} className={anim} data-k={it.id}><ReasoningBlock item={it} /></div>;
                 case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} /></div>;
                 case 'subagent': {

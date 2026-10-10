@@ -72,14 +72,16 @@ const splitMedia = (text: string) => {
 // Rows are memoized on their item: the reducer keeps unchanged items identical, so a streaming delta or a poll
 // re-renders only the row that changed instead of the whole timeline.
 // `endOfTurn`: the reply's actions sit on the turn-footer line. Phones have no hover, so their actions always show;
-// mid-turn ones would float over the next row, so phones only get them on the turn's last reply.
-export const AssistantMessage = memo(function AssistantMessage({ item, endOfTurn = true }: { item: Extract<Item, { kind: 'assistant' }>; endOfTurn?: boolean }) {
+// mid-turn ones would float over the next row, so phones only get them on the turn's last reply; on a Mac they float as a
+// small toolbar with its own background. `tail`: the newest reply of a turn still running has none (the status line sits
+// right under it); they appear once the turn ends.
+export const AssistantMessage = memo(function AssistantMessage({ item, endOfTurn = true, tail = false }: { item: Extract<Item, { kind: 'assistant' }>; endOfTurn?: boolean; tail?: boolean }) {
   const { media, rest } = item.streaming ? { media: [], rest: item.text } : splitMedia(item.text);
   return (
     <div className={`group/msg relative ${item.streaming ? 'caret' : ''}`}>
       <Markdown text={rest} />
       {media.length > 0 && <div className="mt-3 space-y-2">{media.map(m => <MediaCard key={m} path={m} />)}</div>}
-      {!item.streaming && <div className={`absolute -bottom-1 -left-1 translate-y-full flex opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 ${endOfTurn ? '' : 'pointer-coarse:hidden'}`}><CopyButton text={item.text} />
+      {!item.streaming && !tail && <div className={`absolute -bottom-1 -left-1 translate-y-full flex opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 ${endOfTurn ? '' : 'pointer-coarse:hidden rounded-lg bg-crater border border-line shadow-sm'}`}><CopyButton text={item.text} />
         {canSpeak && <button aria-label="Read aloud" data-tip="Read aloud" onClick={() => speak(item.text)} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Volume2 size={13} /></button>}</div>}
     </div>
   );
