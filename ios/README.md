@@ -11,6 +11,8 @@ ios/
   GibbousUITests/        simulator UI tests (keyboard, notification tap, paste sign-in)
   tools/make-icons.py    regenerates the icon assets from desktop/AppIcon-1024.png
 scripts/build-ios-app.sh generate the project + build Debug for the iOS Simulator, prints the .app path
+desktop/                 the Mac app: Gibbous.swift, plus Info.plist, entitlements and Assets.xcassets for the
+                         GibbousMac target in ios/project.yml (desktop/make-icons.sh regenerates the Mac icons)
 ```
 
 ## Build
@@ -87,3 +89,68 @@ production. A notification's `url` (`#/t/…`) opens that thread when tapped.
 - Safari → Develop → Simulator inspects the page (`isInspectable` in Debug).
 - UI tests: `xcodebuild … test -only-testing:GibbousUITests/…` (keyboard, notification tap, paste sign-in).
   Software keyboard: `defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false` before booting.
+
+## Mac app via TestFlight
+
+The Mac app (`desktop/Gibbous.swift`) is the macOS half of the same App Store Connect record: target and scheme
+`GibbousMac` in `ios/project.yml`, bundle id `dev.gibbous.ios` (universal purchase), same `MARKETING_VERSION` /
+`CURRENT_PROJECT_VERSION` as iOS, automatic signing with team `6726M85H57`, App Sandbox on.
+`scripts/build-mac-app.sh /path/Gibbous.app` still builds the old local copy (swiftc, ad-hoc, unsandboxed,
+`dev.gibbous.desktop`); the two are separate apps with separate settings.
+
+**Once, in App Store Connect:** open the Gibbous app (`dev.gibbous.ios`) → the **+** next to the platform name in the
+sidebar (**Add Platform**) → **macOS**. Then TestFlight → add yourself to an internal testing group; on the Mac, install
+it from the TestFlight app.
+
+**Archive and upload** (from `ios/`; `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` first when
+`xcode-select` points at the Command Line Tools):
+
+```sh
+cd ios && xcodegen generate
+cat > /tmp/ExportOptions.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>method</key><string>app-store-connect</string>
+  <key>destination</key><string>upload</string>
+  <key>signingStyle</key><string>automatic</string>
+  <key>teamID</key><string>6726M85H57</string>
+  <key>manageAppVersionAndBuildNumber</key><true/>
+  <key>testFlightInternalTestingOnly</key><true/>
+</dict></plist>
+EOF
+
+# macOS
+xcodebuild -project Gibbous.xcodeproj -scheme GibbousMac -configuration Release \
+  -archivePath /tmp/GibbousMac.xcarchive -allowProvisioningUpdates archive
+xcodebuild -exportArchive -archivePath /tmp/GibbousMac.xcarchive -exportOptionsPlist /tmp/ExportOptions.plist \
+  -exportPath /tmp/GibbousMac-export -allowProvisioningUpdates
+
+# iOS
+xcodebuild -project Gibbous.xcodeproj -scheme Gibbous -configuration Release -destination 'generic/platform=iOS' \
+  -archivePath /tmp/Gibbous.xcarchive -allowProvisioningUpdates archive
+xcodebuild -exportArchive -archivePath /tmp/Gibbous.xcarchive -exportOptionsPlist /tmp/ExportOptions.plist \
+  -exportPath /tmp/Gibbous-export -allowProvisioningUpdates
+```
+
+Both platforms share the version and build number; `manageAppVersionAndBuildNumber` bumps the build when that
+number was already uploaded. The upload fails with "App record … not found" until the record (and, for the Mac
+build, its macOS platform) exists. `testFlightInternalTestingOnly` means no Beta App Review; leave it out for
+external testers or the App Store.
+
+**Sandbox.** `desktop/Gibbous.entitlements`: `app-sandbox`, `network.client` (the local server and Tailscale hosts),
+`files.downloads.read-write` (downloads land in ~/Downloads), `files.user-selected.read-only` (attaching files via
+the open panel), and `temporary-exception.files.home-relative-path.read-only` for `/.gibbous/`. That exception is
+what makes sign-in zero-setup: the app reads the server's `~/.gibbous/login-url` (port + token) and `secret.json`
+from the real home, not the container. Internal TestFlight has no review, so it's fine there; **App Review rejects
+it**, so for an App Store submission set `CODE_SIGN_ENTITLEMENTS` to `../desktop/Gibbous-AppStore.entitlements`.
+Without the exception the app opens the server directly: the page shows its Sign in screen (paste the link from
+Settings → Devices or `~/.gibbous/login-url`), or use **Gibbous → Sign In with Link…**; the cookie then lasts a year
+in the app's WebKit store. A rejected token (401 at `/login`) also falls back to that screen.
+
+**What changes when you switch to the TestFlight build.** It's a different bundle id (`dev.gibbous.ios` instead of
+`dev.gibbous.desktop`) inside a sandbox container, so it starts with fresh settings: window size, full-screen state,
+last route, the page's local preferences (theme, density, drafts) and the sign-in cookie. Sign-in is automatic with
+the exception build; notifications, Launch at login and the global ⌃⌥Space hotkey need to be allowed / switched on
+again. Quit and remove the old `~/Applications/Gibbous.app` yourself if you don't want both (they'd both claim
+⌃⌥Space).

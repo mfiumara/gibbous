@@ -1,11 +1,13 @@
 #!/bin/sh
-# Build Gibbous.app (native window around the local server) into ~/Applications.
+# Build Gibbous.app (native window around the local server) into ~/Applications, or the path given as $1.
+# Local ad-hoc build: unsandboxed, bundle id dev.gibbous.desktop. The sandboxed TestFlight build (bundle id
+# dev.gibbous.ios) is the GibbousMac target in ios/project.yml; see ios/README.md.
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-$HOME/Applications/Gibbous.app}"
 TMP="$(mktemp -d)"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-swiftc -O -o "$APP/Contents/MacOS/Gibbous" "$ROOT/desktop/Gibbous.swift"
+swiftc -O -parse-as-library -o "$APP/Contents/MacOS/Gibbous" "$ROOT/desktop/Gibbous.swift"
 
 # App icon: the 1024px rendered moon tile (scripts/icon/), every size macOS asks for.
 ICONSET="$TMP/Gibbous.iconset"; mkdir -p "$ICONSET"
