@@ -414,6 +414,10 @@
    out as the new one sharpens in. Rising is quick; setting is slower, so leaving the hover lingers a little. */
 .turn-swap .turn-a, .turn-swap .turn-b { transition: opacity 650ms ease, filter 650ms ease, translate 650ms ease; }
 .turn-swap .turn-b { opacity: 0; filter: blur(3px); translate: 0 2px; }
+/* The end time is wider than the resting text: it only catches the pointer once shown, so the hover holds across all
+   of it (moving left over "Ended at" keeps it), while hidden it can't trigger the swap from empty space. */
+.turn-swap .turn-b { pointer-events: none; }
+.turn-swap:hover .turn-b, .turn-swap.is-on .turn-b { pointer-events: auto; }
 @media (hover: hover) { .turn-swap:hover .turn-a { opacity: 0; filter: blur(3px); translate: 0 -2px; transition-duration: 380ms; }
   .turn-swap:hover .turn-b { opacity: 1; filter: none; translate: 0; transition-duration: 380ms; color: var(--color-moon); } }
 .turn-swap.is-on .turn-a { opacity: 0; filter: blur(3px); translate: 0 -2px; transition-duration: 380ms; }

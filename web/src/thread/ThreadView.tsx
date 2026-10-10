@@ -380,7 +380,7 @@ function TurnFooter({ item }: { item: Extract<Item, { kind: 'turn' }> }) {
     <p className="flex justify-end -mt-2 select-none">
       <span className={`${item.at ? 'turn-swap' : ''} relative font-mono text-[11.5px] text-dust whitespace-nowrap ${shown ? 'is-on' : ''}`} onClick={() => item.at && setShown(s => !s)}>
         <span className="turn-a inline-flex items-center gap-1.5"><Clock size={11} />{spent}</span>
-        {item.at && <span className="turn-b absolute right-0 top-0 inline-flex items-center gap-1.5 pointer-events-none"><Clock size={11} />{endedLabel(item.at)}</span>}
+        {item.at && <span className="turn-b absolute right-0 top-0 inline-flex items-center gap-1.5"><Clock size={11} />{endedLabel(item.at)}</span>}
       </span>
     </p>
   );
