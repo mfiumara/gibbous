@@ -58,7 +58,7 @@ function CheckpointsSection({ sid, state, onRestore, onChanged }: { sid?: string
   const toggle = async (on: boolean) => {
     try {
       await rpc.call('config.set', { key: 'checkpoints.enabled', value: on });
-      if (on) useStore.getState().toast({ title: 'Checkpoints are on', body: 'Hermes snapshots files before each turn changes them, so you can undo a turn.' });
+      if (on) useStore.getState().toast({ title: 'Checkpoints are on', body: 'Files are snapshotted before each turn changes them, so you can undo a turn.' });
       onChanged();
     } catch (e) { toastError(e); }
   };

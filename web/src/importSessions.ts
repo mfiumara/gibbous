@@ -1,7 +1,9 @@
 // Bringing Hermes / Claude Code / Codex sessions into Gibbous as threads: pure helpers (grouping, default selection,
 // dedupe) plus the sequential import loop, with every side effect injected so it's testable without a browser.
-// Used by the first-run picker (Welcome.tsx) and Hermes history's multi-select (Inbox.tsx).
+// Used by the first-run picker (Welcome.tsx) and the Sessions screen (Inbox.tsx).
 import type { SessionListRow, ForeignSessionRow } from './hermes/contract';
+import { toolOf, codexApp, claudeApp, MESSAGING_SOURCES, type ToolId, type App } from './sessionTools.ts';
+export { MESSAGING_SOURCES };
 
 export type Kind = 'hermes' | 'claude' | 'codex';
 export interface Candidate {
@@ -14,43 +16,73 @@ export interface Candidate {
   cwd?: string;
   folder?: string;    // the project folder it groups under (repo root for worktrees)
   messages?: number;
+  tool: ToolId;       // the tool that ran it (sessionTools.ts)
+  app?: App & { raw?: string }; // its chip within the tool: the messaging app, or which Codex / Claude Code app
+  sub?: boolean;      // a Codex helper run (guardian, spawned subagent): left out like Hermes' own subagents
+  thread?: string;    // a Gibbous thread already behind it
 }
+export interface Origin { app: string; sub?: boolean }
+export interface Origins { codex: Record<string, Origin>; claude: Record<string, Origin>; folders?: Record<string, Folder>; opencode?: number }
 export interface Folder { root: string; repo: boolean; exists: boolean }
 export interface SessionDirs { home: string; sessions: Record<string, { cwd?: string; at?: number }>; folders: Record<string, Folder> }
 
 // Automated runs: scheduled jobs, delegate children, kanban workers, tool integrations, one-shots. Not conversations.
 export const NOISE_SOURCES = new Set(['cron', 'subagent', 'kanban', 'tool', 'oneshot', 'unknown']);
-// Gateway-owned chats: imported read-only (replies go through the platform), and they can be mirrored automatically.
-export const MESSAGING_SOURCES = new Set(['discord', 'telegram', 'slack', 'whatsapp', 'signal', 'matrix', 'mattermost', 'email', 'sms', 'homeassistant', 'dingtalk', 'feishu', 'wecom', 'weixin', 'qq', 'yuanbao']);
-// Sessions another surface owns (messaging gateways, IDE/Paseo over ACP, the API) open read-only, like Hermes history.
+// Gateway-owned chats (MESSAGING_SOURCES) import read-only (replies go through the platform) and can be mirrored automatically.
+// Sessions another surface owns (messaging gateways, IDE/Paseo over ACP, the API) open read-only.
 // Your own CLI/TUI/desktop sessions become live threads you can keep talking in.
 export const readOnlyFor = (source: string) => MESSAGING_SOURCES.has(source) || source === 'acp' || source === 'api_server' || source === 'webhook';
 
 export const RECENT_DAYS = 14;
 const DAY = 86_400_000;
 
-export function hermesCandidate(r: SessionListRow, dirs?: SessionDirs): Candidate {
-  const source = r.source || 'other', d = dirs?.sessions[r.id], cwd = d?.cwd;
-  return { key: `hermes:${r.id}`, kind: 'hermes', id: r.id, title: r.title || r.preview?.slice(0, 80) || 'Untitled', preview: r.preview ?? '', source,
+export function hermesCandidate(r: SessionListRow, dirs?: SessionDirs, label?: (source: string) => string): Candidate {
+  const source = r.source || 'other', d = dirs?.sessions[r.id], cwd = d?.cwd, tool = toolOf(source);
+  return { key: `hermes:${r.id}`, kind: 'hermes', id: r.id, title: r.title || r.preview?.slice(0, 80) || 'Untitled', preview: r.preview ?? '', source, tool,
+    app: tool === 'messaging' || tool === 'other' || tool === 'api' ? { key: source, label: label?.(source) ?? source } : undefined,
     at: d?.at ?? (r.started_at ?? 0) * 1000, cwd, folder: cwd && dirs && !MESSAGING_SOURCES.has(source) ? folderKey(cwd, dirs) : undefined, messages: r.message_count };
 }
 
-export function fromHermes(rows: SessionListRow[], dirs?: SessionDirs): Candidate[] {
+// `own`: session ids of threads started in Gibbous; they're listed under Gibbous (fromThreads), not under the tool
+// whose source they share (Gibbous creates `desktop` sessions).
+export function fromHermes(rows: SessionListRow[], dirs?: SessionDirs, own?: Set<string>, label?: (source: string) => string): Candidate[] {
   // Empty sessions (opened, never used) are noise too.
-  return rows.filter(r => !NOISE_SOURCES.has(r.source || 'other') && r.message_count).map(r => hermesCandidate(r, dirs)).sort((a, b) => b.at - a.at);
+  return rows.filter(r => !NOISE_SOURCES.has(r.source || 'other') && r.message_count && !own?.has(r.id)).map(r => hermesCandidate(r, dirs, label)).sort((a, b) => b.at - a.at);
 }
 
-export function fromForeign(rows: ForeignSessionRow[]): Candidate[] {
-  return rows.map(r => ({ key: `${r.source}:${r.id}`, kind: r.source, id: r.id, title: r.title || r.label, preview: r.excerpt ?? '', source: r.source === 'claude' ? 'claude_code' : 'codex',
-    at: r.mtime * 1000, cwd: r.cwd ?? undefined, messages: r.turn_count } as Candidate)).sort((a, b) => b.at - a.at);
+// `origins` (GET /api/sessions/origins) says which app wrote each log; without it every row is "Unknown app".
+export function fromForeign(rows: ForeignSessionRow[], origins?: Origins | null, dirs?: SessionDirs): Candidate[] {
+  return rows.map(r => {
+    const o = origins?.[r.source]?.[r.id], app = origins ? { ...(r.source === 'codex' ? codexApp(o?.app) : claudeApp(o?.app)), raw: o?.app } : undefined;
+    return { key: `${r.source}:${r.id}`, kind: r.source, id: r.id, title: r.title || r.label, preview: r.excerpt ?? '', source: r.source === 'claude' ? 'claude_code' : 'codex',
+      tool: r.source, app, sub: o?.sub || undefined, at: r.mtime * 1000, cwd: r.cwd ?? undefined, folder: r.cwd && dirs ? folderKey(r.cwd, dirs) : undefined, messages: r.turn_count } as Candidate;
+  }).sort((a, b) => b.at - a.at);
 }
+
+// Gibbous' own threads, grouped by their project's folder (or the folder they ran in).
+export interface ThreadLike { id: string; sessionId: string; title: string; lastText?: string; updatedAt: number; cwd?: string; projectId?: string; source?: string; host?: string; status?: string }
+export function fromThreads(threads: ThreadLike[], projects: { id: string; path: string }[], dirs?: SessionDirs, host = ''): Candidate[] {
+  return threads.filter(t => !t.source && (t.host ?? '') === host).map(t => {
+    const path = projects.find(p => p.id === t.projectId)?.path ?? (t.cwd && dirs ? folderKey(t.cwd, dirs) : t.cwd);
+    return { key: `gibbous:${t.id}`, kind: 'hermes' as const, id: t.sessionId, thread: t.id, title: t.title || 'Untitled', preview: (t.lastText ?? '').replace(/\s+/g, ' ').slice(0, 200),
+      source: 'gibbous', tool: 'gibbous' as const, at: t.updatedAt, cwd: t.cwd, folder: path };
+  }).sort((a, b) => b.at - a.at);
+}
+
+// The Gibbous-made threads' session ids, so fromHermes can leave them out.
+export const ownSessions = (threads: ThreadLike[], host = '') => new Set(threads.filter(t => !t.source && (t.host ?? '') === host).map(t => t.sessionId));
 
 // Removed worktrees (Paseo's ~/.paseo/worktrees/<id>/<name>, Gibbous' …/worktrees/<project>/<name>) collapse into
 // their parent so a hundred dead checkouts read as one group.
 export function folderKey(cwd: string, dirs: SessionDirs): string {
+  if (TMP.test(cwd)) return '/private/tmp'; // scratch checkouts in /tmp read as one group, not fifty
   const f = dirs.folders[cwd];
   const m = /^(.*\/worktrees\/[^/]+)\/[^/]+$/.exec(cwd);
   if (f?.exists && (f.repo || !m)) return f.root; // a worktree folder that's no checkout any more is a leftover too
+  if (!f) { // a folder only Claude Code / Codex saw: file it under a known repository it sits in
+    const repo = Object.values(dirs.folders).filter(x => x.repo && x.exists && cwd.startsWith(x.root + '/')).sort((a, b) => b.root.length - a.root.length)[0];
+    if (repo) return repo.root;
+  }
   return m ? m[1] : f?.root ?? cwd;
 }
 
@@ -61,6 +93,7 @@ export interface Group {
   repo: boolean;            // a git repository (its "Add as project" starts on)
   items: Candidate[];
 }
+const TMP = /^(\/private)?\/tmp(\/|$)/;
 const base = (p: string) => p.replace(/\/+$/, '').split('/').pop() || p;
 const tilde = (p: string, home: string) => p === home ? '~' : p.startsWith(home + '/') ? '~' + p.slice(home.length) : p;
 
@@ -69,15 +102,16 @@ export function groupCandidates(cands: Candidate[], o: { dirs?: SessionDirs; lab
   const home = o.dirs?.home ?? '';
   const folders = Object.values(o.dirs?.folders ?? {});
   const exists = new Set(folders.filter(f => f.exists).map(f => f.root)), repos = new Set(folders.filter(f => f.repo).map(f => f.root));
+  const seen = new Set(folders.map(f => f.root)); // folders not in `dirs` (only Claude Code / Codex ran there) are unknown, not removed
   const m = new Map<string, Group>();
   for (const c of cands) {
     const key = c.folder ? `dir:${c.folder}` : `src:${c.source}`;
     let g = m.get(key);
     if (!g) {
       if (c.folder) {
-        const dead = !exists.has(c.folder);
-        g = { key, folder: c.folder, items: [], repo: repos.has(c.folder), canProject: !dead && c.folder !== home && !/\/worktrees\/[^/]+$/.test(c.folder),
-          label: c.folder === home ? 'Home folder' : dead && /\/worktrees\/[^/]+$/.test(c.folder) ? `Removed worktrees (${base(c.folder)})` : base(c.folder),
+        const known = seen.has(c.folder) || !!(c.cwd && o.dirs?.folders[c.cwd]), dead = known && !exists.has(c.folder), wt = /\/worktrees\/[^/]+$/.test(c.folder);
+        g = { key, folder: c.folder, items: [], repo: repos.has(c.folder), canProject: exists.has(c.folder) && c.folder !== home && !wt,
+          label: c.folder === home ? 'Home folder' : c.folder === '/private/tmp' ? 'Temporary folders' : wt ? `${dead ? 'Removed worktrees' : 'Worktrees'} (${base(c.folder)})` : base(c.folder),
           detail: tilde(c.folder, home) };
       } else g = { key, label: o.label(c.source), canProject: false, repo: false, items: [] };
       m.set(key, g);
@@ -158,3 +192,14 @@ export async function runImport(items: Candidate[], projectFolders: Set<string>,
   d.onProgress?.(items.length, items.length);
   return res;
 }
+
+// Candidates per tool, each list newest first (the input order is kept).
+export function byTool(cands: Candidate[]): Map<ToolId, Candidate[]> {
+  const m = new Map<ToolId, Candidate[]>();
+  for (const c of cands) { const l = m.get(c.tool); l ? l.push(c) : m.set(c.tool, [c]); }
+  return m;
+}
+
+// Folder info for both: Hermes' own (sessions/dirs) plus the folders only Claude Code / Codex ran in (sessions/origins).
+export const withForeignFolders = (dirs?: SessionDirs | null, origins?: Origins | null): SessionDirs | undefined =>
+  dirs ? { ...dirs, folders: { ...origins?.folders, ...dirs.folders } } : undefined;

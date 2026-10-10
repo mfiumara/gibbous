@@ -59,3 +59,10 @@ test('back-swipe release reuses the drawer settle: halfway or a flick goes back'
   assert.equal(settle(false, 40, 0.9, w), true);     // short flick
   assert.equal(settle(false, 300, -0.9, w), false);  // flicked back
 });
+
+test('Sessions: the tool list is the top, a tool page sits one deep (phones) and swipes back to the list', () => {
+  const sessions: Route = { name: 'sessions' }, codex: Route = { name: 'sessions', tool: 'codex' };
+  assert.equal(depth(sessions), 0); assert.equal(depth(codex), 1);
+  assert.equal(parentOf(codex), '/sessions'); assert.equal(parentOf(sessions), null);
+  assert.equal(transitionFor(codex, { name: 'sessions', tool: 'cli' }, true), null);
+});

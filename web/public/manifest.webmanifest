@@ -1,7 +1,7 @@
 {
   "name": "Gibbous",
   "short_name": "Gibbous",
-  "description": "Run and steer your Hermes agents",
+  "description": "Run and steer your coding agents",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

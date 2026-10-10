@@ -7,6 +7,7 @@ export function depth(r: Route): number {
   if (r.name === 'thread' || r.name === 'board' || r.name === 'import') return 1;
   if (r.name === 'kanban') return r.slug ? 1 : 0;
   if (r.name === 'settings') return r.tab ? 1 : 0;
+  if (r.name === 'sessions') return r.tool ? 1 : 0;
   if (r.name === 'rooms') return r.id ? 1 : 0;
   return 0;
 }
@@ -14,6 +15,7 @@ export function depth(r: Route): number {
 // The screen a back gesture returns to (a hash path), or null on a top-level screen (there the edge opens the drawer).
 export function parentOf(r: Route): string | null {
   if (r.name === 'settings') return r.tab ? '/settings' : null;
+  if (r.name === 'sessions') return r.tool ? '/sessions' : null;
   if (r.name === 'rooms') return r.id ? '/rooms' : null;
   if (r.name === 'kanban') return r.slug ? '/kanban' : null;
   if (r.name === 'import') return '/sessions';

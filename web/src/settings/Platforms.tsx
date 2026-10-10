@@ -65,7 +65,7 @@ export function PlatformsTab() {
       {!platforms ? <Skeleton className="h-48" /> : <ul className="divide-y divide-line">{sorted.map(p => <PlatformRow key={p.id} p={p} reload={load} />)}</ul>}
     </Section>
     {pairing && (pairing.pending.length > 0 || pairing.approved.length > 0) && (
-      <Section title="People who can DM Hermes" description="Approve people who asked to pair.">
+      <Section title="People who can message the agent" description="Approve people who asked to pair.">
         {pairing.pending.map(r => (
           <div key={`${r.platform}:${r.request_id ?? r.code}`} className="flex items-center gap-3 py-1.5 text-sm">
             <span className="flex-1"><span className="label mr-2">{r.platform}</span>{r.username ?? r.user_id ?? r.code}</span>

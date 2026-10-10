@@ -13,7 +13,9 @@ import { ExternalThread } from './thread/ExternalThread';
 import { lazy, Suspense } from 'react';
 const Kanban = lazy(() => import('./kanban/Kanban').then(m => ({ default: m.Kanban })));
 const KanbanIndex = lazy(() => import('./kanban/Kanban').then(m => ({ default: m.KanbanIndex })));
-import { InboxView, SessionsView, Login } from './Inbox';
+import { InboxView, Login } from './Inbox';
+import { SessionsView } from './Sessions';
+import { TOOLS } from './sessionTools';
 const SearchView = lazy(() => import('./Search').then(m => ({ default: m.SearchView })));
 const RoomsView = lazy(() => import('./Rooms').then(m => ({ default: m.RoomsView })));
 const AutomationsView = lazy(() => import('./Automations').then(m => ({ default: m.AutomationsView })));
@@ -136,7 +138,7 @@ export function App() {
     r.name === 'board' ? <Kanban key={r.projectId} projectId={r.projectId} /> :
     r.name === 'kanban' ? (r.slug ? <Kanban key={r.slug} slug={r.slug} /> : <KanbanIndex />) :
     r.name === 'inbox' ? <InboxView /> :
-    r.name === 'sessions' ? <SessionsView /> :
+    r.name === 'sessions' ? <SessionsView tool={r.tool} /> :
     r.name === 'import' ? <Welcome /> :
     r.name === 'home' && fresh && !r.projectId && !r.host && !location.hash.startsWith('#/new') ? <Welcome first /> :
     r.name === 'search' ? <SearchView q={r.q} /> :
@@ -237,11 +239,11 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
     const needle = q.toLowerCase().trim();
     const all: Opt[] = [
       { label: 'New thread', hint: 'start', href: '/new' },
-      ...projects.flatMap(p => [{ label: `New thread in ${p.name}`, hint: 'start', href: `/new/${p.id}` }, { label: `${p.name} kanban`, hint: 'kanban', href: `/board/${p.id}`, keywords: 'board tasks hermes' }]),
+      ...projects.flatMap(p => [{ label: `New thread in ${p.name}`, hint: 'start', href: `/new/${p.id}` }, { label: `${p.name} kanban`, hint: 'kanban', href: `/board/${p.id}`, keywords: 'board tasks' }]),
       ...threads.filter(t => t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt)
         .map(t => ({ label: t.title, hint: t.readOnly ? sourceLabel(t.source) : projects.find(p => p.id === t.projectId)?.name ?? 'chat', href: `/t/${t.id}`, status: t.status })),
       ...(projects.length > 1 ? [{ label: 'Filter projects in the sidebar…', hint: 'filter', keywords: 'show hide projects sidebar toggle', stay: true, run: () => setMode('projects') }] : []),
-      { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'hermes board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Hermes history', hint: 'go', href: '/sessions' }, { label: 'Import sessions…', hint: 'go', href: '/import', keywords: 'bring claude code codex hermes history welcome first run' }, { label: 'Settings', hint: 'go', href: '/settings' },
+      { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Sessions', hint: 'go', href: '/sessions', keywords: 'history past conversations cli desktop paseo acp discord telegram claude code codex t3' }, ...TOOLS.filter(t => t.id !== 'opencode').map(t => ({ label: `${t.label} sessions`, hint: 'sessions', href: `/sessions/${t.id}`, keywords: `history ${t.tip}` })), { label: 'Import sessions…', hint: 'go', href: '/import', keywords: 'bring claude code codex history welcome first run' }, { label: 'Settings', hint: 'go', href: '/settings' },
       ...SETTINGS.map(([id, label, keywords]) => ({ label: `${label} settings`, hint: 'settings', href: `/settings/${id}`, keywords })),
       ...(here ? [
         { label: here.pinned ? 'Unpin this thread' : 'Pin this thread', hint: 'action', run: () => { api.patch(`/api/threads/${here.id}`, { pinned: !here.pinned }).catch(toastError); } },

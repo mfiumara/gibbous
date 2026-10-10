@@ -35,7 +35,7 @@ export function ScreenPanel({ sid }: { sid?: string }) {
       </section>
       <section className="space-y-2">
         <h3 className="label flex items-center gap-1.5"><Monitor size={12} />Sandbox desktop</h3>
-        {!display ? null : !display.supported ? <p className="text-dust">Hermes' sandbox desktop isn't supported on this machine{display.blocker ? ` (${display.blocker})` : ''}.</p>
+        {!display ? null : !display.supported ? <p className="text-dust">The sandbox desktop isn't supported on this machine{display.blocker ? ` (${display.blocker})` : ''}.</p>
           : !display.installed ? <p className="text-dust">Not installed. Missing: {display.missing.join(', ')}.{display.install_command ? ` Install with: ${display.install_command}` : ''}</p>
           : <>
             <div className="flex items-center gap-3">

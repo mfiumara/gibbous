@@ -10,7 +10,7 @@ import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel }
 // ── routing (hash-based so the PWA works from any path) ────────────────
 export type Route =
   | { name: 'home'; projectId?: string; host?: string } | { name: 'thread'; id: string } | { name: 'board'; projectId: string } | { name: 'kanban'; slug?: string }
-  | { name: 'inbox' } | { name: 'sessions' } | { name: 'import' } | { name: 'search'; q: string } | { name: 'settings'; tab: string } | { name: 'rooms'; id?: string } | { name: 'automations' };
+  | { name: 'inbox' } | { name: 'sessions'; tool?: string } | { name: 'import' } | { name: 'search'; q: string } | { name: 'settings'; tab: string } | { name: 'rooms'; id?: string } | { name: 'automations' };
 
 export function parse(h: string): Route {
   const [path, query = ''] = h.replace(/^#/, '').split('?');
@@ -22,7 +22,8 @@ export function parse(h: string): Route {
   if (a === 'search') return { name: 'search', q: new URLSearchParams(query).get('q') ?? '' };
   if (a === 'settings') return { name: 'settings', tab: b ?? '' }; // '' = the section list (phones); desktop shows General
   if (a === 'rooms') return { name: 'rooms', id: b };
-  if (a === 'inbox' || a === 'sessions' || a === 'automations' || a === 'import') return { name: a };
+  if (a === 'sessions') return { name: 'sessions', tool: b || undefined };
+  if (a === 'inbox' || a === 'automations' || a === 'import') return { name: a };
   return { name: 'home' };
 }
 
@@ -529,10 +530,10 @@ export const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a)
 // ── formatting ──────────────────────────────────────────────────────────
 const SOURCES: Record<string, string> = {
   discord: 'Discord', telegram: 'Telegram', slack: 'Slack', whatsapp: 'WhatsApp', signal: 'Signal', matrix: 'Matrix',
-  mattermost: 'Mattermost', email: 'Email', sms: 'SMS', cron: 'Scheduled', acp: 'IDE / Paseo', cli: 'CLI', tui: 'Terminal',
-  desktop: 'Desktop', api_server: 'API', webhook: 'Webhook', claude_code: 'Claude Code', codex: 'Codex',
+  mattermost: 'Mattermost', email: 'Email', sms: 'SMS', cron: 'Scheduled', acp: 'Paseo & editors', cli: 'Agent CLI', tui: 'Agent CLI',
+  desktop: 'Desktop app', api_server: 'API', webhook: 'Webhook', claude_code: 'Claude Code', codex: 'Codex',
 };
-export const sourceLabel = (s?: string) => (s && SOURCES[s]) || (s ? s[0].toUpperCase() + s.slice(1) : 'Hermes');
+export const sourceLabel = (s?: string) => (s && SOURCES[s]) || (s ? s[0].toUpperCase() + s.slice(1) : 'Agent');
 
 export const ago = (ms: number) => {
   const s = (Date.now() - ms) / 1000;

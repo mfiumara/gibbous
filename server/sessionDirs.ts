@@ -12,7 +12,7 @@ export interface SessionDirs { home: string; sessions: Record<string, { cwd?: st
 // dotfiles repo); a linked worktree's `.git` file points into `<main>/.git/worktrees/<name>`, so it maps to <main>.
 export function folderOf(dir: string, home = os.homedir()): Folder {
   if (!fs.existsSync(dir)) {
-    const sibling = /^(.*)-worktrees\/[^/]+$/.exec(dir)?.[1]; // a removed `<repo>-worktrees/<name>` checkout
+    const sibling = /^(.*)(?:-worktrees|\/\.worktrees)\/[^/]+$/.exec(dir)?.[1]; // a removed `<repo>-worktrees/<name>` or `<repo>/.worktrees/<name>` checkout
     return sibling && fs.existsSync(sibling) ? folderOf(sibling, home) : { root: dir, repo: false, exists: false };
   }
   for (let d = dir; d !== home && d !== path.dirname(d); d = path.dirname(d)) {

@@ -76,7 +76,7 @@ export function SubagentsPanel({ agents, sid, focus, onFocus }: { agents: Agent[
   const [, tick] = useState(0);
   // Running timers on the cards.
   useEffect(() => { if (!agents.some(isLive)) return; const t = setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t); }, [agents]);
-  if (!agents.length) return <p className="p-4 text-sm text-dust">No subagents in this thread yet. They show up here as soon as Hermes delegates work.</p>;
+  if (!agents.length) return <p className="p-4 text-sm text-dust">No subagents in this thread yet. They show up here as soon as the agent delegates work.</p>;
   // Working ones first, then queued, failed, then the rest in their usual order; ← → in the detail follows this too.
   const rank = (a: Agent) => a.state === 'running' ? 0 : a.state === 'queued' ? 1 : a.state === 'failed' ? 2 : 3;
   const order = agents.map((a, i) => ({ a, i })).sort((x, y) => rank(x.a) - rank(y.a) || x.i - y.i);

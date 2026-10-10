@@ -1,14 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Menu, Search, Server, Laptop, ChevronLeft, ListChecks, Download } from 'lucide-react';
-import { api, hermes, type Thread } from './api';
-import { rpc, rpcFor } from './rpc';
-import { useStore, toastError } from './store';
-import { Moon, IconButton, Empty, Button, Logo, MoonLoader, PhaseMoon, Check, CheckRow, inputCls, go, ago, sourceLabel, fmtUsd } from './ui';
+import { useEffect, useState } from 'react';
+import { Menu, ChevronLeft } from 'lucide-react';
+import { api, hermes } from './api';
+import { useStore } from './store';
+import { Moon, IconButton, Empty, Button, Logo, inputCls, ago, fmtUsd } from './ui';
 import { RequestCard } from './thread/RequestCard';
 import { SkyMoon } from './SkyMoon';
-import type { SessionListRow, ForeignSessionRow } from './hermes/contract';
-import { hermesCandidate, fromForeign, type Candidate } from './importSessions';
-import { importCandidates, reportImport, toggleSync as toggleSyncSource, listForeign } from './importer';
 
 // `back` (phones only) swaps the drawer button for a back link, for pages that drill into a list.
 const Header = ({ title, children, back }: { title: string; children?: React.ReactNode; back?: { href: string; label: string } }) => (
@@ -53,144 +49,6 @@ export function InboxView() {
           </section>}
         </div></div>
       )}
-    </div>
-  );
-}
-
-// Every Hermes session (Discord, CLI, cron, Paseo…). Opening one adds it to Gibbous as a read-only thread;
-// "Keep in sidebar" mirrors a whole source (e.g. all Discord chats) automatically.
-export function SessionsView() {
-  const [rows, setRows] = useState<SessionListRow[]>();
-  const [q, setQ] = useState('');
-  const [src, setSrc] = useState<string>(() => localStorage.getItem('gibbous.historySource') ?? 'all');
-  const threads = useStore(s => s.threads);
-  const settings = useStore(s => s.settings);
-  const hosts = useStore(s => s.hosts);
-  const [machine, setMachine] = useState(''); // '' = this Mac, else a host id
-  const known = useMemo(() => new Map(threads.filter(t => (t.host ?? '') === machine).map(t => [t.sessionId, t])), [threads, machine]);
-  useEffect(() => { setRows(undefined); rpcFor(machine || undefined).call('session.list', { limit: 5000 }).then(r => setRows(r.sessions)).catch(e => { toastError(e); setRows([]); }); }, [machine]);
-  useEffect(() => { localStorage.setItem('gibbous.historySource', src); }, [src]);
-
-  const counts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of rows ?? []) m.set(r.source ?? 'other', (m.get(r.source ?? 'other') ?? 0) + 1);
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [rows]);
-  const needle = q.toLowerCase();
-  const shown = (rows ?? []).filter(r => (src === 'all' || r.source === src) && (!needle || `${r.title} ${r.preview}`.toLowerCase().includes(needle))).slice(0, 400);
-  // Claude Code / Codex sessions on this Mac: imported into Hermes on open, then they're ordinary threads.
-  const foreign = !machine && (src === 'claude' || src === 'codex');
-  const [fRows, setFRows] = useState<ForeignSessionRow[] | null>(null);
-  useEffect(() => { if (foreign) { setFRows(null); listForeign(src as 'claude' | 'codex').then(setFRows, e => { toastError(e); setFRows([]); }); } }, [src, foreign]);
-  const openForeign = async (r: ForeignSessionRow) => {
-    try {
-      const imp = await rpc.call('session.foreign.import', { id: r.id });
-      const t = await api.post<Thread>('/api/import', { sessionId: imp.session_id, title: r.title || r.label, source: r.source === 'claude' ? 'claude_code' : 'codex', readOnly: false });
-      go(`/t/${t.id}`);
-    } catch (e) { toastError(e); }
-  };
-  const synced = new Set(settings?.syncSources ?? []);
-
-  const open = async (r: SessionListRow) => {
-    const existing = known.get(r.id);
-    if (existing) return go(`/t/${existing.id}`);
-    try {
-      const t = await api.post<Thread>('/api/import', { sessionId: r.id, title: r.title || r.preview?.slice(0, 60), source: r.source, startedAt: r.started_at ? r.started_at * 1000 : undefined, host: machine || undefined });
-      go(`/t/${t.id}`);
-    } catch (e) { toastError(e); }
-  };
-  const toggleSync = (source: string) => toggleSyncSource(source);
-
-  // Multi-select: tick rows, then import them all with the shared routine (importer.ts), as the first-run picker does.
-  const [selecting, setSelecting] = useState(false);
-  const [sel, setSel] = useState<Map<string, Candidate>>(new Map());
-  const [progress, setProgress] = useState<[number, number]>();
-  const flip = (c: Candidate) => setSel(s => { const n = new Map(s); n.has(c.key) ? n.delete(c.key) : n.set(c.key, c); return n; });
-  const stopSelecting = () => { setSelecting(false); setSel(new Map()); };
-  const importSelected = async () => {
-    if (progress || !sel.size) return;
-    setProgress([0, sel.size]);
-    const res = await importCandidates([...sel.values()], new Set(), (d, t) => setProgress([d, t]), machine || undefined);
-    setProgress(undefined); stopSelecting(); reportImport(res);
-    if (res.threads.length === 1) go(`/t/${res.threads[0]}`);
-  };
-  useEffect(() => {
-    if (!selecting) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (document.querySelector('[role=dialog], dialog[open]')) return;
-      const t = e.target as HTMLElement;
-      if (e.key === 'Escape' && !/^(INPUT|TEXTAREA)$/.test(t.tagName)) { e.preventDefault(); stopSelecting(); }
-      else if (e.key === 'Enter' && !t.closest('button, a, input, textarea, select, [role=checkbox], [role=switch]')) { e.preventDefault(); importSelected(); }
-    };
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  });
-
-  return (
-    <div className="h-full flex flex-col">
-      <Header title="Hermes history">
-        <span className="ml-auto flex items-center gap-1">
-          <a href="#/import" data-tip="Pick sessions to bring in, grouped by project folder" className="press inline-flex items-center gap-1.5 h-8 pointer-coarse:h-10 px-2.5 rounded-lg text-[13px] text-dust hover:text-moon hover:bg-ridge"><Download size={14} /><span className="hidden sm:inline">Import sessions…</span><span className="sm:hidden">Import</span></a>
-          <IconButton label={selecting ? 'Stop selecting' : 'Select several to import'} aria-pressed={selecting} onClick={() => selecting ? stopSelecting() : setSelecting(true)}><ListChecks size={16} /></IconButton>
-        </span>
-      </Header>
-      <div className="flex-1 overflow-y-auto"><div className="mx-auto max-w-3xl p-4 space-y-3" data-vim-list={selecting ? '' : undefined}>
-        {hosts.length > 0 && <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Machine">
-          {[{ id: '', name: 'This Mac', connected: true }, ...hosts].map(h => (
-            <button key={h.id} role="radio" aria-checked={machine === h.id} onClick={() => { setMachine(h.id); setSrc('all'); }}
-              className={`press inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[13px] ${machine === h.id ? (h.id ? 'border-tide/50 bg-tide/10 text-tide' : 'border-moon/30 bg-ridge text-moon') : 'border-line text-dust hover:text-moon'}`}>
-              {h.id ? <Server size={13} /> : <Laptop size={13} />}{h.name}{h.id && <span className="label text-[9px]">remote</span>}
-              {h.id && !h.connected && <span className="size-1.5 rounded-full bg-halo animate-pulse" />}
-            </button>
-          ))}
-        </div>}
-        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Source">
-          {[['all', rows?.length ?? 0] as const, ...counts, ...(machine ? [] : [['claude', null] as const, ['codex', null] as const])].map(([s, n]) => (
-            <button key={s} role="radio" aria-checked={src === s} onClick={() => setSrc(s)}
-              className={`h-7 pointer-coarse:h-9 px-2.5 rounded-md border text-[12.5px] ${src === s ? 'border-tide bg-tide/10 text-moon' : 'border-line text-dust hover:text-moon'}`}>
-              {s === 'all' ? 'All' : s === 'claude' ? 'Claude Code' : s === 'codex' ? 'Codex' : sourceLabel(s)} {n != null && <span className="text-ash">{n}</span>}
-            </button>
-          ))}
-        </div>
-        {foreign && <p className="text-[13px] text-dust">Sessions from {src === 'claude' ? 'Claude Code' : 'Codex'} on this Mac. Opening one copies it into Hermes so you can continue it here.</p>}
-        {src !== 'all' && !foreign && !machine && (
-          <label className="flex items-center gap-2 text-sm text-dust select-none">
-            <input type="checkbox" className="accent-tide" checked={synced.has(src)} onChange={() => toggleSync(src)} />
-            Keep {sourceLabel(src)} conversations in the sidebar (new ones are added automatically)
-          </label>
-        )}
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ash" /><input className={inputCls + ' pl-9'} placeholder="Search titles and previews" value={q} onChange={e => setQ(e.target.value)} /></div>
-        {!rows && !foreign && <p className="flex items-center gap-2.5 text-sm text-dust"><MoonLoader size={20} />Loading sessions…</p>}
-        {foreign && (fRows === null ? <p className="flex items-center gap-2.5 text-sm text-dust"><MoonLoader size={20} />Looking for sessions…</p> : <ul className="divide-y divide-line">{fRows.filter(r => !needle || `${r.title} ${r.excerpt} ${r.cwd}`.toLowerCase().includes(needle)).map(r => selecting ? (() => { const [c] = fromForeign([r]); return (
-          <li key={r.id}><CheckRow checked={sel.has(c.key)} onToggle={() => flip(c)} onEnter={importSelected} label={c.title} className="py-1.5"><Check state={sel.has(c.key)} />
-            <span className="flex-1 min-w-0"><span className="block truncate text-sm font-bold">{c.title}</span><span className="block truncate text-xs text-dust">{r.cwd ? `${r.cwd} · ` : ''}{r.excerpt}</span></span>
-            <span className="text-xs text-ash tabular-nums flex-none">{ago(r.mtime * 1000)}</span></CheckRow></li>); })() : (
-          <li key={r.id}><button onClick={() => openForeign(r)} className="press w-full text-left py-2.5 px-1 flex gap-3 hover:bg-ridge/40 rounded">
-            <span className="flex-1 min-w-0"><span className="block truncate text-sm font-bold">{r.title || r.label}</span><span className="block truncate text-xs text-dust">{r.cwd ? `${r.cwd} · ` : ''}{r.excerpt}</span></span>
-            <span className="text-xs text-ash tabular-nums flex-none">{r.turn_count ?? 0} turns · {ago(r.mtime * 1000)}</span>
-          </button></li>
-        ))}</ul>)}
-        {!foreign && <ul className="divide-y divide-line">
-          {shown.map(r => selecting ? (() => { const c = hermesCandidate(r), done = known.has(r.id); return (
-            <li key={r.id}><CheckRow checked={done || sel.has(c.key)} disabled={done} onToggle={() => flip(c)} onEnter={importSelected} label={c.title} className="py-1.5"><Check state={done || sel.has(c.key)} />
-              <span className="flex-1 min-w-0"><span className="block truncate text-sm font-bold">{c.title}{done && <span className="label ml-2 text-tide">in gibbous</span>}</span><span className="block truncate text-xs text-dust">{sourceLabel(r.source)} · {r.preview}</span></span>
-              <span className="text-xs text-ash tabular-nums flex-none">{r.started_at ? ago(r.started_at * 1000) : ''}</span></CheckRow></li>); })() : (
-            <li key={r.id}><button onClick={() => open(r)} className="w-full text-left py-2.5 px-1 flex gap-3 hover:bg-ridge/40 rounded">
-              <span className="hidden sm:block label w-20 flex-none pt-0.5 text-ash truncate">{sourceLabel(r.source)}</span>
-              <span className="flex-1 min-w-0"><span className="block truncate text-sm font-bold">{r.title || 'Untitled'}{known.has(r.id) && <span className="label ml-2 text-tide">in gibbous</span>}</span><span className="block truncate text-xs text-dust">{r.preview}</span>
-                <span className="sm:hidden block text-[11.5px] text-ash">{sourceLabel(r.source)} · {r.message_count} msgs · {r.started_at ? ago(r.started_at * 1000) : ''}</span></span>
-              <span className="hidden sm:block text-xs text-ash tabular-nums flex-none">{r.message_count} msgs · {r.started_at ? ago(r.started_at * 1000) : ''}</span>
-            </button></li>
-          ))}
-        </ul>}
-        {rows && !foreign && shown.length === 400 && <p className="text-xs text-ash">Showing the newest 400.</p>}
-      </div></div>
-      {selecting && <footer className="flex-none border-t border-line bg-basalt/85 backdrop-blur-md"><div className="mx-auto max-w-3xl px-4 py-2.5 flex items-center gap-3">
-        {progress ? <span className="flex-1 min-w-0 flex items-center gap-2.5 text-[13px]" role="status"><PhaseMoon fraction={progress[0] / Math.max(1, progress[1])} color="var(--color-tide)" size={18} />Importing {Math.min(progress[0] + 1, progress[1])} of {progress[1]}</span>
-          : <span className="flex-1 min-w-0 truncate text-[12.5px] text-dust">{sel.size ? `${sel.size} selected` : 'Tick sessions to import'}</span>}
-        <Button onClick={stopSelecting} disabled={!!progress}>Cancel</Button>
-        <Button tone="primary" onClick={importSelected} disabled={!sel.size || !!progress} data-kbd="↵">Import selected</Button>
-      </div></footer>}
     </div>
   );
 }

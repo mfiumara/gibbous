@@ -50,7 +50,7 @@ export function MemoryTab() {
   };
   return <>
     <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ash" /><input className={inputCls + ' pl-9'} placeholder="Search memory" value={q} onChange={e => setQ(e.target.value)} /></div>
-    {group('profile', 'About you', 'What Hermes has learned about you and your preferences (USER.md). Every session reads it.')}
-    {group('memory', 'Notes', "Hermes' own working notes: environment facts, conventions, lessons learned (MEMORY.md).")}
+    {group('profile', 'About you', 'What the agent has learned about you and your preferences (USER.md). Every session reads it.')}
+    {group('memory', 'Notes', "The agent's own working notes: environment facts, conventions, lessons learned (MEMORY.md).")}
   </>;
 }

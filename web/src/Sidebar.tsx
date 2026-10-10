@@ -129,7 +129,7 @@ function Section({ id, title, count, accent, collapsed, toggle, actions, icon, h
         {drag && <GripVertical size={11} aria-hidden className="absolute -left-1 text-ash opacity-0 group-hover/s:opacity-60 pointer-coarse:hidden" />}
         {href ? <>
           <button onClick={() => toggle(id)} aria-expanded={!collapsed} aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${title}`} className="press grid place-items-center size-4 -ml-0.5">{chevron}</button>
-          <a href={href} onClick={onNavigate} aria-current={active ? 'page' : undefined} data-tip="Open the project's Hermes kanban" className="flex items-center gap-1.5 min-w-0 flex-1 hover:[&>.label]:text-moon">{label}</a>
+          <a href={href} onClick={onNavigate} aria-current={active ? 'page' : undefined} data-tip="Open the project's kanban board" className="flex items-center gap-1.5 min-w-0 flex-1 hover:[&>.label]:text-moon">{label}</a>
         </> : <button onClick={() => toggle(id)} aria-expanded={!collapsed} className="flex items-center gap-1.5 min-w-0 flex-1 text-left">{chevron}{label}</button>}
         {actions && <span className="flex opacity-0 group-hover/s:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity">{actions}</span>}
       </div>
@@ -415,7 +415,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
         {nav('#/kanban', <KanbanSquare size={15} />, 'Kanban', route.name === 'kanban')}
         {nav('#/automations', <CalendarClock size={15} />, 'Automations', route.name === 'automations')}
         {nav('#/rooms', <Users size={15} />, 'Rooms', route.name === 'rooms')}
-        {nav('#/sessions', <History size={15} />, 'Hermes history', route.name === 'sessions')}
+        {nav('#/sessions', <History size={15} />, 'Sessions', route.name === 'sessions')}
         {nav('#/settings', <Settings size={15} />, 'Settings', route.name === 'settings')}
       </div>
       <div role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuenow={width.w} aria-valuemin={SB_MIN} aria-valuemax={SB_MAX} tabIndex={0}

@@ -97,7 +97,7 @@ export function deleteWithUndo(t: Thread | Thread[], removeWorktree = false) {
     if (undone) return;
     for (const x of ts) api.del(`/api/threads/${x.id}${removeWorktree ? '?removeWorktree=1' : ''}`).catch(e => { toastError(e); useStore.getState().load(); });
   }, 6500);
-  s.toast({ title: `Deleted ${named(ts)}`, body: removeWorktree ? 'Its worktree goes too.' : 'Hermes keeps the sessions in Hermes history.', action: { label: 'Undo', run: () => {
+  s.toast({ title: `Deleted ${named(ts)}`, body: removeWorktree ? 'Its worktree goes too.' : 'Its sessions stay under Sessions.', action: { label: 'Undo', run: () => {
     undone = true; clearTimeout(timer);
     useStore.setState({ threads: [...ts, ...useStore.getState().threads.filter(x => !ids.has(x.id))] });
   } } });
