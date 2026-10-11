@@ -56,7 +56,7 @@ function AgentMeta({ a }: { a: Agent }) {
   const t = elapsedOf(a);
   // Fixed-width columns so every row lines up: model (left), tool calls, tokens, time (right-aligned numbers).
   return <span className="flex items-center gap-3 min-w-0 font-mono text-[11.5px] text-ash tabular-nums">
-    <span className="w-[20ch] truncate text-left max-sm:hidden">{a.model ? <>{shortModelName(a.model)}{a.effort && <span className="text-ash/60"> · {a.effort}</span>}</> : ''}</span>
+    <span className="w-[24ch] truncate text-left max-sm:hidden">{a.model ? <>{shortModelName(a.model)}{a.effort && <span className="text-ash/60"> · {a.effort}</span>}</> : ''}</span>
     <span className="w-[6ch] flex-none text-right" data-tip="Tool calls">{a.toolCalls ? <>{a.toolCalls}<Wrench size={9} className="inline ml-0.5 -mt-px opacity-60" aria-label="tool calls" /></> : ''}</span>
     <span className="w-[6ch] flex-none text-right" data-tip="Tokens">{a.tokens ? fmtTokens(a.tokens) : ''}</span>
     <span className={`w-[7ch] flex-none text-right ${isLive(a) ? 'text-tide' : ''}`}>{t != null ? fmtDuration(t) : ''}</span>
