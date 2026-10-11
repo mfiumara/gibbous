@@ -1,6 +1,7 @@
 // Turns Hermes transcript rows + live events into timeline items. Pure, so it can be tested in isolation.
 import type { HermesEvent } from '../rpc';
 import type { TranscriptMessage, Usage, SessionLiveInfo, RollbackCheckpoint } from '../hermes/contract';
+import { baseName } from '../paths.ts';
 
 export type Item =
   | { kind: 'user'; id: string; text: string; rowId?: number; at?: number }
@@ -250,7 +251,7 @@ export function parseUserText(text: string) {
     const img = /^@image:(\S+)$/.exec(t); if (img) { images.push(img[1]); return false; }
     const file = /^@file:(\S+)$/.exec(t); if (file) { files.push(file[1]); return false; }   // a ref on its own line is an attachment
     return t !== '[screenshot]';
-  }).join('\n').replace(/@file:(\S+)/g, (_, p) => p.split('/').pop()!).trim();   // inline mentions read as names
+  }).join('\n').replace(/@file:(\S+)/g, (_, p) => baseName(p)).trim();   // inline mentions read as names
   return { images, files, body };
 }
 

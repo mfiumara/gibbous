@@ -2,8 +2,8 @@
 // name based on the thread's opening message. Hermes' own titles run 3–7 words, too long for the sidebar.
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { hermesHome } from './platform.ts';
 
 export const SHORT_TITLE_PROMPT = [
   'You name chat threads for a narrow sidebar. Given the user\'s opening message, reply with a title of 2 to 4 words.',
@@ -24,7 +24,7 @@ export function cleanTitle(raw: string): string | undefined {
 
 const dbs = new Map<string, DatabaseSync>();
 function open(profile?: string) {
-  const home = process.env.HERMES_HOME ?? path.join(os.homedir(), '.hermes');
+  const home = hermesHome();
   const file = profile && profile !== 'default' ? path.join(home, 'profiles', profile, 'state.db') : path.join(home, 'state.db');
   if (!fs.existsSync(file)) return undefined;
   let db = dbs.get(file);

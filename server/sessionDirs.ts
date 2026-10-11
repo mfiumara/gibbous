@@ -12,7 +12,7 @@ export interface SessionDirs { home: string; sessions: Record<string, { cwd?: st
 // dotfiles repo); a linked worktree's `.git` file points into `<main>/.git/worktrees/<name>`, so it maps to <main>.
 export function folderOf(dir: string, home = os.homedir()): Folder {
   if (!fs.existsSync(dir)) {
-    const sibling = /^(.*)(?:-worktrees|\/\.worktrees)\/[^/]+$/.exec(dir)?.[1]; // a removed `<repo>-worktrees/<name>` or `<repo>/.worktrees/<name>` checkout
+    const sibling = /^(.*)(?:-worktrees|[\\/]\.worktrees)[\\/][^\\/]+$/.exec(dir)?.[1]; // a removed `<repo>-worktrees/<name>` or `<repo>/.worktrees/<name>` checkout
     return sibling && fs.existsSync(sibling) ? folderOf(sibling, home) : { root: dir, repo: false, exists: false };
   }
   for (let d = dir; d !== home && d !== path.dirname(d); d = path.dirname(d)) {
@@ -20,7 +20,7 @@ export function folderOf(dir: string, home = os.homedir()): Folder {
     let st: fs.Stats; try { st = fs.statSync(g); } catch { continue; }
     if (st.isFile()) {
       const m = /gitdir:\s*(.+)/.exec(fs.readFileSync(g, 'utf8'))?.[1]?.trim();
-      const main = m && /^(.*)\/\.git\/worktrees\/[^/]+$/.exec(path.resolve(d, m))?.[1];
+      const main = m && /^(.*)[\\/]\.git[\\/]worktrees[\\/][^\\/]+$/.exec(path.resolve(d, m))?.[1]; // git writes `/` even on Windows
       return { root: main && fs.existsSync(main) ? main : d, repo: true, exists: true };
     }
     return { root: d, repo: true, exists: true };

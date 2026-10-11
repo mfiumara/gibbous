@@ -315,7 +315,7 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
       comment_count: t.comments?.length ?? 0, progress: null, warnings: { count: 0 } };
   };
   function kanbanRest(p: string, u: URL): unknown {
-    if (!kb) return { detail: 'Not Found' };
+    if (!kb) return p === '/boards' ? { boards: [], current: 'default' } : { detail: 'Not Found' }; // no demo board: an empty Hermes (e2e)
     if (p === '/boards') {
       const counts: Record<string, number> = {};
       for (const t of kb.tasks) counts[t.status] = (counts[t.status] ?? 0) + 1;

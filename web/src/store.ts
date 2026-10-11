@@ -4,6 +4,7 @@ import { api, ApiError, type PrBadge, type Project, type Thread, type Settings, 
 import { rpc } from './rpc';
 import { showsTarget } from './notify';
 import { inIosApp, iosNotify, iosNativeBanners } from './iosBridge';
+import type { Service } from './paths';
 
 interface Toast { id: number; title: string; body?: string; url?: string; tone?: 'error' | 'info'; action?: { label: string; run(): void } }
 
@@ -14,6 +15,7 @@ interface S {
   hosts: (Host & { connected: boolean })[]; tailnetUrl: string | null; tailnetLogin: string | null; vapidPublicKey: string;
   build?: string | null; // web build the server serves now (see LOADED_BUILD)
   prs: Record<string, PrBadge>; // thread id → its GitHub PR (worktree threads only)
+  platform?: string; service?: Service; // the server's OS: per-OS copy ("this PC") and its restart command
   toasts: Toast[];
   seen: Record<string, number>;   // thread id → when you last looked (per device)
   markSeen(id: string): void;

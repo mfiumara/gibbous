@@ -132,7 +132,8 @@ test('HTTP/2 sender: headers, path, JWT, 200 and 410 end to end', async t => {
       stream.end(gone ? JSON.stringify({ reason: 'Unregistered', timestamp: 1 }) : '');
     });
   });
-  await new Promise<void>(r => server.listen(0, 'localhost', r));
+  // Every interface: `localhost` resolves to ::1 first on some Linux setups and to 127.0.0.1 on others.
+  await new Promise<void>(r => server.listen(0, r));
   const port = (server.address() as any).port;
   apns.testing.setHome(home('h2', CFG));
   apns.testing.setEndpoint({ host: `localhost:${port}`, ca: cert });

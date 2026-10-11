@@ -3,9 +3,9 @@
 // server's local timezone. Results are cached for a minute per range.
 import type { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { openStateDb } from './subagents.ts';
+import { hermesHome } from './platform.ts';
 import { MESSAGING_SOURCES } from './sources.ts';
 
 export interface UsageStats {
@@ -168,7 +168,7 @@ export function computeUsage(sets: UsageRows[], threads: UsageThreadRef[], days:
 
 // Every state.db Hermes keeps: the default one and one per profile.
 export function usageDbs(): UsageDb[] {
-  const home = process.env.HERMES_HOME ?? path.join(os.homedir(), '.hermes');
+  const home = hermesHome();
   const out: UsageDb[] = [];
   const main = openStateDb();
   if (main) out.push({ profile: 'default', db: main });

@@ -1,8 +1,12 @@
 # Gibbous
 
-A cockpit for the Hermes agent running on this Mac: parallel threads in git worktrees, each project's Hermes kanban board, live diffs, a terminal, and approvals from your phone.
+A cockpit for the Hermes agent running on your computer (macOS, Linux, Windows): parallel threads in git worktrees, each project's Hermes kanban board, live diffs, a terminal, and approvals from your phone.
 
 ## Install
+
+Needs Node.js 22.18+ (runs the server's TypeScript directly), pnpm, git, and [Hermes Agent](https://github.com/NousResearch/hermes-agent) installed for your user. Gibbous finds the `hermes` command through `HERMES_BIN`, then your `PATH`, then the installer's default location (`~/.local/bin/hermes`, or `%LOCALAPPDATA%\hermes\bin\hermes.exe` on Windows), and reads Hermes' data from `HERMES_HOME` or its default (`~/.hermes`, or `%LOCALAPPDATA%\hermes` on Windows).
+
+### macOS
 
 ```sh
 pnpm install
@@ -10,6 +14,28 @@ scripts/install-service.sh     # builds the web app, runs Gibbous at login (laun
 scripts/tailscale.sh           # optional: https://<this-mac>.<tailnet>.ts.net:8444 on your tailnet
 scripts/build-mac-app.sh       # optional: ~/Applications/Gibbous.app
 ```
+
+Restart: `launchctl kickstart -k gui/$(id -u)/dev.gibbous.server`.
+
+### Linux (and WSL)
+
+```sh
+pnpm install                   # builds node-pty: needs python3, make and a C++ compiler (build-essential)
+scripts/install-service.sh     # builds the web app, runs Gibbous as a systemd --user service (gibbous.service)
+```
+
+Restart with `systemctl --user restart gibbous`; logs go to `~/.gibbous/gibbous.log`. The installer enables lingering when allowed, so Gibbous keeps running while you're logged out. On WSL, turn systemd on first (`[boot] systemd=true` in `/etc/wsl.conf`, then `wsl --shutdown`), or run `node server/main.ts` by hand; open the login link in your Windows browser (WSL forwards `127.0.0.1`). Terminals use your `$SHELL`; revealing a saved file opens its folder with `xdg-open` (Windows Explorer on WSL).
+
+### Windows
+
+```powershell
+pnpm install
+powershell -ExecutionPolicy Bypass -File scripts\install-service.ps1   # runs Gibbous at logon (Scheduled Task "Gibbous", hidden)
+```
+
+Restart with `Stop-ScheduledTask -TaskName Gibbous; Start-ScheduledTask -TaskName Gibbous`; logs go to `%USERPROFILE%\.gibbous\gibbous.log`. Data lives in `%USERPROFILE%\.gibbous`. Terminals open PowerShell (7 if installed; set `GIBBOUS_SHELL` to pick another), project scripts run through it too, and `hermes serve` starts without a console window. For the tailnet address run `tailscale serve --bg --https=8444 http://127.0.0.1:7878` once (what `scripts/tailscale.sh` does on macOS/Linux).
+
+Settings → Maintenance shows the restart command for the machine Gibbous runs on.
 
 Open the login link from `~/.gibbous/login-url` once per browser, or use Gibbous.app, which signs itself in. For your phone, use Settings → Phone → *Copy phone sign-in link* and open it on the phone. The tailnet address is only reachable from your own Tailscale devices. Gibbous still requires the token, because the macOS Tailscale app can't prove identity to a local server in a way other local processes couldn't fake. To install it, use Share → Add to Home Screen, sign in once more inside the installed app, then turn on notifications in Settings.
 
@@ -51,9 +77,11 @@ Open the login link from `~/.gibbous/login-url` once per browser, or use Gibbous
 ## Uninstall
 
 ```sh
-scripts/uninstall.sh           # service, tailnet port, MCP entry, the Hermes backend it started, Gibbous.app
+scripts/uninstall.sh           # service (launchd or systemd), tailnet port, MCP entry, the Hermes backend it started, Gibbous.app
 scripts/uninstall.sh --purge   # …and ~/.gibbous (state, secrets, logs, task worktrees)
 ```
+
+On Windows: `powershell -ExecutionPolicy Bypass -File scripts\uninstall.ps1 [-Purge]`.
 
 Hermes and your conversations are untouched either way.
 
@@ -84,11 +112,14 @@ GIBBOUS_ALLOWED_HOSTS=localhost:5173 node server/main.ts   # or `pnpm --filter s
 pnpm --filter web dev                                      # Vite on :5173, proxies to the server
 pnpm test && pnpm typecheck   # unit tests + thread lifecycle against a fake Hermes (server/fake-hermes.ts)
 pnpm build && pnpm e2e        # headless Chrome on an isolated instance (temp state, :7979); sends no prompts
+node e2e/boot-smoke.ts        # real server boot on a throwaway home over the scripted fake Hermes (any OS, no browser)
 ```
+
+`pnpm e2e` reuses your running Hermes, or the scripted fake from `e2e/demo/` when there is none (or with `E2E_FAKE_HERMES=1`); set `CHROME` to the browser binary on Linux/Windows. Everything that differs per OS (paths, Hermes discovery, shells, file manager, Downloads, service commands) lives in `server/platform.ts`, and its tests run the Windows and Linux branches on any machine. CI (`.github/workflows/ci.yml`) runs install, typecheck, tests, build and the boot smoke on Ubuntu, Windows and macOS.
 
 After `hermes update`, Settings → Update → *Check compatibility* confirms that every JSON-RPC method Gibbous calls still exists in the installed Hermes contract, and that the read-only endpoints still answer. `pnpm test` checks the same thing against the synced contract.
 
-Logs: `~/.gibbous/gibbous.log` and `~/.gibbous/hermes-serve.log`.
+Logs: `~/.gibbous/gibbous.log` and `~/.gibbous/hermes-serve.log` (`%USERPROFILE%\.gibbous\…` on Windows).
 
 ## Releasing
 

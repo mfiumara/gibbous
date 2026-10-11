@@ -8,9 +8,9 @@
     "build": "pnpm --filter web build",
     "start": "node server/main.ts",
     "typecheck": "pnpm -r typecheck",
-    "test": "GIBBOUS_HOME=/tmp/gibbous-test-home node --test \"server/*.test.ts\" \"web/src/**/*.test.ts\"",
+    "test": "node scripts/test.mjs",
     "sync:contract": "cp ~/.hermes/hermes-agent/apps/shared/src/gateway-contract.generated.ts web/src/hermes/contract.ts",
-    "postinstall": "find node_modules/.pnpm -path \"*node-pty*/spawn-helper\" -exec chmod +x {} +",
+    "postinstall": "node scripts/postinstall.mjs",
     "e2e": "node e2e/run.ts",
     "monkey": "node e2e/monkey.ts"
   },

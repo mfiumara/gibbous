@@ -5,9 +5,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { HermesClient, Backend } from './hermes.ts';
 import { restGet } from './hermes.ts';
+import { hermesHome } from './platform.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-export const INSTALLED_CONTRACT = `${process.env.HOME}/.hermes/hermes-agent/apps/shared/src/gateway-contract.generated.ts`;
+export const INSTALLED_CONTRACT = path.join(hermesHome(), 'hermes-agent', 'apps', 'shared', 'src', 'gateway-contract.generated.ts');
 
 function sources(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {

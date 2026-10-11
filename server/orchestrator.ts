@@ -12,6 +12,7 @@ import * as g from './git.ts';
 import { notify } from './push.ts';
 import * as Q from './queue.ts';
 import { historyPage } from './history.ts';
+import { defaultShell, shellArgs, sys } from './platform.ts';
 
 export interface OpenRequest { id: string; method: string; params: any; threadId?: string; at: number; host?: string }
 
@@ -279,10 +280,10 @@ export class Orchestrator extends EventEmitter {
     const profile = o.profile ?? (state.settings.profile || undefined);
     const host = o.host && o.host !== 'local' ? o.host : undefined;
     // Remote threads are chats on that machine: projects, worktrees and git panels are local-only.
-    if (host && (o.projectId || o.worktree)) throw new Error('projects and worktrees are only available on this Mac');
+    if (host && (o.projectId || o.worktree)) throw new Error('projects and worktrees are only available on this computer');
     const project = this.project(o.projectId);
     const title = o.title?.trim() || 'New thread';
-    let cwd = o.cwd ?? project?.path ?? (host ? '~' : process.env.HOME!);
+    let cwd = o.cwd ?? project?.path ?? (host ? '~' : sys().home);
     let worktree: Thread['worktree'];
     if (o.worktree) {
       if (!project) throw new Error('worktree threads need a project');
@@ -339,7 +340,7 @@ export class Orchestrator extends EventEmitter {
     if (existing) return existing;
     const at = o.startedAt ?? Date.now();
     const t: Thread = {
-      id: newId('th'), projectId: o.projectId, title: title || 'Imported session', sessionId, cwd: this.project(o.projectId)?.path ?? process.env.HOME!,
+      id: newId('th'), projectId: o.projectId, title: title || 'Imported session', sessionId, cwd: this.project(o.projectId)?.path ?? sys().home,
       role: 'chat', status: 'idle', source: o.source, readOnly: o.readOnly ?? true, host: o.host, createdAt: at, updatedAt: at,
     };
     state.threads.unshift(t);
@@ -480,7 +481,7 @@ export class Orchestrator extends EventEmitter {
     const existing = state.projects.find(p => p.path === real);
     if (existing) return existing;
     const repo = await g.isRepo(real);
-    const p: Project = { id: newId('pr'), name: name || real.split('/').pop()!, path: real, baseBranch: repo ? await g.currentBranch(real) : undefined, createdAt: Date.now() };
+    const p: Project = { id: newId('pr'), name: name || path.basename(real) || real, path: real, baseBranch: repo ? await g.currentBranch(real) : undefined, createdAt: Date.now() };
     state.projects.push(p);
     save();
     this.changed('project', p);
@@ -490,7 +491,8 @@ export class Orchestrator extends EventEmitter {
 
 export function runScript(script: string, cwd: string): Promise<void> {
   return new Promise(resolve => {
-    const p = spawn('/bin/zsh', ['-lc', script], { cwd, stdio: 'ignore' });
+    const shell = defaultShell(); // $SHELL (zsh/bash) login shell, PowerShell on Windows
+    const p = spawn(shell, shellArgs(shell, script), { cwd, stdio: 'ignore', windowsHide: true });
     p.on('exit', () => resolve());
     p.on('error', () => resolve());
   });

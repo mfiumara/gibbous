@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { Backend } from './hermes.ts';
 import type { Project } from './store.ts';
 import { openStateDb } from './subagents.ts';
+import { isInside, nativeHermesHome, pathOf, sys, type Sys } from './platform.ts';
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;   // kanban_db._BOARD_SLUG_RE
 export const TASK_RE = /^[A-Za-z0-9_-]{1,64}$/;          // ids are t_<hex>; anything path-safe is passed to Hermes as-is
@@ -57,7 +58,7 @@ export function toColumns(payload: any): KanbanColumn[] {
     .map((c: any) => ({ name: c.name, tasks: (c.tasks ?? []).map(toCard) }));
 }
 
-const inside = (child: string, parent: string) => child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
+const inside = (child: string, parent: string) => isInside(child, parent); // either separator; case-insensitive on Windows
 
 // Which Hermes board belongs to which Gibbous project. Order: the board you linked by hand, a board whose default
 // workdir IS the project, a board scoped to a Hermes project with that path, then a board whose workdir sits inside
@@ -171,12 +172,13 @@ export function workerSession(profile: string | null, title: string, startedAt: 
 // board's own db: `default` → <root>/kanban.db, others → <root>/kanban/boards/<slug>/kanban.db, where <root> is
 // HERMES_KANBAN_HOME, else the default Hermes root (boards are shared across profiles; kanban_db.kanban_home and
 // hermes_constants.get_default_hermes_root).
-export function kanbanDbPath(s: string, env: NodeJS.ProcessEnv = process.env, homedir = os.homedir()): string {
-  const native = path.join(homedir, '.hermes'), h = env.HERMES_HOME?.trim();
+export function kanbanDbPath(s: string, env: NodeJS.ProcessEnv = process.env, homedir = os.homedir(), platform: NodeJS.Platform = process.platform): string {
+  const x: Sys = { ...sys(), platform, env, home: homedir }, P = pathOf(x);
+  const native = nativeHermesHome(x), h = env.HERMES_HOME?.trim();                     // ~/.hermes, %LOCALAPPDATA%\hermes on Windows
   const root = env.HERMES_KANBAN_HOME?.trim()
-    || (!h || inside(path.resolve(h), native) ? native                                 // ~/.hermes, or a profile under it
-      : path.basename(path.dirname(h)) === 'profiles' ? path.dirname(path.dirname(h)) : h); // custom root (/x/profiles/p → /x)
-  return s === 'default' ? path.join(root, 'kanban.db') : path.join(root, 'kanban', 'boards', s, 'kanban.db');
+    || (!h || isInside(h, native, x) ? native                                            // the native home, or a profile under it
+      : P.basename(P.dirname(h)) === 'profiles' ? P.dirname(P.dirname(h)) : h);          // custom root (/x/profiles/p → /x)
+  return s === 'default' ? P.join(root, 'kanban.db') : P.join(root, 'kanban', 'boards', s, 'kanban.db');
 }
 
 export interface KanbanLink { parent: string; child: string }

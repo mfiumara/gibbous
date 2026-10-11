@@ -3,8 +3,8 @@
 // every subagent, including background delegations and ones started before Gibbous was watching.
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { hermesHome } from './platform.ts';
 
 export interface SubagentRow {
   sessionId: string; parentSessionId: string; depth: number;
@@ -18,7 +18,7 @@ export interface SubagentRow {
 const dbs = new Map<string, DatabaseSync>();
 // Read-only handle on a profile's state.db (also used by kanban.ts to find worker sessions).
 export function openStateDb(profile?: string): DatabaseSync | undefined {
-  const home = process.env.HERMES_HOME ?? path.join(os.homedir(), '.hermes');
+  const home = hermesHome();
   const file = profile && profile !== 'default' ? path.join(home, 'profiles', profile, 'state.db') : path.join(home, 'state.db');
   if (!fs.existsSync(file)) return undefined;
   let db = dbs.get(file);

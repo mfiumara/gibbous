@@ -1,13 +1,15 @@
 // The Hermes gateway (the process that owns Discord/Telegram/… sessions) has its own API server. Replying to
 // those conversations goes through it, so the owning process runs the turn and the session stays consistent.
 import fs from 'node:fs';
+import path from 'node:path';
+import { hermesHome } from './platform.ts';
 
-const ENV = `${process.env.HOME}/.hermes/.env`;
+const ENV = path.join(hermesHome(), '.env');
 
 function gatewayEnv(): { key?: string; base: string } {
   const env: Record<string, string> = {};
   try {
-    for (const line of fs.readFileSync(ENV, 'utf8').split('\n')) {
+    for (const line of fs.readFileSync(ENV, 'utf8').split(/\r?\n/)) {
       const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
       if (m) env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
     }
