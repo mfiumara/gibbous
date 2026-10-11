@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Button, Switch } from '../ui';
 import { Section, Row } from './common';
 import { changeServer, inIosApp, onPushStatus, pushStatus, requestPush, shellVersion } from '../iosBridge';
+import { thisMachine } from '../paths';
 
 function b64ToBytes(b64: string) {
   const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
@@ -72,11 +73,11 @@ function IphoneNotifications() {
 const ServerRow = () => <Row title="Server" description={location.host}><Button onClick={changeServer}>Change server</Button></Row>;
 
 export function PhoneTab() {
-  const { tailnetUrl, tailnetLogin, toast } = useStore(useShallow(s => ({ tailnetUrl: s.tailnetUrl, tailnetLogin: s.tailnetLogin, toast: s.toast })));
+  const { tailnetUrl, tailnetLogin, toast, service } = useStore(useShallow(s => ({ tailnetUrl: s.tailnetUrl, tailnetLogin: s.tailnetLogin, toast: s.toast, service: s.service })));
   // QR encodes the sign-in link (token inside): scan with the phone camera, it opens Safari signed in.
   const qr = useMemo(() => tailnetLogin ? renderSVG(tailnetLogin, { border: 1, pixelSize: 6, blackColor: 'currentColor', whiteColor: 'transparent' }) : '', [tailnetLogin]);
   const ios = inIosApp();
-  if (!tailnetUrl) return <>{ios && <Section title="This iPhone"><div><ServerRow /></div></Section>}<Section title="Phone" description="Tailscale isn't running on this Mac, so Gibbous is only reachable locally. Install Tailscale on the Mac and your phone, then run scripts/tailscale.sh." /></>;
+  if (!tailnetUrl) return <>{ios && <Section title="This iPhone"><div><ServerRow /></div></Section>}<Section title="Phone" description={`Tailscale isn't running on ${thisMachine(service)}, so Gibbous is only reachable locally. Install Tailscale here and on your phone, then run scripts/tailscale.sh.`} /></>;
   return <>
     {ios && <Section title="This iPhone"><div><ServerRow /></div></Section>}
     <Section title="Sign in on your phone" description={<>Scan with your phone's camera. Only your Tailscale devices can open it.</>}>

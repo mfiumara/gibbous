@@ -7,6 +7,7 @@ import { useStore, toastError } from './store';
 import { haptic, inIosApp, shareNative } from './iosBridge';
 import { SHEET_QUERY, decide, offset, dismiss } from './sheet';
 import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel } from './moon';
+import { baseName } from './paths';
 
 // ── routing (hash-based so the PWA works from any path) ────────────────
 export type Route =
@@ -469,14 +470,14 @@ const inMacApp = () => !inIosApp() && !!(window as any).webkit?.messageHandlers?
 // itself, with no way back. The Mac app asks this Mac's server to copy it into ~/Downloads; phones get the share
 // sheet (Save to Files / Photos); browsers download normally.
 export async function saveMedia(filePath: string) {
-  const name = filePath.split('/').pop() || 'file', url = `/api/media?path=${encodeURIComponent(filePath)}`;
+  const name = baseName(filePath) || 'file', url = `/api/media?path=${encodeURIComponent(filePath)}`;
   const toast = useStore.getState().toast;
   try {
     // The iPhone app downloads it with the session's cookies and shows the share sheet (Save to Files / Photos).
     if (inIosApp() && shareNative({ url, filename: name, title: name })) return;
     if (inMacApp()) {
       const r = await api.post<{ saved: string }>('/api/media/save', { path: filePath });
-      toast({ title: 'Saved to Downloads', body: r.saved.split('/').pop(), action: { label: 'Show', run: () => { api.post('/api/media/reveal', { path: r.saved }).catch(toastError); } } });
+      toast({ title: 'Saved to Downloads', body: baseName(r.saved), action: { label: 'Show', run: () => { api.post('/api/media/reveal', { path: r.saved }).catch(toastError); } } });
       return;
     }
     if (matchMedia('(pointer: coarse)').matches && navigator.canShare) {

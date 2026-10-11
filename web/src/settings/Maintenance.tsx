@@ -7,6 +7,18 @@ import { Button } from '../ui';
 import { Section } from './common';
 import { viewportReport } from '../viewport';
 
+// How to restart the Gibbous server on the machine it runs on (launchd, systemd --user, a Scheduled Task).
+function Restart() {
+  const service = useStore(s => s.service);
+  if (!service) return null;
+  const copy = () => navigator.clipboard.writeText(service.restart).then(() => useStore.getState().toast({ title: 'Command copied' }), toastError);
+  const where = service.platform === 'win32' ? 'in PowerShell' : 'in a terminal';
+  return <Section title="Restart the server" description={`Run this ${where} on ${service.machine === 'computer' ? 'the computer' : `the ${service.machine}`} Gibbous runs on, if it installed as a service. Running agents keep going.`}
+    aside={<Button onClick={copy}><ClipboardCopy size={13} />Copy command</Button>}>
+    <pre className="rounded-xl bg-well border border-line p-3 font-mono text-[12px] text-dust whitespace-pre-wrap">{service.restart}</pre>
+  </Section>;
+}
+
 function Data() {
   const [diag, setDiag] = useState<string>();
   useEffect(() => { api.get<{ text: string }>('/api/diagnostics').then(r => setDiag(`${r.text}\n\nThis device: ${JSON.stringify({ ...viewportReport(), ua: navigator.userAgent }, null, 2)}`), () => {}); }, []);
@@ -46,5 +58,6 @@ export function MaintenanceTab() {
       ))}</ul>}
     </Section>
     <Data />
+    <Restart />
   </>;
 }

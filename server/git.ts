@@ -2,6 +2,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { isInside } from './platform.ts';
 
 export function run(cmd: string, args: string[], cwd: string, input?: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -142,7 +143,7 @@ export async function listFiles(dir: string): Promise<string[]> {
     for (const e of entries) {
       if (e.name.startsWith('.') || e.name === 'node_modules' || (d === dir && e.name === 'Library')) continue;
       const p = path.join(d, e.name);
-      if (e.isDirectory()) queue.push(p); else if (e.isFile()) out.push(path.relative(dir, p));
+      if (e.isDirectory()) queue.push(p); else if (e.isFile()) out.push(path.relative(dir, p).split(path.sep).join('/')); // `/` like git ls-files, on Windows too
     }
   }
   return out.slice(0, 5000);
@@ -151,7 +152,7 @@ export async function listFiles(dir: string): Promise<string[]> {
 // Resolve `rel` inside `root`; refuse anything that escapes it.
 export function safeJoin(root: string, rel: string) {
   const p = path.resolve(root, rel);
-  if (p !== root && !p.startsWith(root + path.sep)) throw new Error('path escapes workspace');
+  if (!isInside(p, root)) throw new Error('path escapes workspace');
   return p;
 }
 

@@ -29,6 +29,7 @@ const ScreenPanel = lazy(() => import('../panels/ScreenPanel').then(m => ({ defa
 import { filesFrom } from '../attachments';
 import { findLocalUrls } from '../panels/preview-urls';
 import { haptic } from '../iosBridge';
+import { thisMachine } from '../paths';
 
 const PANELS: PanelDef[] = [
   { id: 'changes', label: 'Changes', icon: FolderGit2 },
@@ -312,7 +313,7 @@ export function ThreadView({ id }: { id: string }) {
       const base = useStore.getState().tailnetUrl ?? location.origin;
       if (touch() && navigator.share) { await navigator.share({ title: thread.title, url: base + r.path }).catch(() => {}); return; }
       await navigator.clipboard.writeText(base + r.path);
-      useStore.getState().toast({ title: 'Share link copied', body: `${base}${r.path} · read-only snapshot; anyone who can reach this Mac with the link can open it.` });
+      useStore.getState().toast({ title: 'Share link copied', body: `${base}${r.path} · read-only snapshot; anyone who can reach ${thisMachine(useStore.getState().service)} with the link can open it.` });
     } catch (e) { toastError(e); }
   };
   const mention = (p: string) => { setInsert({ text: `@${p} `, n: Date.now() }); if (!wide()) setPanel(null); };

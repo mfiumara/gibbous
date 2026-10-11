@@ -27,6 +27,7 @@ import { foreignOrigins } from './foreignOrigins.ts';
 import { openingMessage } from './titles.ts';
 import { liveBranch, prBadges, refreshPrs } from './prs.ts';
 import { MAX_QUEUE, MAX_TEXT as MAX_QUEUE_TEXT } from './queue.ts';
+import { sys, isInside, badFolderName, downloadsDir, revealCommand, launch, mediaAllowed, serviceInfo, exitSignals } from './platform.ts';
 
 const PORT = Number(process.env.GIBBOUS_PORT ?? 7878);
 const DIST = path.resolve(import.meta.dirname, '../web/dist');
@@ -153,6 +154,7 @@ function publicState() {
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
     vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(),
+    platform: process.platform, service: serviceInfo(), // per-OS copy in the web app ("this Mac", restart command)
   };
 }
 
@@ -435,9 +437,9 @@ route('PATCH', '/api/settings', (_, b) => {
 });
 
 // Gibbous.app's web view can't save a download by itself (it navigated to the file instead, with no way back), and
-// this server runs on the same Mac: copy the file into ~/Downloads, never overwriting.
+// this server runs on the same computer: copy the file into the Downloads folder, never overwriting.
 route('POST', '/api/media/save', (_, b) => {
-  const src = mediaPath(String(b.path ?? '')), dir = path.join(os.homedir(), 'Downloads');
+  const src = mediaPath(String(b.path ?? '')), dir = downloadsDir();
   const ext = path.extname(src), stem = path.basename(src, ext);
   let dest = path.join(dir, path.basename(src));
   for (let n = 2; fs.existsSync(dest); n++) dest = path.join(dir, `${stem} ${n}${ext}`);
@@ -445,7 +447,13 @@ route('POST', '/api/media/save', (_, b) => {
   fs.copyFileSync(src, dest, fs.constants.COPYFILE_EXCL);
   return { saved: dest };
 });
-route('POST', '/api/media/reveal', (_, b) => { execFile('open', ['-R', mediaPath(String(b.path ?? ''))]); return { ok: true }; });
+// Finder on macOS, Explorer on Windows/WSL, the folder via xdg-open on Linux. No file manager (a server, a container) is a
+// clear error, never a crash.
+route('POST', '/api/media/reveal', async (_, b) => {
+  const c = revealCommand(mediaPath(String(b.path ?? '')));
+  try { await launch(c); } catch (e: any) { throw new HttpError(501, e?.code === 'ENOENT' ? `No file manager here (${c.cmd} isn't installed)` : `Couldn't open a file manager: ${e?.message ?? e}`); }
+  return { ok: true };
+});
 route('POST', '/api/push/subscribe', (_, b) => { subscribe(b); return { ok: true }; });
 route('POST', '/api/push/test', () => { notify({ kind: 'input', title: 'Gibbous', body: 'Notifications work.', url: '/', test: true }); return { ok: true, apns: apnsStatus() }; });
 // iOS shell device tokens (APNs). Sending needs GIBBOUS_HOME/apns.json; registering works without it.
@@ -462,7 +470,7 @@ route('DELETE', '/api/push/apns', (_, b) => {
 });
 
 route('GET', '/api/fs/ls', (_, __, u) => {
-  const dir = path.resolve(u.searchParams.get('path') || process.env.HOME!);
+  const dir = path.resolve(u.searchParams.get('path') || sys().home);
   const entries = fs.readdirSync(dir, { withFileTypes: true })
     .filter(d => d.isDirectory() && !d.name.startsWith('.'))
     .map(d => d.name).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })); // Finder order, not ASCII
@@ -472,9 +480,8 @@ route('GET', '/api/fs/ls', (_, __, u) => {
 // New folder from the Add project picker: one plain name inside an existing folder under $HOME.
 route('POST', '/api/fs/mkdir', (_, b) => {
   const parent = path.resolve(String(b?.path ?? '')), name = String(b?.name ?? '').trim();
-  const home = os.homedir();
-  if (!name || name === '.' || name === '..' || /[/\\\0]/.test(name) || name.length > 255) throw new HttpError(400, 'Use a plain folder name');
-  if (parent !== home && !parent.startsWith(home + path.sep)) throw new HttpError(400, 'Folders can only be made inside your home folder');
+  if (badFolderName(name)) throw new HttpError(400, 'Use a plain folder name');
+  if (!isInside(parent, sys().home)) throw new HttpError(400, 'Folders can only be made inside your home folder');
   const dir = path.join(parent, name);
   if (fs.existsSync(dir)) throw new HttpError(409, `${name} already exists`);
   fs.mkdirSync(dir);
@@ -486,7 +493,7 @@ const IMAGE_MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image
 function serveImage(u: URL, res: http.ServerResponse) {
   const p = path.resolve(u.searchParams.get('path') ?? '');
   const type = IMAGE_MIME[path.extname(p).toLowerCase()];
-  if (!type || !p.startsWith(process.env.HOME + path.sep) || !fs.existsSync(p)) throw new HttpError(404, 'image not found');
+  if (!type || !isInside(p, sys().home) || !fs.existsSync(p)) throw new HttpError(404, 'image not found');
   // SVG can carry script: serve it sandboxed.
   res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'private, max-age=86400', ...(type === 'image/svg+xml' ? { 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" } : {}) });
   fs.createReadStream(p).pipe(res);
@@ -500,9 +507,7 @@ const MEDIA_MIME: Record<string, string> = { ...IMAGE_MIME, '.mp4': 'video/mp4',
 // A file the agent handed over (MEDIA:): inside your home folder, not in a hidden folder other than ~/.hermes.
 function mediaPath(raw: string) {
   const p = path.resolve(raw);
-  const rel = path.relative(process.env.HOME!, p);
-  const hidden = rel.split(path.sep).some(seg => seg.startsWith('.') && seg !== '.hermes');
-  if (rel.startsWith('..') || path.isAbsolute(rel) || hidden || !fs.existsSync(p) || !fs.statSync(p).isFile()) throw new HttpError(404, 'file not found');
+  if (!mediaAllowed(p) || !fs.existsSync(p) || !fs.statSync(p).isFile()) throw new HttpError(404, 'file not found');
   return p;
 }
 function serveMedia(u: URL, req: http.IncomingMessage, res: http.ServerResponse) {
@@ -659,7 +664,7 @@ function upgrade(req: http.IncomingMessage, socket: import('node:stream').Duplex
   wss.handleUpgrade(req, socket, head, client => {
     if (u.pathname === '/pty') {
       const t = orch.thread(u.searchParams.get('thread') ?? '');
-      const cwd = t?.cwd ?? process.env.HOME!;
+      const cwd = t?.cwd ?? sys().home;
       // name: "shell" (default), "shell-2"…, or "script:<name>" which runs the project's named script.
       const name = u.searchParams.get('name') || 'shell';
       const script = name.startsWith('script:') ? orch.project(t?.projectId)?.scripts?.find(s => s.name === name.slice(7)) : undefined;
@@ -695,7 +700,7 @@ async function pipe(client: WebSocket, host?: string) {
   up.on('error', () => client.close(1011, 'hermes unavailable'));
 }
 
-for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { saveNow(); process.exit(0); });
+for (const sig of exitSignals()) process.on(sig, () => { saveNow(); process.exit(0); });
 
 server.listen(PORT, '127.0.0.1', () => {
   const link = `http://127.0.0.1:${PORT}/login?token=${secret.accessToken}`;

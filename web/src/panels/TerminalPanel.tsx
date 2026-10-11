@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Play, RotateCcw, Square, Plus, X, Check } from 'lucide-react';
 import type { Thread, Project } from '../api';
 import { IconButton, Moon } from '../ui';
+import { baseName } from '../paths';
 
 // ANSI colours tuned to the moon palette: soft, readable, nothing neon. The background is transparent so the terminal
 // sits flush on its panel (no black box); foreground, cursor and selection follow the app's theme tokens.
@@ -80,7 +81,7 @@ function Term({ thread, name, active, onExit, controls }: { thread: Thread; name
 }
 
 const label = (id: string, project?: Project) =>
-  id.startsWith('script:') ? id.slice(7) : `${project?.path.split('/').pop() || 'shell'}${id === 'shell' ? '' : ` ${id.split('-')[1]}`}`;
+  id.startsWith('script:') ? id.slice(7) : `${(project && baseName(project.path)) || 'shell'}${id === 'shell' ? '' : ` ${id.split('-')[1]}`}`;
 
 export function TerminalPanel({ thread, project }: { thread: Thread; project?: Project }) {
   const scripts = project?.scripts ?? [];

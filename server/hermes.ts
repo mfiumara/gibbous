@@ -3,11 +3,12 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
+import { hermesBin, commandFor } from './platform.ts';
 import WebSocket from 'ws';
 import { GIBBOUS_HOME, readJson, writeJsonAtomic } from './store.ts';
 
-const BACKEND_FILE = `${GIBBOUS_HOME}/hermes-backend.json`;
-const HERMES_BIN = process.env.HERMES_BIN ?? `${process.env.HOME}/.local/bin/hermes`;
+const BACKEND_FILE = path.join(GIBBOUS_HOME, 'hermes-backend.json');
 
 export interface Backend { port: number; token: string; pid?: number }
 
@@ -27,19 +28,24 @@ export async function ensureBackend(port = Number(process.env.GIBBOUS_HERMES_POR
   const saved = readJson<Backend | null>(BACKEND_FILE, null);
   if (saved && await alive(saved)) return saved;
   const b: Backend = { port, token: randomBytes(24).toString('hex') };
-  const log = fs.openSync(`${GIBBOUS_HOME}/hermes-serve.log`, 'a');
-  const child = spawn(HERMES_BIN, ['serve', '--port', String(port), '--skip-build'], {
-    detached: true, stdio: ['ignore', log, log],
+  const logFile = path.join(GIBBOUS_HOME, 'hermes-serve.log'), log = fs.openSync(logFile, 'a');
+  // Resolved per OS (platform.ts): HERMES_BIN, PATH, ~/.local/bin/hermes, %LOCALAPPDATA%\hermes\bin\hermes.exe.
+  // windowsHide: no console window pops up for the detached server on Windows.
+  const c = commandFor(hermesBin(), ['serve', '--port', String(port), '--skip-build']);
+  const child = spawn(c.cmd, c.args, {
+    detached: true, stdio: ['ignore', log, log], windowsHide: true, windowsVerbatimArguments: !!c.verbatim,
     env: { ...process.env, HERMES_DESKTOP: '1', HERMES_DASHBOARD_SESSION_TOKEN: b.token },
   });
+  child.on('error', e => fs.appendFileSync(logFile, `gibbous: could not start ${c.cmd}: ${e.message}\n`)); // missing binary: logged, never a crash
   child.unref();
+  fs.closeSync(log);
   b.pid = child.pid;
   for (let i = 0; i < 120; i++) {
     if (await alive(b)) { writeJsonAtomic(BACKEND_FILE, b); return b; }
-    if (child.exitCode !== null) break;
+    if (child.exitCode !== null || child.pid === undefined) break;
     await new Promise(r => setTimeout(r, 500));
   }
-  throw new Error(`hermes serve did not come up on :${port} (see ${GIBBOUS_HOME}/hermes-serve.log)`);
+  throw new Error(`hermes serve did not come up on :${port} (see ${logFile})`);
 }
 
 // Read-only REST on `hermes serve` (opens state.db read-only; safe for sessions other processes own).

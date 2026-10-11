@@ -1,7 +1,9 @@
 // Workspace terminals. A PTY outlives its browser socket; reattaching replays recent output.
 // Shell tabs run a login shell; script tabs run one command and keep their output (and exit code) after it ends.
 import pty from 'node-pty';
+import fs from 'node:fs';
 import type { WebSocket } from 'ws';
+import { defaultShell, shellArgs, sys } from './platform.ts';
 
 interface Term { p?: pty.IPty; buf: string; sockets: Set<WebSocket>; cwd: string; cmd?: string; exit?: number }
 const terms = new Map<string, Term>();
@@ -10,11 +12,19 @@ const MAX_BUF = 256 * 1024;
 const control = (m: object) => '\x00' + JSON.stringify(m);
 
 function start(t: Term) {
-  const shell = process.env.SHELL || '/bin/zsh';
-  const p = pty.spawn(shell, t.cmd ? ['-lc', t.cmd] : ['-l'], {
-    name: 'xterm-256color', cols: 100, rows: 30, cwd: t.cwd,
-    env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>,
-  });
+  const shell = defaultShell(); // $SHELL on macOS/Linux, PowerShell on Windows (platform.ts)
+  let p: pty.IPty;
+  try {
+    p = pty.spawn(shell, shellArgs(shell, t.cmd), {
+      name: 'xterm-256color', cols: 100, rows: 30, cwd: fs.existsSync(t.cwd) ? t.cwd : sys().home, // a removed worktree must not kill the tab
+      env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>,
+    });
+  } catch (e: any) {
+    const msg = `\x1b[31mCould not start ${shell}: ${e?.message ?? e}\x1b[0m\r\n`;
+    t.buf = (t.buf + msg).slice(-MAX_BUF); t.exit = -1;
+    for (const s of t.sockets) { s.send(msg); s.send(control({ exit: -1 })); }
+    return;
+  }
   t.p = p; t.exit = undefined;
   if (t.cmd) { const banner = `\x1b[2m$ ${t.cmd}\x1b[0m\r\n`; t.buf = (t.buf + banner).slice(-MAX_BUF); for (const s of t.sockets) s.send(banner); }
   p.onData(d => {

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { folderOf } from './sessionDirs.ts';
 
 test('folders map to their repository, worktrees to the main checkout', () => {
-  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dirs-')));
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'dirs-'))); // native: long names, not Windows 8.3 (RUNNER~1)
   const repo = path.join(home, 'repo'), wt = path.join(home, 'wt'), sub = path.join(repo, 'src', 'deep'), plain = path.join(home, 'plain');
   fs.mkdirSync(repo); fs.mkdirSync(plain);
   const git = (...a: string[]) => execFileSync('git', a, { cwd: repo, stdio: 'ignore' });

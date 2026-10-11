@@ -15,6 +15,7 @@ import { importCandidates, reportImport, useForeign, loadForeign } from './impor
 import { TOOLS, chipsOf, countLabel, type ToolId } from './sessionTools';
 import { ToolIcon, ToolIntro, AppChips, GroupBlock, SyncSwitches } from './SessionList';
 import type { SessionListRow } from './hermes/contract';
+import { thisMachine } from './paths';
 
 const PICKABLE = new Set<ToolId>(['cli', 'desktop', 'acp', 'messaging', 'api', 'other', 'claude', 'codex']);
 const SYNCABLE = new Set<ToolId>(['cli', 'desktop', 'acp', 'messaging', 'api', 'other']);
@@ -144,7 +145,7 @@ export function SessionsView({ tool: routeTool }: { tool?: string }) {
                 );
               })}
             </div>
-            <p className="md:hidden px-1 text-[12.5px] text-ash">Sessions from each tool on this Mac. Open one to keep going here.</p>
+            <p className="md:hidden px-1 text-[12.5px] text-ash">Sessions from each tool on {thisMachine(useStore.getState().service)}. Open one to keep going here.</p>
           </div>
         </nav>
         <div className={`${listing ? 'hidden md:flex' : 'flex'} flex-1 min-h-0 flex-col`}>

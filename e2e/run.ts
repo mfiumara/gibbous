@@ -6,25 +6,34 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import puppeteer, { type Page } from 'puppeteer-core';
 
-const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const CHROME = process.env.CHROME ?? { darwin: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', win32: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' }[process.platform as string]
+  ?? ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'].find(f => fs.existsSync(f)) ?? 'chromium';
 const PORT = 7979, BASE = `http://127.0.0.1:${PORT}`;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gibbous-e2e-'));
-const live = `${process.env.HOME}/.gibbous/hermes-backend.json`;
-if (fs.existsSync(live)) fs.copyFileSync(live, path.join(home, 'hermes-backend.json')); // reuse the running Hermes
+const live = path.join(os.homedir(), '.gibbous', 'hermes-backend.json');
+// E2E_FAKE_HERMES=1 (or no running Hermes, e.g. CI/containers): the scripted fake from e2e/demo instead of the real one.
+const fake = process.env.E2E_FAKE_HERMES || !fs.existsSync(live) ? await (async () => {
+  const { fakeHermes } = await import('./demo/fake-hermes.ts');
+  const token = randomBytes(16).toString('hex'), f = fakeHermes({ token, pick: () => async () => 'ok', home });
+  fs.writeFileSync(path.join(home, 'hermes-backend.json'), JSON.stringify({ port: await f.listen(), token }));
+  return f;
+})() : undefined;
+if (!fake) fs.copyFileSync(live, path.join(home, 'hermes-backend.json')); // reuse the running Hermes
 const repo = path.join(home, 'repo');
 fs.mkdirSync(repo);
 for (const a of [['init', '-q', '-b', 'main'], ['-c', 'user.email=e@e', '-c', 'user.name=e', 'commit', '-q', '--allow-empty', '-m', 'init']]) execFileSync('git', a, { cwd: repo });
 
-const server = spawn(process.execPath, ['server/main.ts'], { env: { ...process.env, GIBBOUS_HOME: home, GIBBOUS_PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'inherit'] });
+const server = spawn(process.execPath, ['server/main.ts'], { env: { ...process.env, GIBBOUS_HOME: home, GIBBOUS_PORT: String(PORT), ...(fake ? { HERMES_BIN: path.join(home, 'no-hermes') } : {}) }, stdio: ['ignore', 'pipe', 'inherit'] });
 let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
 const failures: string[] = [];
 try {
   await new Promise<void>((res, rej) => { server.stdout!.on('data', d => String(d).includes('Gibbous on') && res()); server.on('exit', c => rej(new Error(`server exited ${c}`))); });
   const token = JSON.parse(fs.readFileSync(path.join(home, 'secret.json'), 'utf8')).accessToken;
   const project = await (await fetch(`${BASE}/api/projects`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: `gibbous_auth=${token}` }, body: JSON.stringify({ path: repo, name: 'e2e' }) })).json();
-  browser = await puppeteer.launch({ executablePath: CHROME, headless: true });
+  browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: process.getuid?.() === 0 ? ['--no-sandbox'] : [] }); // root in containers
 
   const open = async (w: number, h: number) => {
     const page = await browser!.newPage();
@@ -158,6 +167,7 @@ try {
 } finally {
   await browser?.close();
   server.kill();
+  await fake?.close();
   fs.rmSync(home, { recursive: true, force: true });
 }
 if (failures.length) { console.error(`✗ ${failures.length} problem(s):\n  ${failures.join('\n  ')}`); process.exit(1); }

@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { folderOf, type Folder } from './sessionDirs.ts';
+import { expandHome } from './platform.ts';
 
 export interface Origin { app: string; sub?: boolean; cwd?: string }
 // `folders`: repository roots for the folders these sessions ran in (Paseo worktrees → their main repo), like /api/sessions/dirs.
@@ -19,7 +20,7 @@ export const handleFor = (source: 'claude' | 'codex', file: string) => crypto.cr
 // The tool's own relocation env var wins (blank = unset), like Hermes' _default_root.
 function rootOf(env: string, sub: string, ...dflt: string[]) {
   const o = process.env[env]?.trim();
-  return o ? path.join(o.replace(/^~(?=$|\/)/, os.homedir()), sub) : path.join(os.homedir(), ...dflt);
+  return o ? path.join(expandHome(o), sub) : path.join(os.homedir(), ...dflt);
 }
 
 function walk(dir: string, match: (name: string) => boolean, depth: number, out: string[]) {

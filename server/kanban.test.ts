@@ -74,12 +74,17 @@ test('cached shares one load within the ttl and drops failures', async () => {
 
 test('links: board db path follows Hermes (default at the root, others under kanban/boards, profiles share the root)', async () => {
   const { kanbanDbPath } = await import('./kanban.ts');
-  assert.equal(kanbanDbPath('default', {}, '/u'), '/u/.hermes/kanban.db');
-  assert.equal(kanbanDbPath('alpha', {}, '/u'), '/u/.hermes/kanban/boards/alpha/kanban.db');
-  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/u/.hermes/profiles/coder' }, '/u'), '/u/.hermes/kanban/boards/alpha/kanban.db');
-  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/srv/h/profiles/coder' }, '/u'), '/srv/h/kanban/boards/alpha/kanban.db');
-  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/srv/h' }, '/u'), '/srv/h/kanban/boards/alpha/kanban.db');
-  assert.equal(kanbanDbPath('default', { HERMES_KANBAN_HOME: '/k', HERMES_HOME: '/srv/h' }, '/u'), '/k/kanban.db');
+  assert.equal(kanbanDbPath('default', {}, '/u', 'darwin'), '/u/.hermes/kanban.db');
+  assert.equal(kanbanDbPath('alpha', {}, '/u', 'darwin'), '/u/.hermes/kanban/boards/alpha/kanban.db');
+  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/u/.hermes/profiles/coder' }, '/u', 'darwin'), '/u/.hermes/kanban/boards/alpha/kanban.db');
+  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/srv/h/profiles/coder' }, '/u', 'darwin'), '/srv/h/kanban/boards/alpha/kanban.db');
+  assert.equal(kanbanDbPath('alpha', { HERMES_HOME: '/srv/h' }, '/u', 'darwin'), '/srv/h/kanban/boards/alpha/kanban.db');
+  assert.equal(kanbanDbPath('default', { HERMES_KANBAN_HOME: '/k', HERMES_HOME: '/srv/h' }, '/u', 'darwin'), '/k/kanban.db');
+  // Windows: Hermes' native home is %LOCALAPPDATA%\hermes, profiles under it share that root.
+  const local = 'C:\\Users\\u\\AppData\\Local';
+  assert.equal(kanbanDbPath('alpha', { LOCALAPPDATA: local }, 'C:\\Users\\u', 'win32'), `${local}\\hermes\\kanban\\boards\\alpha\\kanban.db`);
+  assert.equal(kanbanDbPath('default', { LOCALAPPDATA: local, HERMES_HOME: `${local}\\hermes\\profiles\\coder` }, 'C:\\Users\\u', 'win32'), `${local}\\hermes\\kanban.db`);
+  assert.equal(kanbanDbPath('default', {}, 'C:\\Users\\u', 'win32'), 'C:\\Users\\u\\AppData\\Local\\hermes\\kanban.db');
 });
 
 test('links: read task_links from a board db (read-only), [] when the db or table is missing', async () => {

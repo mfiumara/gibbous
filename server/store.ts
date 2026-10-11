@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { QueueItem } from './queue.ts';
+import { gibbousHome, sys } from './platform.ts';
 
-export const GIBBOUS_HOME = process.env.GIBBOUS_HOME ?? `${process.env.HOME}/.gibbous`;
+export const GIBBOUS_HOME = gibbousHome();
 // Migration from the project's working name (~/.phoebe): move the folder, rewrite absolute paths in state.
-const LEGACY_HOME = `${process.env.HOME}/.phoebe`;
+const LEGACY_HOME = path.join(sys().home, '.phoebe');
 if (!process.env.GIBBOUS_HOME && fs.existsSync(LEGACY_HOME) && !fs.existsSync(path.join(GIBBOUS_HOME, 'state.json'))) {
   fs.rmSync(GIBBOUS_HOME, { recursive: true, force: true }); // only an empty/fresh folder can be here
   fs.renameSync(LEGACY_HOME, GIBBOUS_HOME);
@@ -15,7 +16,8 @@ if (!process.env.GIBBOUS_HOME && fs.existsSync(LEGACY_HOME) && !fs.existsSync(pa
 {
   const f = path.join(GIBBOUS_HOME, 'state.json');
   const raw = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
-  if (raw.includes(`${LEGACY_HOME}/`)) fs.writeFileSync(f, raw.split(`${LEGACY_HOME}/`).join(`${GIBBOUS_HOME}/`), { mode: 0o600 });
+  const old = JSON.stringify(LEGACY_HOME + path.sep).slice(1, -1), now = JSON.stringify(GIBBOUS_HOME + path.sep).slice(1, -1); // as escaped inside JSON (Windows backslashes)
+  if (raw.includes(old)) fs.writeFileSync(f, raw.split(old).join(now), { mode: 0o600 });
 }
 fs.mkdirSync(GIBBOUS_HOME, { recursive: true, mode: 0o700 });
 

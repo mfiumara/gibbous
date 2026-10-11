@@ -4,6 +4,7 @@ import { api, type Thread } from '../api';
 import { toastError, useStore } from '../store';
 import { IconButton, Button, inputCls } from '../ui';
 import { Markdown } from '../thread/Items';
+import { baseName, dirPrefix } from '../paths';
 
 const LANG: Record<string, string> = { ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', py: 'python', rs: 'rust', go: 'go', md: 'markdown', json: 'json', yml: 'yaml', yaml: 'yaml', sh: 'bash', zsh: 'bash', css: 'css', html: 'xml', c: 'c', h: 'c', cpp: 'cpp', toml: 'ini', sql: 'sql', swift: 'swift', kt: 'kotlin', java: 'java', rb: 'ruby' };
 
@@ -68,7 +69,7 @@ export function FilesPanel({ thread, onMention }: { thread: Thread; onMention(pa
       <ul className="flex-1 min-h-0 overflow-y-auto p-1">
         {shown.map(f => (
           <li key={f}><button onClick={() => view(f)} className="press w-full text-left px-2.5 py-0.5 pointer-coarse:py-2 rounded-md font-mono text-[12.5px] text-dust hover:text-moon hover:bg-ridge/60 truncate">
-            <span className="text-ash">{f.includes('/') ? f.slice(0, f.lastIndexOf('/') + 1) : ''}</span>{f.split('/').pop()}
+            <span className="text-ash">{dirPrefix(f)}</span>{baseName(f)}
           </button></li>
         ))}
         {files.length > shown.length && !q && <li className="px-3 py-2 text-xs text-ash">Showing 500 of {files.length}. Filter to find more.</li>}

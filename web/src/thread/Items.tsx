@@ -7,6 +7,7 @@ import { canSpeak, speak } from '../voice';
 import { parseUserText, type Item } from './timeline';
 import { DiffView } from '../panels/DiffView';
 import { Moon, viewMedia, saveMedia } from '../ui';
+import { baseName } from '../paths';
 
 // Local file paths (attachments, generated images) load through the authenticated image route.
 export const imageSrc = (src: string) => /^(https?:|data:|blob:)/.test(src) ? src : `/api/image?path=${encodeURIComponent(src.replace(/^file:\/\//, ''))}`;
@@ -32,7 +33,7 @@ export const Markdown = memo(function Markdown({ text: live }: { text: string })
     components={{
       // Links into Gibbous's own file routes open in the viewer: a new window would be a browser without the session.
       a: ({ node: _n, ...p }) => /^\/api\/(media|image)\?/.test(String(p.href ?? ''))
-        ? <a {...p} onClick={e => { e.preventDefault(); viewMedia(String(p.href), new URLSearchParams(String(p.href).split('?')[1]).get('path')?.split('/').pop() ?? ''); }} />
+        ? <a {...p} onClick={e => { e.preventDefault(); viewMedia(String(p.href), baseName(new URLSearchParams(String(p.href).split('?')[1]).get('path') ?? '')); }} />
         : <a {...p} target="_blank" rel="noreferrer" />,
       img: ({ node: _n, src, alt }) => <img src={imageSrc(String(src ?? ''))} alt={alt ?? ''} loading="lazy" className="cursor-zoom-in" onClick={() => viewMedia(imageSrc(String(src ?? '')), alt || String(src ?? '').split('/').pop())} />,
       pre: ({ node: _n, children, ...p }) => (
@@ -47,7 +48,7 @@ export const Markdown = memo(function Markdown({ text: live }: { text: string })
 // Files an agent hands you arrive as `MEDIA:/path` lines: shown as the thing itself, not as a path.
 const mediaUrl = (p: string, download = false) => `/api/media?path=${encodeURIComponent(p)}${download ? '&download=1' : ''}`;
 export function MediaCard({ path: p }: { path: string }) {
-  const name = p.split('/').pop() ?? p, ext = name.split('.').pop()?.toLowerCase() ?? '';
+  const name = baseName(p), ext = name.split('.').pop()?.toLowerCase() ?? '';
   const download = <button onClick={() => saveMedia(p)} aria-label={`Download ${name}`} data-tip="Download" className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Download size={15} /></button>;
   if (/^(png|jpe?g|gif|webp|svg)$/.test(ext)) return <button onClick={() => viewMedia(mediaUrl(p), name)} aria-label={`View ${name}`} className="block w-fit cursor-zoom-in"><img src={mediaUrl(p)} alt={name} loading="lazy" className="max-h-80 rounded-xl border border-line object-contain" /></button>;
   if (/^(mp4|mov|m4v|webm)$/.test(ext)) return <div className="space-y-1 max-w-xl"><video src={mediaUrl(p)} controls playsInline preload="metadata" className="max-h-96 w-full rounded-xl border border-line bg-well" />
@@ -150,7 +151,7 @@ export const ToolRow = memo(function ToolRow({ item, cwd }: { item: Extract<Item
         {item.duration != null && <span className="ml-auto pl-2 font-mono text-[11px] text-ash flex-none">{item.duration < 1 ? `${Math.round(item.duration * 1000)}ms` : `${item.duration.toFixed(1)}s`}</span>}
       </button>
       {!open && item.diff && <div className="ml-6 my-1 animate-fade"><DiffView diff={item.diff} compact /></div>}
-      {images.length > 0 && <div className="ml-6 my-1.5 flex flex-wrap gap-2">{images.map(src => <button key={src} onClick={() => viewMedia(imageSrc(src), src.split('/').pop())} aria-label="View image" className="cursor-zoom-in"><img src={imageSrc(src)} alt="" loading="lazy" className="h-40 rounded-lg border border-line object-cover hover:border-ash transition-colors" /></button>)}</div>}
+      {images.length > 0 && <div className="ml-6 my-1.5 flex flex-wrap gap-2">{images.map(src => <button key={src} onClick={() => viewMedia(imageSrc(src), baseName(src))} aria-label="View image" className="cursor-zoom-in"><img src={imageSrc(src)} alt="" loading="lazy" className="h-40 rounded-lg border border-line object-cover hover:border-ash transition-colors" /></button>)}</div>}
       {open && (
         <div className="ml-6 my-1.5 space-y-2 animate-rise">
           {item.diff && <DiffView diff={item.diff} />}
@@ -192,9 +193,9 @@ export const SideCard = memo(function SideCard({ item }: { item: Extract<Item, {
 function UserBody({ text }: { text: string }) {
   const { images, files, body } = parseUserText(text);
   return <>
-    {images.length > 0 && <div className="flex flex-wrap justify-end gap-1.5 mb-1.5">{images.map(src => <button key={src} onClick={() => viewMedia(imageSrc(src), src.split('/').pop())} aria-label="View attached image" className="cursor-zoom-in"><img src={imageSrc(src)} alt="Attached image" loading="lazy" className="h-28 rounded-xl border border-line object-cover" /></button>)}</div>}
+    {images.length > 0 && <div className="flex flex-wrap justify-end gap-1.5 mb-1.5">{images.map(src => <button key={src} onClick={() => viewMedia(imageSrc(src), baseName(src))} aria-label="View attached image" className="cursor-zoom-in"><img src={imageSrc(src)} alt="Attached image" loading="lazy" className="h-28 rounded-xl border border-line object-cover" /></button>)}</div>}
     {body && <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{body}</div>}
-    {files.length > 0 && <div className="flex flex-wrap gap-1 mt-1.5">{files.map(f => <span key={f} className="inline-flex items-center gap-1 rounded-md bg-basalt/50 px-1.5 py-0.5 font-mono text-[11.5px] text-dust"><Paperclip size={11} />{f.split('/').pop()}</span>)}</div>}
+    {files.length > 0 && <div className="flex flex-wrap gap-1 mt-1.5">{files.map(f => <span key={f} className="inline-flex items-center gap-1 rounded-md bg-basalt/50 px-1.5 py-0.5 font-mono text-[11.5px] text-dust"><Paperclip size={11} />{baseName(f)}</span>)}</div>}
   </>;
 }
 

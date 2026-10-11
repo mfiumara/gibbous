@@ -4,6 +4,7 @@ import { api, type Thread } from '../api';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo } from '../store';
 import { Moon, IconButton, Menu, MenuItem, Elapsed } from '../ui';
 import type { Timeline } from './timeline';
+import { thisMachine } from '../paths';
 
 export interface PanelDef { id: string; label: string; icon: React.ComponentType<{ size?: number }> }
 
@@ -78,7 +79,7 @@ export function ThreadHeader({ thread, tl, panels, panel, setPanel, onBranch, on
 export function HostChip({ id }: { id: string }) {
   const h = useStore(s => s.hosts.find(x => x.id === id));
   return (
-    <span className="flex-none inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-tide/30 bg-tide/10 text-[12px] text-tide" data-tip={h ? `Runs on ${h.name} (${h.ssh}), not this Mac` : 'This host was removed'}>
+    <span className="flex-none inline-flex items-center gap-1.5 h-6 px-2 rounded-md border border-tide/30 bg-tide/10 text-[12px] text-tide" data-tip={h ? `Runs on ${h.name} (${h.ssh}), not ${thisMachine(useStore.getState().service)}` : 'This host was removed'}>
       <Server size={12} />{h?.name ?? 'removed host'}{h && !h.connected && <span className="size-1.5 rounded-full bg-halo animate-pulse" />}
     </span>
   );

@@ -6,6 +6,7 @@ import http2 from 'node:http2';
 import path from 'node:path';
 import { createPrivateKey, createSign, type KeyObject } from 'node:crypto';
 import { GIBBOUS_HOME } from './store.ts';
+import { expandHome } from './platform.ts';
 
 export type ApnsEnv = 'sandbox' | 'production';
 export interface ApnsDevice { token: string; env: ApnsEnv; at: number }
@@ -37,7 +38,7 @@ export function loadConfig(home = configHome): Loaded | null {
   if (!st) { cache = { file, stamp: '', loaded: null }; return null; }
   let raw: any;
   try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return remember(file, `${st.mtimeMs}`, null, 'apns.json is not valid JSON'); }
-  const keyPath = typeof raw?.keyPath === 'string' ? path.resolve(home, raw.keyPath.replace(/^~(?=\/)/, process.env.HOME ?? '~')) : '';
+  const keyPath = typeof raw?.keyPath === 'string' ? path.resolve(home, expandHome(raw.keyPath)) : '';
   const kst = keyPath ? fs.statSync(keyPath, { throwIfNoEntry: false }) : undefined;
   const stamp = `${st.mtimeMs}:${keyPath}:${kst?.mtimeMs ?? 0}`;
   if (cache?.file === file && cache.stamp === stamp) return cache.loaded;

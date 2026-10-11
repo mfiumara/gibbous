@@ -14,7 +14,7 @@ test('fileLines ignores the final newline', () => {
 });
 
 test('safeJoin refuses paths outside the workspace', () => {
-  assert.equal(safeJoin('/w', 'a/b.txt'), '/w/a/b.txt');
+  assert.equal(safeJoin('/w', 'a/b.txt'), path.resolve('/w', 'a', 'b.txt')); // C:\\w\\a\\b.txt on Windows
   assert.throws(() => safeJoin('/w', '../etc/passwd'));
   assert.throws(() => safeJoin('/w', '/etc/passwd'));
   assert.throws(() => safeJoin('/w', '../w2/x'));
@@ -27,7 +27,9 @@ test('listFiles outside git skips hidden and unreadable folders instead of faili
   fs.mkdirSync(path.join(d, 'src')); fs.writeFileSync(path.join(d, 'src', 'a.ts'), '');
   fs.mkdirSync(path.join(d, '.hidden')); fs.writeFileSync(path.join(d, '.hidden', 'x'), '');
   fs.mkdirSync(path.join(d, 'locked')); fs.writeFileSync(path.join(d, 'locked', 'y'), ''); fs.chmodSync(path.join(d, 'locked'), 0);
-  try { assert.deepEqual(await listFiles(d), ['src/a.ts']); }
+  // chmod 0 locks nothing for root (containers, CI) or on Windows: there the folder simply lists.
+  const locks = process.platform !== 'win32' && process.getuid?.() !== 0;
+  try { assert.deepEqual((await listFiles(d)).sort(), locks ? ['src/a.ts'] : ['locked/y', 'src/a.ts']); }
   finally { fs.chmodSync(path.join(d, 'locked'), 0o700); fs.rmSync(d, { recursive: true, force: true }); }
 });
 

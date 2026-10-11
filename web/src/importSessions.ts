@@ -3,6 +3,7 @@
 // Used by the first-run picker (Welcome.tsx) and the Sessions screen (Inbox.tsx).
 import type { SessionListRow, ForeignSessionRow } from './hermes/contract';
 import { toolOf, codexApp, claudeApp, MESSAGING_SOURCES, type ToolId, type App } from './sessionTools.ts';
+import { baseName, tilde } from './paths.ts';
 export { MESSAGING_SOURCES };
 
 export type Kind = 'hermes' | 'claude' | 'codex';
@@ -94,8 +95,7 @@ export interface Group {
   items: Candidate[];
 }
 const TMP = /^(\/private)?\/tmp(\/|$)/;
-const base = (p: string) => p.replace(/\/+$/, '').split('/').pop() || p;
-const tilde = (p: string, home: string) => p === home ? '~' : p.startsWith(home + '/') ? '~' + p.slice(home.length) : p;
+const base = baseName;
 
 // Folder groups for sessions with a known folder, source groups for the rest; the most recently active group first.
 export function groupCandidates(cands: Candidate[], o: { dirs?: SessionDirs; label(source: string): string }): Group[] {
