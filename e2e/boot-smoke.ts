@@ -121,6 +121,29 @@ try {
     const ch = await api('GET', `/api/threads/${thread.id}/changes`);
     ok(ch.j?.repo === true, `changes ${JSON.stringify(ch.j)}`);
   });
+  await check('spaces: validated create, assignment, persistence, rename and safe deletion', async () => {
+    ok((await api('GET', '/api/state')).j.settings.spaces.length === 0, 'spaces are not opt-in');
+    const { status, j: space } = await api('POST', '/api/spaces', { name: ' Private ' });
+    ok(status === 200 && space.name === 'Private', 'create space');
+    ok((await api('POST', '/api/spaces', { name: 'private' })).status === 400, 'duplicate name accepted');
+    ok((await api('PATCH', `/api/projects/${project.id}`, { space: 'missing' })).status === 400, 'unknown space accepted');
+    ok((await api('PATCH', `/api/projects/${project.id}`, { space: space.id })).j.space === space.id, 'assignment');
+    await until(async () => {
+      const stored = JSON.parse(fs.readFileSync(path.join(GH, 'state.json'), 'utf8'));
+      return stored.projects.find((p: any) => p.id === project.id)?.space === space.id;
+    }, 5000, 'persist assignment');
+    ok((await api('PATCH', `/api/spaces/${space.id}`, { name: 'Personal' })).j.id === space.id, 'rename identity');
+    let stored = (await api('GET', '/api/state')).j;
+    ok(stored.projects.find((p: any) => p.id === project.id).space === space.id, 'rename lost assignment');
+    ok((await api('PATCH', `/api/projects/${project.id}`, { space: null })).status === 200, 'None assignment');
+    ok(!(await api('GET', '/api/state')).j.projects.find((p: any) => p.id === project.id).space, 'None retained assignment');
+    await api('PATCH', `/api/projects/${project.id}`, { space: space.id });
+    ok((await api('DELETE', `/api/spaces/${space.id}`)).status === 200, 'delete space');
+    stored = (await api('GET', '/api/state')).j;
+    ok(stored.settings.spaces.length === 0, 'space survived deletion');
+    ok(stored.projects.find((p: any) => p.id === project.id) && !stored.projects.find((p: any) => p.id === project.id).space, 'deletion lost project or retained label');
+    ok(stored.threads.find((t: any) => t.id === thread.id), 'deletion lost thread');
+  });
   await check('worktree thread (git worktree add)', async () => {
     const w = (await api('POST', '/api/threads', { projectId: project.id, worktree: true, title: 'wt smoke' })).j;
     ok(w?.worktree?.path && fs.existsSync(w.worktree.path), `worktree ${JSON.stringify(w)}`);

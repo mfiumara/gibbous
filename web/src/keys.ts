@@ -39,6 +39,7 @@ export type Actions = {
   go(path: string): void;
   board(): void;
   history(d: 1 | -1): void;
+  space(d: 1 | -1): void;
   composer(): void;
   find(): void;
   palette(): void;
@@ -58,6 +59,8 @@ export const BINDINGS: Binding<Actions>[] = [
   { keys: 'C-u', group: MOVE, help: 'Scroll up half a page', run: a => a.half(-1) },
   { keys: 'g t', group: MOVE, help: 'Open the next thread from anywhere', run: a => a.thread(1) },
   { keys: 'g T', group: MOVE, help: 'Open the previous thread from anywhere', run: a => a.thread(-1) },
+  { keys: '[', group: GO, help: 'Previous project space', run: a => a.space(-1) },
+  { keys: ']', group: GO, help: 'Next project space', run: a => a.space(1) },
   { keys: 'H', group: MOVE, help: 'Go back', run: a => a.history(-1) },
   { keys: 'L', group: MOVE, help: 'Go forward', run: a => a.history(1) },
   ...['j', 'C-n'].map(keys => ({ keys, when: ['overlay'] as Scope[], group: MOVE, help: 'In an open menu, next item', run: (a: Actions) => a.move(1) })),

@@ -164,6 +164,71 @@ try {
     if (small.length) failures.push(`density ${d}: phone fields under 16px make iOS zoom on focus: ${small.join(', ')}`);
   }
   await phone.evaluate(() => { document.documentElement.dataset.density = 'cozy'; });
+
+  // Spaces are opt-in. Create inline from a project's menu, then switch without navigating.
+  await page.bringToFront();
+  await visit(page, '#/new', 'What should we work on?');
+  assert.equal(await page.$('[data-space-controls]'), null);
+  await page.click('button[aria-label="e2e options"]');
+  await clickText(page, '[role=menuitem]', 'Add to a space…');
+  await clickText(page, '[role=menuitem]', 'New space…');
+  await page.type('input[aria-label="Space name"]', 'Private');
+  await page.click('button[aria-label="Save space"]');
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-space]')].some(e => e.textContent === 'Private' && e.getAttribute('aria-pressed') === 'true'));
+  const privateId = await page.$eval('[data-space][aria-pressed=true]', e => e.getAttribute('data-space')!);
+  let spaceState = await (await fetch(`${BASE}/api/state`, { headers: auth })).json();
+  assert.equal(spaceState.projects[0].space, privateId);
+  await page.reload({ waitUntil: 'networkidle0' });
+  assert.equal(await page.$eval('[data-space][aria-pressed=true]', e => e.getAttribute('data-space')), privateId);
+  await page.click('button[aria-label="Manage spaces"]');
+  await clickText(page, '[role=menuitem]', 'New space…');
+  await page.type('input[aria-label="Space name"]', 'Work');
+  await page.click('button[aria-label="Save space"]');
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-space]')].some(e => e.textContent === 'Work' && e.getAttribute('aria-pressed') === 'true'));
+  const workId = await page.$eval('[data-space][aria-pressed=true]', e => e.getAttribute('data-space')!);
+  assert.equal(await page.$('button[aria-label="e2e options"]'), null);
+  assert.equal(await page.$eval('select[aria-label="Project"]', e => (e as HTMLSelectElement).value), '');
+  assert.ok(await page.$('select[aria-label="Project"] optgroup[label="Other spaces"]'));
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement)?.blur();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true }));
+  });
+  await page.waitForSelector(`[data-space="${privateId}"][aria-pressed=true]`);
+  assert.equal(await page.$eval('select[aria-label="Project"]', e => (e as HTMLSelectElement).value), project.id);
+  // Palette switching is discoverable, including when the sidebar is closed on phone.
+  await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true })));
+  await page.waitForSelector('input[placeholder^="Jump to"]');
+  await page.type('input[placeholder^="Jump to"]', 'Switch to Work');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector(`[data-space="${workId}"][aria-pressed=true]`);
+  await phone.bringToFront();
+  await visit(phone, '#/new', 'What should we work on?');
+  await phone.click('button[aria-label="Open sidebar"]');
+  await new Promise(r => setTimeout(r, 350));
+  await phone.click(`[data-space="${privateId}"]`);
+  await phone.waitForSelector('a[href="#/board/' + project.id + '"]');
+  // A long press may not synthesize a click on release: the first sheet item must still work.
+  await phone.$eval('a[href="#/board/' + project.id + '"]', e => e.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [new Touch({ identifier: 1, target: e, clientX: 100, clientY: 260 })] })));
+  await new Promise(r => setTimeout(r, 550));
+  await phone.$eval('a[href="#/board/' + project.id + '"]', e => e.dispatchEvent(new TouchEvent('touchend', { bubbles: true })));
+  await phone.waitForSelector('[role=menuitem]');
+  await clickText(phone, '[role=menuitem]', 'Move to space…');
+  await phone.waitForFunction(() => [...document.querySelectorAll('[role=menuitem]')].some(e => e.textContent === 'Work'));
+  await clickText(phone, '[role=menuitem]', 'Work');
+  await phone.waitForFunction(id => !document.querySelector(`a[href="#/board/${id}"]`), {}, project.id);
+  spaceState = await (await fetch(`${BASE}/api/state`, { headers: auth })).json();
+  assert.equal(spaceState.projects[0].space, workId);
+  // Dragging onto a space segment assigns it without changing project order.
+  await page.bringToFront();
+  await page.click('[data-space=""]');
+  await page.evaluate(({ projectId, spaceId }) => {
+    const dataTransfer = new DataTransfer();
+    const header = document.querySelector(`a[href="#/board/${projectId}"]`)!.closest('[draggable=true]')!;
+    header.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer }));
+    document.querySelector(`[data-space="${spaceId}"]`)!.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
+    header.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer }));
+  }, { projectId: project.id, spaceId: privateId });
+  await page.waitForFunction(({ projectId, spaceId }) => fetch('/api/state').then(r => r.json()).then(s => s.projects.find((p: any) => p.id === projectId)?.space === spaceId), {}, { projectId: project.id, spaceId: privateId });
 } finally {
   await browser?.close();
   server.kill();

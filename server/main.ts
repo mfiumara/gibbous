@@ -1,6 +1,7 @@
 // Gibbous server: auth, REST, browser↔Hermes WebSocket pipe, terminals, Hermes kanban, static web app.
 import http from 'node:http';
 import fs from 'node:fs';
+import { spaceName, assignSpace } from './spaces.ts';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync, execFile } from 'node:child_process';
@@ -261,6 +262,24 @@ route('POST', '/api/setup/hermes/check', () => { redetectHermes(); serveFailures
 // After a key/sign-in/model change: reload Hermes' env and ask it again whether a model is usable.
 route('POST', '/api/setup/check', async () => { await checkModel(true); return setupInfo(); });
 
+route('POST', '/api/spaces', (_, b) => {
+  const space = { id: newId('space'), name: checkedSpaceName(b.name) };
+  state.settings.spaces.push(space); save(); orch.changed('settings', state.settings); return space;
+});
+route('PATCH', '/api/spaces/:id', (p, b) => {
+  const space = need(state.settings.spaces.find(s => s.id === p.id), 'space');
+  space.name = checkedSpaceName(b.name, p.id); save(); orch.changed('settings', state.settings); return space;
+});
+route('DELETE', '/api/spaces/:id', p => {
+  need(state.settings.spaces.find(s => s.id === p.id), 'space');
+  state.settings.spaces = state.settings.spaces.filter(s => s.id !== p.id);
+  for (const project of state.projects) if (project.space === p.id) { delete project.space; orch.changed('project', project); }
+  save(); orch.changed('settings', state.settings); return { ok: true };
+});
+function checkedSpaceName(name: unknown, except?: string) {
+  try { return spaceName(name, state.settings.spaces, except); } catch (e) { throw new HttpError(400, (e as Error).message); }
+}
+
 route('POST', '/api/projects', (_, b) => orch.addProject(b.path, b.name));
 // Sidebar order: the given ids first, in that order; anything not listed keeps its place after them.
 route('POST', '/api/projects/order', (_, b) => {
@@ -271,6 +290,9 @@ route('POST', '/api/projects/order', (_, b) => {
 });
 route('PATCH', '/api/projects/:id', (p, b) => {
   const pr = need(orch.project(p.id), 'project');
+  if ('space' in b) {
+    try { assignSpace(pr, b.space, state.settings.spaces); } catch (e) { throw new HttpError(400, (e as Error).message); }
+  }
   for (const k of ['name', 'baseBranch', 'setupScript', 'scripts'] as const) if (k in b) (pr as any)[k] = b[k];
   if ('kanbanBoard' in b) pr.kanbanBoard = b.kanbanBoard ? kanban.slug(b.kanbanBoard) : undefined;
   save(); orch.changed('project', pr); return pr;

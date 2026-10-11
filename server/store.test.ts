@@ -27,6 +27,16 @@ test('old task-board state migrates without losing projects, threads or other ke
   assert.equal(s.budgetAlerted, '2026-01');
 });
 
+test('space migration keeps valid assignments, clears orphan IDs and never labels existing projects', () => {
+  const spaces = [{ id: 'space_private', name: 'Private' }];
+  const projects = [{ id: 'one', space: 'space_private' }, { id: 'two', space: 'deleted' }, { id: 'three' }];
+  const s = migrate({ projects, settings: { spaces } });
+  assert.deepEqual(s.settings.spaces, spaces);
+  assert.deepEqual(s.projects.map(p => p.space), ['space_private', undefined, undefined]);
+  assert.deepEqual(migrate(s).projects, s.projects);
+  assert.deepEqual(migrate({ projects }).settings.spaces, []);
+});
+
 test('a fresh install gets defaults', () => {
   const s = migrate({});
   assert.deepEqual([s.projects, s.threads, s.hosts], [[], [], []]);

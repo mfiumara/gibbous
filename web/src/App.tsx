@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { X, Search, CornerDownLeft, Copy } from 'lucide-react';
-import { useStore, toastError, archiveWithUndo } from './store';
+import { useStore, toastError, archiveWithUndo, NONE } from './store';
 import { inIosApp, iosBadge } from './iosBridge';
 import { desktopBadge, inDesktopApp } from './desktopBridge';
 import { useShallow } from 'zustand/react/shallow';
@@ -11,6 +11,7 @@ import { vimKey, vimEscape } from './vim';
 import { Sidebar } from './Sidebar';
 import { HumanTaskEditor, editHumanTask } from './HumanTask';
 import { attentionCount, openHumanTask } from '../../server/humanTasks';
+import { editSpace, moveToSpace, deleteSpace } from './Spaces';
 import { ProjectFilter } from './ProjectFilter';
 import { Home, AddProjectDialog } from './Home';
 import { ThreadView } from './thread/ThreadView';
@@ -235,6 +236,7 @@ const SETTINGS: [string, string, string][] = [
 
 function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
   const [mode, setMode] = useState(start);
+  const spaces = useStore(s => s.settings?.spaces ?? NONE);
   const { threads, projects } = useStore(useShallow(s => ({ threads: s.threads, projects: s.projects })));
   const route = useRoute();
   const here = route.name === 'thread' ? threads.find(t => t.id === route.id) : undefined;
@@ -244,6 +246,16 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
     const needle = q.toLowerCase().trim();
     const all: Opt[] = [
       { label: 'New thread', hint: 'start', href: '/new' },
+      ...(spaces.length ? [{ label: 'Switch to All spaces', hint: 'space', run: () => useStore.getState().setActiveSpace('') }] : []),
+      ...spaces.map(s => ({ label: `Switch to ${s.name}`, hint: 'space', run: () => useStore.getState().setActiveSpace(s.id) })),
+      { label: 'Create a space…', hint: 'space', keywords: 'label group private work projects', run: () => editSpace() },
+      ...spaces.map(s => ({ label: `Rename ${s.name} space…`, hint: 'space settings', run: () => editSpace(s) })),
+      ...spaces.map(s => ({ label: `Delete ${s.name} space…`, hint: 'space settings', run: () => { deleteSpace(s).catch(toastError); } })),
+      ...projects.flatMap(p => [
+        ...spaces.map(s => ({ label: `Move ${p.name} to ${s.name}`, hint: 'space settings', run: () => { moveToSpace(p.id, s.id).catch(toastError); } })),
+        { label: `Remove ${p.name} from its space`, hint: 'space settings', run: () => { moveToSpace(p.id, null).catch(toastError); } },
+        { label: `Create a space for ${p.name}…`, hint: 'space settings', run: () => editSpace(undefined, p.id) },
+      ]),
       ...projects.flatMap(p => [{ label: `New thread in ${p.name}`, hint: 'start', href: `/new/${p.id}` }, { label: `${p.name} kanban`, hint: 'kanban', href: `/board/${p.id}`, keywords: 'board tasks' }]),
       ...threads.filter(t => t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt)
         .map(t => ({ label: t.title, hint: t.readOnly ? sourceLabel(t.source) : projects.find(p => p.id === t.projectId)?.name ?? 'chat', href: `/t/${t.id}`, status: t.status })),
@@ -264,10 +276,10 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
     // Name matches rank above keyword-only matches ("daylight" → the theme action, then Appearance settings).
     const hits = needle
       ? [...all.filter(o => o.label.toLowerCase().includes(needle)), ...all.filter(o => !o.label.toLowerCase().includes(needle) && `${o.hint} ${o.keywords ?? ''}`.toLowerCase().includes(needle))]
-      : all.filter(o => o.hint !== 'settings');
+      : all.filter(o => o.hint !== 'settings' && o.hint !== 'space settings');
     // Always offer a full-text search across every conversation.
     return [...hits.slice(0, 11), ...(needle ? [{ label: `Search all conversations for “${q.trim()}”`, hint: 'search', href: `/search?q=${encodeURIComponent(q.trim())}` }] : [])];
-  }, [q, threads, projects]);
+  }, [q, threads, projects, spaces]);
   const pick = (i: number) => { const o = options[i]; if (!o) return; o.run ? o.run() : go(o.href!); if (!o.stay) onClose(); };
   if (mode === 'projects') return <ProjectFilter onClose={onClose} onBack={start ? undefined : () => setMode(undefined)} />;
   return (
