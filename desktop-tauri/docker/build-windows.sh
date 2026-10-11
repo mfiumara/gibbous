@@ -8,6 +8,9 @@ export CARGO_TARGET_DIR=/target
 if ! command -v makensis >/dev/null; then
   apt-get update >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nsis llvm clang lld >/dev/null
 fi
+# Debian's NSIS 3.08 lacks this header (3.09+) that Tauri's installer script includes.
+H=/usr/share/nsis/Include/Win/RestartManager.nsh
+[ -f $H ] || curl -fsSL -o $H https://raw.githubusercontent.com/kichik/nsis/master/Include/Win/RestartManager.nsh
 command -v cargo-xwin >/dev/null || cargo install cargo-xwin --locked
 rustup target add x86_64-pc-windows-msvc
 command -v tauri >/dev/null || npm i -g --no-audit --no-fund @tauri-apps/cli@^2.12.2 >/dev/null
