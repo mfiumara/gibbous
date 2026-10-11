@@ -19,6 +19,9 @@ function sources(dir: string): string[] {
 }
 
 export function usedMethods() {
+  // The desktop apps' bundled server ships without web/src: scripts/bundle-server.mjs writes the list next to us.
+  const shipped = path.join(import.meta.dirname, 'used-methods.json');
+  if (!fs.existsSync(path.join(ROOT, 'web', 'src')) && fs.existsSync(shipped)) return JSON.parse(fs.readFileSync(shipped, 'utf8')) as string[];
   const s = new Set<string>();
   for (const f of [...sources(path.join(ROOT, 'server')), ...sources(path.join(ROOT, 'web/src'))])
     for (const m of fs.readFileSync(f, 'utf8').matchAll(/\bcall(?:<[^>]*>)?\('([a-z_]+(?:\.[a-z_]+)+)'/g)) s.add(m[1]);

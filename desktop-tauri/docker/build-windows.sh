@@ -15,5 +15,5 @@ command -v cargo-xwin >/dev/null || cargo install cargo-xwin --locked
 rustup target add x86_64-pc-windows-msvc
 command -v tauri >/dev/null || npm i -g --no-audit --no-fund @tauri-apps/cli@^2.12.2 >/dev/null
 cd /src
-tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis
+tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis "$@"
 ls -la /target/x86_64-pc-windows-msvc/release/bundle/nsis
