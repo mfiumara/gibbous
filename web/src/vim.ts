@@ -1,5 +1,6 @@
 // The vim layer's DOM side: panes ([data-pane] = nav | items | doc), focus and scrolling. Keys and help live in keys.ts.
 import { BINDINGS, TIMEOUT, match, token, type Actions, type Scope } from './keys';
+import { cycleSpace } from '../../server/spaces';
 import { go, parse } from './ui';
 import { useStore, deleteWithUndo } from './store';
 
@@ -189,6 +190,7 @@ function actions(help: () => void): Actions {
       const id = (r.name === 'thread' ? threads.find(t => t.id === r.id)?.projectId : r.name === 'board' ? r.projectId : undefined) ?? projects[0]?.id;
       if (id) { leave(); go(`/board/${id}`); }
     },
+    space(d) { const s = useStore.getState(); s.setActiveSpace(cycleSpace(s.activeSpace, s.settings?.spaces ?? [], d)); },
     history: d => { leave(); history.go(d); },
     composer: focusComposer,
     find() {

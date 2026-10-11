@@ -7,6 +7,7 @@ import { useCompletions } from './thread/completions';
 import { Button, IconButton, Modal, Moon, Switch, inputCls, go, ago, sourceLabel, useDraft, NO_PREDICT } from './ui';
 import { haptic } from './iosBridge';
 import { useUsage } from './useUsage';
+import { activeSpace, inSpace } from '../../server/spaces';
 import { glance } from './usage';
 
 // The old single shared Home draft held already-sent text (its clear was dropped on unmount).
@@ -28,12 +29,24 @@ function SelectChip({ icon, value, onChange, children, label }: { icon: React.Re
 export function Home({ projectId, host: hostParam, onAddProject }: { projectId?: string; host?: string; onAddProject(): void }) {
   const projects = useStore(s => s.projects);
   const threads = useStore(s => s.threads);
+  const spaces = useStore(s => s.settings?.spaces ?? NONE);
+  const storedSpace = useStore(s => s.activeSpace);
+  const space = activeSpace(storedSpace, spaces);
+  const scopedProjects = projects.filter(p => inSpace(p, space));
   const hosts = useStore(s => s.hosts);
   const snippets = useStore(s => s.settings?.snippets ?? NONE);
   const att = useAttachments();
   const fileInput = useRef<HTMLInputElement>(null);
   const [host, setHost] = useState(hostParam ?? '');
-  const [pid, setPid] = useState(projectId ?? localStorage.getItem('gibbous.lastProject') ?? '');
+  const [pid, setPid] = useState(() => {
+    const last = localStorage.getItem('gibbous.lastProject') ?? '';
+    return projectId ?? (scopedProjects.some(p => p.id === last) ? last : space ? scopedProjects[0]?.id ?? '' : '');
+  });
+  const previousSpace = useRef(space);
+  useEffect(() => {
+    if (previousSpace.current !== space && !projectId) setPid(scopedProjects[0]?.id ?? '');
+    previousSpace.current = space;
+  }, [space, projectId, scopedProjects]);
   const project = projects.find(p => p.id === pid);
   const [worktree, setWorktree] = useState(() => localStorage.getItem('gibbous.worktree') !== '0');
   const [base, setBase] = useState('');
@@ -68,7 +81,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
   const isRepo = !!project?.baseBranch;
   // A repository with no commits has no branches yet, and a worktree needs something to branch from.
   const canWorktree = isRepo && branches.length > 0;
-  const recent = threads.filter(t => t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 4);
+  const recent = threads.filter(t => t.status !== 'archived' && inSpace(projects.find(p => p.id === t.projectId), space)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 4);
   const start = async () => {
     if ((!text.trim() && !att.files.length) || busy) return;
     haptic('send');
@@ -98,7 +111,10 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
             </SelectChip>}
             {!host && <SelectChip icon={<Folder size={14} />} label="Project" value={pid} onChange={v => v === '__add' ? onAddProject() : setPid(v)}>
               <option value="">No project (home folder)</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {scopedProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {space && projects.some(p => !inSpace(p, space)) && <optgroup label="Other spaces">
+                {projects.filter(p => !inSpace(p, space)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </optgroup>}
               <option value="__add">+ Add project…</option>
             </SelectChip>}
             {!host && canWorktree && <>
@@ -180,6 +196,9 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose(): 
     setBusy(true);
     try {
       const p = await api.post<Project>('/api/projects', { path });
+      const s = useStore.getState();
+      const space = activeSpace(s.activeSpace, s.settings?.spaces ?? []);
+      if (space && !p.space) await api.patch(`/api/projects/${p.id}`, { space });
       localStorage.setItem('gibbous.lastProject', p.id);
       onClose();
       go(`/new/${p.id}`);

@@ -1,8 +1,10 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react';
-import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread } from './store';
+import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread, NONE } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type PrBadge } from './api';
+import { SpaceSwitcher, SpaceItems } from './Spaces';
+import { activeSpace, inSpace } from '../../server/spaces';
 import { EDGE, axis, progress, settle } from './drawer';
 import { prefetch } from './thread/prefetch';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
@@ -113,10 +115,12 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
 // With `href` (a project), the title opens that page and only the chevron folds the section.
 interface Drag { onStart(): void; onOver(): void; onDrop(): void; onEnd(): void; over: 'above' | 'below' | null; dragging: boolean }
 
-function Section({ id, title, count, accent, collapsed, toggle, actions, icon, href, active, onNavigate, drag, children }: {
+function Section({ id, title, count, accent, collapsed, toggle, actions, icon, href, active, onNavigate, onMenu, drag, children }: {
   id: string; title: string; count?: number; accent?: number; collapsed: boolean; toggle(id: string): void; actions?: React.ReactNode; icon?: React.ReactNode;
-  href?: string; active?: boolean; onNavigate?(): void; drag?: Drag; children: React.ReactNode;
+  href?: string; active?: boolean; onNavigate?(): void; onMenu?(): void; drag?: Drag; children: React.ReactNode;
 }) {
+  const press = useRef<ReturnType<typeof setTimeout>>(undefined), longPressed = useRef(false);
+  useEffect(() => () => clearTimeout(press.current), []);
   const chevron = <ChevronDown size={12} className={`text-ash transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} />;
   const label = <>{icon}<span className={`label truncate ${active ? 'text-tide' : 'text-moon/75'}`}>{title}</span>
     {count != null && <span className="label text-ash">{count}</span>}
@@ -127,6 +131,10 @@ function Section({ id, title, count, accent, collapsed, toggle, actions, icon, h
       onDrop={drag ? e => { e.preventDefault(); drag.onDrop(); } : undefined}>
       {drag?.over && <span aria-hidden className={`absolute inset-x-2 h-0.5 rounded-full bg-tide pointer-events-none ${drag.over === 'above' ? '-top-2' : '-bottom-2'}`} />}
       <div className={`group/s relative flex items-center gap-1 pl-2 pr-1 h-7 pointer-coarse:h-10 ${drag ? 'cursor-grab active:cursor-grabbing' : ''}`}
+        onContextMenu={onMenu ? e => { e.preventDefault(); onMenu(); } : undefined}
+        onTouchStart={onMenu ? e => { if ((e.target as HTMLElement).closest('button')) return; longPressed.current = false; press.current = setTimeout(() => { longPressed.current = true; onMenu(); }, 500); } : undefined}
+        onTouchEnd={() => clearTimeout(press.current)} onTouchMove={() => clearTimeout(press.current)} onTouchCancel={() => clearTimeout(press.current)}
+        onClickCapture={e => { if (longPressed.current && e.currentTarget.contains(e.target as Node)) { e.preventDefault(); e.stopPropagation(); longPressed.current = false; } }}
         draggable={!!drag} onDragStart={drag ? e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id); drag.onStart(); } : undefined}
         onDragEnd={drag?.onEnd}>
         {drag && <GripVertical size={11} aria-hidden className="absolute -left-1 text-ash opacity-0 group-hover/s:opacity-60 pointer-coarse:hidden" />}
@@ -200,6 +208,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
       const t = e.touches[0], open = useStore.getState().sidebar;
       const onDrawer = !!navRef.current?.contains(e.target as Node) || e.target === scrimRef.current;
       // A drag from the left edge always opens the drawer, on every screen (back is the header's button).
+      if ((e.target as HTMLElement).closest('[data-space-controls]')) { g = null; return; }
       if (open ? !onDrawer : t.clientX > EDGE || inScroller(e.target)) { g = null; return; }
       g = { x0: t.clientX, y0: t.clientY, t0: e.timeStamp, open, lock: null, w: navRef.current?.offsetWidth || 276, lastX: t.clientX, lastT: e.timeStamp, vx: 0 };
     };
@@ -246,8 +255,13 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
   // Projects: order lives on the server (same on every device); which ones are hidden is per device.
   // Shared with the ⌘K project filter (ProjectFilter.tsx), so both stay in sync.
   const hidden = useStore(s => s.hiddenProjects), setHidden = useStore(s => s.setHiddenProjects);
-  const shown = projects.filter(p => !hidden.includes(p.id));
+  const spaces = useStore(s => s.settings?.spaces ?? NONE);
+  const storedSpace = useStore(s => s.activeSpace);
+  const space = activeSpace(storedSpace, spaces);
+  const belongs = (t: Thread) => inSpace(projects.find(p => p.id === t.projectId), space);
+  const shown = projects.filter(p => !hidden.includes(p.id) && inSpace(p, space));
   const [filterMenu, setFilterMenu] = useState(false);
+  const [spaceMenu, setSpaceMenu] = useState(false);
   const [projMenu, setProjMenu] = useState<string | null>(null);
   const [drag, setDrag] = useState<{ id: string; over?: string; where?: 'above' | 'below' } | null>(null);
   const reorder = (ids: string[]) => {
@@ -271,12 +285,14 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
   const selCtx = useMemo(() => ({ on: selecting, ids: picked, toggle: (id: string) => setPicked(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }) }), [selecting, picked]);
   const endSelect = () => { setSelecting(false); setPicked(new Set()); };
   const all = useMemo(() => threads.filter(t => showArchived ? t.status === 'archived' : t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt), [threads, showArchived]);
-  const pinned = all.filter(t => t.pinned);
-  const visible = all.filter(t => !t.pinned);   // pinned threads live only in the Pinned section
+  const otherAttention = space ? threads.filter(t => t.status === 'needs_input' && !belongs(t)) : [];
+  const scoped = all.filter(belongs);
+  const pinned = scoped.filter(t => t.pinned);
+  const visible = scoped.filter(t => !t.pinned);   // pinned threads live only in the Pinned section
   // The filter matches thread titles and the project (name or id) a thread belongs to.
   const needle = q.trim().toLowerCase();
   const projectHit = (t: Thread) => { const p = projects.find(x => x.id === t.projectId); return !!p && (p.name.toLowerCase().includes(needle) || p.id.toLowerCase().includes(needle)); };
-  const matches = needle ? all.filter(t => t.title.toLowerCase().includes(needle) || projectHit(t)) : null;
+  const matches = needle ? scoped.filter(t => t.title.toLowerCase().includes(needle) || projectHit(t)) : null;
   // Threads on other machines live in their own per-host sections; everything else is this Mac.
   const local = visible.filter(t => !t.host);
   const loose = local.filter(t => !t.readOnly && (!t.projectId || !projects.some(p => p.id === t.projectId)));
@@ -306,6 +322,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
         {status && <span className="ml-auto flex items-center gap-1.5 rounded-full border border-line px-2 h-5 text-[10.5px] text-dust animate-fade"><span className={`size-1.5 rounded-full ${status.cls}`} />{status.text}</span>}
       </div>
 
+      <SpaceSwitcher />
       <div className="px-2 space-y-1 flex-none">
         <button onClick={() => useStore.setState({ palette: true })}
           className="press w-full flex items-center gap-2 px-2.5 h-8 pointer-coarse:h-10 well rounded-lg text-[13px] text-ash hover:text-dust hover:border-ash/40">
@@ -351,23 +368,31 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
           {threads.filter(openHumanTask).sort((a, b) => b.humanTask!.at - a.humanTask!.at).map(t => <div key={t.id} className={`flex gap-1 pl-2 pr-1 py-1 rounded-lg ${t.id === activeId ? 'bg-ridge' : 'hover:bg-ridge/55'}`}>
             <TaskCheck thread={t} />
             <a href={`#/t/${t.id}`} onClick={close} className="flex-1 min-w-0 py-1 rounded-md" aria-current={t.id === activeId ? 'page' : undefined}>
-              <p className="truncate text-[13px] text-moon">{t.title}</p><p className="truncate text-[11.5px] text-dust mt-0.5" title={t.humanTask!.text}>{t.humanTask!.text}</p>
+              <p className="truncate text-[13px] text-moon">{t.title}</p>{space && !belongs(t) && <p className="text-[10.5px] text-ash">{spaces.find(s => s.id === projects.find(p => p.id === t.projectId)?.space)?.name ?? 'All'}</p>}<p className="truncate text-[11.5px] text-dust mt-0.5" title={t.humanTask!.text}>{t.humanTask!.text}</p>
             </a>
           </div>)}
         </Section>}
+        {space && !shown.length && <div className="px-3 py-2 space-y-2 text-[13px] text-ash">
+          <p>{projects.some(p => inSpace(p, space)) ? 'This space’s projects are hidden.' : 'No projects here yet. Move one here from All.'}</p>
+          <button onClick={() => projects.some(p => inSpace(p, space)) ? setHidden(hidden.filter(id => !projects.some(p => p.id === id && inSpace(p, space)))) : useStore.getState().setActiveSpace('')}
+            className="press text-tide hover:text-moon">{projects.some(p => inSpace(p, space)) ? 'Show projects' : 'Choose from All'}</button>
+        </div>}
+        {otherAttention.length > 0 && <Section id="other-input" title="Waiting · other spaces" count={otherAttention.length} collapsed={!!collapsed['other-input']} toggle={toggle}>
+          {otherAttention.map(t => <div key={t.id}><p className="pl-3 text-[10.5px] text-ash">{spaces.find(s => s.id === projects.find(p => p.id === t.projectId)?.space)?.name ?? 'All'}</p><ThreadLink t={t} active={t.id === activeId} minute={minute} /></div>)}
+        </Section>}
         {showArchived && <div className="flex items-center gap-2 px-2 text-[12px] text-dust animate-fade">
-          <Archive size={12} className="text-tide" /><span className="flex-1">Archived · {all.length} {all.length === 1 ? 'thread' : 'threads'}</span>
+          <Archive size={12} className="text-tide" /><span className="flex-1">Archived · {scoped.length} {scoped.length === 1 ? 'thread' : 'threads'}</span>
           <button onClick={() => setShowArchived(false)} className="press text-tide hover:underline">Show active</button>
         </div>}
         {matches ? <div className="space-y-px">{matches.length ? matches.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />) : <p className="px-3 py-2 text-[13px] text-ash">No thread matches “{q}”.</p>}</div> : <>
         {pinned.length > 0 && <Section id="pinned" title="Pinned" collapsed={!!collapsed.pinned} toggle={toggle}>{pinned.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}</Section>}
-        {hosts.length > 0 && <p className="flex items-center gap-1.5 pl-2 text-[11px] font-bold text-dust"><Laptop size={12} />This Mac</p>}
+        {hosts.length > 0 && !space && <p className="flex items-center gap-1.5 pl-2 text-[11px] font-bold text-dust"><Laptop size={12} />This Mac</p>}
         {shown.map((p, pi) => {
           const list = visible.filter(t => t.projectId === p.id);
           const boardActive = route.name === 'board' && route.projectId === p.id;
           return (
             <Section key={p.id} id={p.id} title={p.name} accent={list.filter(t => t.status === 'running').length} collapsed={!!collapsed[p.id]} toggle={toggle}
-              href={`#/board/${p.id}`} active={boardActive} onNavigate={close}
+              href={`#/board/${p.id}`} active={boardActive} onNavigate={close} onMenu={() => { setSpaceMenu(false); setProjMenu(p.id); }}
               drag={{
                 dragging: drag?.id === p.id,
                 over: drag && drag.id !== p.id && drag.over === p.id ? drag.where ?? null : null,
@@ -379,11 +404,14 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
               actions={<>
                 <a href={`#/new/${p.id}`} onClick={close} data-tip="New thread here" aria-label={`New thread in ${p.name}`} className="press size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Plus size={14} /></a>
                 <span className="relative">
-                  <button onClick={() => setProjMenu(projMenu === p.id ? null : p.id)} aria-label={`${p.name} options`} aria-expanded={projMenu === p.id} className="press size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><MoreHorizontal size={14} /></button>
-                  <Menu open={projMenu === p.id} onClose={() => setProjMenu(null)} align="right">
+                  <button onClick={() => { setSpaceMenu(false); setProjMenu(projMenu === p.id ? null : p.id); }} aria-label={`${p.name} options`} aria-expanded={projMenu === p.id} className="press size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><MoreHorizontal size={14} /></button>
+                  <Menu open={projMenu === p.id} onClose={() => { setProjMenu(null); setSpaceMenu(false); }} align="right">
+                    {spaceMenu ? <SpaceItems project={p} onClose={() => { setProjMenu(null); setSpaceMenu(false); }} /> : <>
+                    <MenuItem onClick={() => setSpaceMenu(true)}>{spaces.length ? 'Move to space…' : 'Add to a space…'}</MenuItem>
                     <MenuItem icon={<ArrowUp />} onClick={() => { move(p.id, -1); setProjMenu(null); }}>Move up</MenuItem>
                     <MenuItem icon={<ArrowDown />} onClick={() => { move(p.id, 1); setProjMenu(null); }}>Move down</MenuItem>
                     <MenuItem icon={<EyeOff />} onClick={() => { setHidden([...hidden, p.id]); setProjMenu(null); }}>Hide from sidebar</MenuItem>
+                    </>}
                   </Menu>
                 </span>
               </>}>
@@ -400,6 +428,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
         <button onClick={onAddProject} className="press flex items-center gap-2 pl-3 py-1 pointer-coarse:py-2.5 rounded-lg text-[13px] text-ash hover:text-moon"><FolderPlus size={14} />Add project</button>
         {hosts.map(h => {
           const list = visible.filter(t => t.host === h.id);
+          if (space && !list.length) return null;
           return (
             <div key={h.id} className="pt-3 border-t border-line">
               <Section id={`host:${h.id}`} title={h.name} accent={list.filter(t => t.status === 'running').length} collapsed={!!collapsed[`host:${h.id}`]} toggle={toggle}

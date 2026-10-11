@@ -1,6 +1,7 @@
 // Gibbous's own state: one JSON file, loaded in memory, saved atomically.
 // ponytail: whole-file rewrite on every change; move to SQLite if this grows past a few MB.
 import fs from 'node:fs';
+import { migrateSpaces, type Space } from './spaces.ts';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { QueueItem } from './queue.ts';
@@ -35,6 +36,7 @@ export const newId = (prefix: string) => `${prefix}_${randomBytes(6).toString('h
 
 export interface Project {
   id: string; name: string; path: string;
+  space?: string;               // stable id in settings.spaces
   baseBranch?: string;          // default: repo's current branch at add time
   setupScript?: string;         // runs in every new worktree
   scripts?: { name: string; command: string }[];
@@ -75,6 +77,7 @@ export interface Thread {
 export type NotifyKind = 'input' | 'done' | 'failure';
 
 export interface Settings {
+  spaces: Space[];              // shared order; active space is per device
   model: string;                // '' = Hermes default
   provider: string;
   profile: string;              // '' = default Hermes profile for new threads
@@ -95,7 +98,7 @@ export interface State {
 }
 
 const FILE = path.join(GIBBOUS_HOME, 'state.json');
-const defaultSettings = (): Settings => ({ model: '', provider: '', profile: '', worktreeRoot: path.join(GIBBOUS_HOME, 'worktrees'), syncSources: [], notify: { input: true, done: true, failure: true }, snippets: [], autoArchiveDays: 0, monthlyBudgetUsd: 0 });
+const defaultSettings = (): Settings => ({ spaces: [], model: '', provider: '', profile: '', worktreeRoot: path.join(GIBBOUS_HOME, 'worktrees'), syncSources: [], notify: { input: true, done: true, failure: true }, snippets: [], autoArchiveDays: 0, monthlyBudgetUsd: 0 });
 
 // Gibbous used to run its own task board (tasks, plans, playbooks, board schedules, coordinator/worker threads).
 // That moved to Hermes' kanban: drop those keys and turn every leftover agent thread into a plain chat, keeping
@@ -104,15 +107,16 @@ export function migrate(raw: any): State {
   const { tasks: _t, plans: _p, playbooks: _pb, schedules: _s, ...rest } = raw ?? {};
   const { maxConcurrent: _m, autoReview: _a, maxReviewRounds: _r, notify, ...settings } = rest.settings ?? {};
   const keep = <K extends string>(o: any, keys: readonly K[]) => Object.fromEntries(keys.filter(k => typeof o?.[k] === 'boolean').map(k => [k, o[k]]));
+  const spaces = migrateSpaces(settings.spaces);
   return {
     ...rest,
-    projects: (rest.projects ?? []).map(({ playbookId: _, ...p }: any) => p),
+    projects: (rest.projects ?? []).map(({ playbookId: _, space, ...p }: any) => ({ ...p, ...(spaces.some(s => s.id === space) ? { space } : {}) })),
     threads: (rest.threads ?? []).map(({ taskId: _a, planId: _b, planned: _c, parentId: _d, queue, ...t }: any) => ({
       ...t, role: 'chat',
       ...(Array.isArray(queue) && queue.length ? { queue: queue.filter((m: any) => typeof m?.id === 'string' && typeof m?.text === 'string').map((m: any) => ({ id: m.id, text: m.text, shown: typeof m.shown === 'string' ? m.shown : m.text, at: Number(m.at) || 0 })) } : {}),
     })),
     hosts: rest.hosts ?? [],
-    settings: { ...defaultSettings(), ...settings, notify: { ...defaultSettings().notify, ...keep(notify, ['input', 'done', 'failure'] as const) } },
+    settings: { ...defaultSettings(), ...settings, spaces, notify: { ...defaultSettings().notify, ...keep(notify, ['input', 'done', 'failure'] as const) } },
     push: { subs: [], ...rest.push, apns: (Array.isArray(rest.push?.apns) ? rest.push.apns : []).filter((d: any) => typeof d?.token === 'string' && (d.env === 'sandbox' || d.env === 'production')) },
   };
 }

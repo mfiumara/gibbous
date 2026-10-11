@@ -27,6 +27,8 @@ interface S {
   markSeen(id: string): void;
   sidebar: boolean; // mobile drawer
   palette: boolean | 'projects'; // 'projects' opens it straight in the project filter
+  activeSpace: string;
+  setActiveSpace(id: string): void;
   hiddenProjects: string[];       // projects hidden from the sidebar, per device
   setHiddenProjects(ids: string[]): void;
   welcomeDone: boolean;           // the first-run import picker was used or skipped (per device)
@@ -47,6 +49,8 @@ export const useStore = create<S>((set, get) => ({
   loaded: false, authed: null, connected: false, serverUp: false, setupLog: [],
   projects: [], threads: [], requests: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {},
   toasts: [], sidebar: false, palette: false,
+  activeSpace: localStorage.getItem('gibbous.activeSpace') ?? '',
+  setActiveSpace(id) { localStorage.setItem('gibbous.activeSpace', id); set({ activeSpace: id }); },
   hiddenProjects: JSON.parse(localStorage.getItem('gibbous.hiddenProjects') ?? '[]'),
   setHiddenProjects(ids) { localStorage.setItem('gibbous.hiddenProjects', JSON.stringify(ids)); set({ hiddenProjects: ids }); },
   welcomeDone: localStorage.getItem('gibbous.welcomeDone') === '1',

@@ -4,6 +4,17 @@ import { token, match, keyLabel, helpRows, BINDINGS, type Actions } from './keys
 
 const B = [{ keys: 'j' }, { keys: 'g g' }, { keys: 'g t' }, { keys: 'G' }, { keys: 'C-w h' }, { keys: 'C-d' }, { keys: 'C-n', when: ['overlay' as const] }];
 
+test('space switching lives in the key registry and does not capture overlay keys', () => {
+  let direction = 0;
+  for (const [key, expected] of [[']', 1], ['[', -1]] as const) {
+    const r = match([], key, BINDINGS, 'normal');
+    assert.equal(r.kind, 'run');
+    if (r.kind === 'run') r.binding.run({ space: d => { direction = d; } } as Actions);
+    assert.equal(direction, expected);
+    assert.equal(match([], key, BINDINGS, 'overlay').kind, 'none');
+  }
+});
+
 test('token: letters keep their case, ctrl letters become C- tokens', () => {
   assert.equal(token({ key: 'j' }), 'j');
   assert.equal(token({ key: 'G', shiftKey: true }), 'G');
