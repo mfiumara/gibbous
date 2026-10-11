@@ -81,6 +81,28 @@ export function mergeAgents(stored: StoredSub[], live: LiveSub[], now = Date.now
 
 export const isLive = (a: Agent) => a.state === 'running' || a.state === 'queued';
 
+// Keep the latest delegating turn even after it finishes or a later, non-delegating turn starts.
+// History has delegate_task tool rows; live streams also have subagent rows.
+export function latestDelegatingTurn(items: Item[]): number | undefined {
+  let turn: number | undefined, latest: number | undefined;
+  for (const item of items) {
+    if (item.kind === 'user') turn = item.at;
+    if (item.kind === 'subagent' || (item.kind === 'tool' && item.name === 'delegate_task')) latest = turn;
+  }
+  return latest;
+}
+
+export function currentBatch(agents: Agent[], turnStartAt?: number, now = Date.now()): { batch: Agent[]; earlier: Agent[] } {
+  const newest = agents.reduce((at, a) => Math.max(at, a.startedAt ?? 0), 0) || now;
+  const boundary = turnStartAt ?? newest - 10 * 60_000;
+  const batch: Agent[] = [], earlier: Agent[] = [];
+  for (const a of agents) {
+    // Untimestamped live events belong to the current turn, not the historical fold.
+    (isLive(a) || a.startedAt == null || a.startedAt >= boundary ? batch : earlier).push(a);
+  }
+  return { batch, earlier };
+}
+
 export function agentCounts(agents: Agent[]) {
   const c = { total: agents.length, running: 0, queued: 0, done: 0, failed: 0, other: 0 };
   for (const a of agents) {

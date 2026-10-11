@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeAgents, agentCounts, agentName, firstLine, QUIET_MS, type StoredSub, type LiveSub } from './agents.ts';
+import { mergeAgents, currentBatch, latestDelegatingTurn, agentCounts, agentName, firstLine, QUIET_MS, type StoredSub, type LiveSub } from './agents.ts';
 
 const now = 1_000_000_000_000;
 const stored = (o: Partial<StoredSub>): StoredSub => ({ sessionId: 's1', parentSessionId: 'p', depth: 0, goal: 'Worker 1: do a thing', messages: 3, toolCalls: 1, tokens: 10, ...o });
@@ -41,6 +41,47 @@ test('names come from the goal prefix', () => {
   assert.equal(name('Acme: make switching threads instant (no blank screen on every switch)'), 'Make switching threads instant');
   assert.equal(name('Acme phone UX: menus as bottom sheets, and keep the composer glued'), 'Menus as bottom sheets');
   assert.equal(name('Acme macOS app shell: translucent sidebar with traffic lights inside it. More text'), 'Translucent sidebar with traffic lights inside it');
+});
+
+const batchAgent = (key: string, startedAt: number, state: 'done' | 'running' | 'queued' = 'done') => ({
+  key, goal: key, depth: 0, state, status: state, tools: [], startedAt,
+});
+
+test('current batch keeps all done agents in the latest old delegating turn', () => {
+  const old = batchAgent('older', now - 200_000), a = batchAgent('a', now - 100_000);
+  assert.deepEqual(currentBatch([old, a], now - 110_000, now), { batch: [a], earlier: [old] });
+});
+
+test('current batch scopes a new turn to its fresh agents, including the boundary', () => {
+  const old = batchAgent('old', now - 50_000), a = batchAgent('a', now - 1000), b = batchAgent('b', now, 'running');
+  assert.deepEqual(currentBatch([old, a, b], now - 1000, now), { batch: [a, b], earlier: [old] });
+  assert.equal(agentCounts(currentBatch([old, a, b], now - 1000, now).batch).total, 2);
+});
+
+test('current batch retains old agents still running or queued', () => {
+  const a = batchAgent('a', now - 900_000, 'running'), b = batchAgent('b', now - 800_000, 'queued'), c = batchAgent('c', now);
+  assert.deepEqual(currentBatch([a, b, c], now - 1000, now), { batch: [a, b, c], earlier: [] });
+});
+
+test('current batch without turn info uses ten minutes from the newest agent, not now', () => {
+  const old = batchAgent('old', now - 2_000_001), edge = batchAgent('edge', now - 2_000_000), newest = batchAgent('newest', now - 1_400_000);
+  assert.deepEqual(currentBatch([old, edge, newest], undefined, now), { batch: [edge, newest], earlier: [old] });
+});
+
+test('current batch has no earlier agents for a single batch or an empty list', () => {
+  const a = batchAgent('a', now - 1000), b = batchAgent('b', now);
+  assert.deepEqual(currentBatch([a, b], now - 2000, now), { batch: [a, b], earlier: [] });
+  assert.deepEqual(currentBatch([], undefined, now), { batch: [], earlier: [] });
+});
+
+test('latest delegating turn uses live rows or history tool rows, not a later non-delegating turn', () => {
+  assert.equal(latestDelegatingTurn([
+    { kind: 'user', id: 'u1', text: 'first', at: 100 }, live({}),
+    { kind: 'user', id: 'u2', text: 'second', at: 200 },
+    { kind: 'tool', id: 't', name: 'delegate_task', status: 'done' },
+    { kind: 'user', id: 'u3', text: 'later', at: 300 },
+  ]), 200);
+  assert.equal(latestDelegatingTurn([live({})]), undefined);
 });
 
 test('firstLine skips markdown noise', () => {

@@ -14,7 +14,7 @@ import { getCached, putCached, onCached, mergeTail, prependOlder, reconcile, rev
 import { firstPage, resumeWith, olderPages } from './load';
 import { AssistantMessage, ToolRow, ReasoningBlock, UserMessage, SideCard } from './Items';
 import { useSubagents, SubagentsPanel, SubagentGroup } from './Subagents';
-import { isLive } from './agents';
+import { isLive, currentBatch, latestDelegatingTurn } from './agents';
 import { Composer, type EditTarget } from './Composer';
 import { RequestCard } from './RequestCard';
 import { ThreadHeader, type PanelDef } from './ThreadHeader';
@@ -66,6 +66,7 @@ export function ThreadView({ id }: { id: string }) {
   const [agentFocus, setAgentFocus] = useState<string>();
   const [groupOpen, setGroupOpen] = useState(false); // the subagent card's fold, shared wherever it renders
   const agents = useSubagents(id, tl.items, tl.running);
+  const { batch, earlier } = useMemo(() => currentBatch(agents, latestDelegatingTurn(tl.items)), [agents, tl.items]);
   const openAgents = (key?: string) => { setAgentFocus(key); setPanel('agents'); };
   const [limit, setLimit] = useState(PAGE);
   const [insert, setInsert] = useState<{ text: string; n: number }>();
@@ -286,6 +287,8 @@ export function ThreadView({ id }: { id: string }) {
   const items = tl.items.length > limit ? tl.items.slice(-limit) : tl.items;
   // Live subagents while the turn has moved past the delegation: one card, at the bottom.
   const liveBelow = agents.some(isLive) && items.at(-1)?.kind !== 'subagent';
+  // Reloaded history has delegate_task tool rows instead of live subagent rows: retain the same single anchor.
+  const groupAt = items.findLastIndex(it => it.kind === 'subagent' || (it.kind === 'tool' && it.name === 'delegate_task'));
   const running = tl.running || thread.status === 'running';
   // The parent blocked on delegate_task does nothing itself: say what it's waiting for.
   const liveAgents = agents.filter(isLive).length;
@@ -384,14 +387,14 @@ export function ThreadView({ id }: { id: string }) {
                 }
                 case 'assistant': return <div key={it.id} className={anim} data-k={it.id}><AssistantMessage item={it} endOfTurn={items[i + 1]?.kind === 'turn'} tail={running && i === items.length - 1} /></div>;
                 case 'reasoning': return <div key={it.id} className={anim} data-k={it.id}><ReasoningBlock item={it} /></div>;
-                case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} /></div>;
+                case 'tool': return <div key={it.id} className={anim} data-k={it.id}><ToolRow item={it} cwd={thread.cwd} />{i === groupAt && !liveBelow && <SubagentGroup agents={batch} earlierCount={earlier.length} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} />}</div>;
                 case 'subagent': {
-                  // One card with every subagent of the thread, at the latest delegation; earlier rows render nothing.
+                  // One current-batch card at the latest delegation; earlier rows render nothing.
                   // (Matching live rows to stored sessions shrank the card to 1/1 once events arrived.)
-                  if (items.slice(i + 1).some(x => x.kind === 'subagent')) return null;
+                  if (i !== groupAt) return null;
                   // While they work and the turn has moved on, the card follows the work at the bottom instead (never both).
                   if (liveBelow) return null;
-                  return <div key={it.id} className={anim} data-k={it.id}><SubagentGroup agents={agents} all={agents} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>;
+                  return <div key={it.id} className={anim} data-k={it.id}><SubagentGroup agents={batch} earlierCount={earlier.length} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>;
                 }
                 case 'side': return <div key={it.id} className={anim} data-k={it.id}><SideCard item={it} /></div>;
                 case 'turn': return <TurnFooter key={it.id} item={it} />;
@@ -400,7 +403,7 @@ export function ThreadView({ id }: { id: string }) {
             })}
             {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade">{COMPACTING.test(tl.status ?? '') ? <MoonImplode size={13} /> : <Moon thread="running" size={9} />}<span className="truncate">{(tl.status ?? waitingOn ?? 'Waxing…').replace(LEAD_EMOJI, '')}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
             {/* Working subagents whose card isn't already right above (stored-only, or the delegation scrolled up). */}
-            {liveBelow && <div className="mt-2"><SubagentGroup agents={agents} all={agents} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>}
+            {liveBelow && <div className="mt-2"><SubagentGroup agents={batch} earlierCount={earlier.length} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>}
             {thread.status === 'error' && !running && thread.error && !tl.items.some(i => i.kind === 'notice') && <p className="text-[13px] text-oxide select-text">{thread.error}</p>}
             {requests.map(r => <div key={r.id} className="animate-rise"><RequestCard r={r} /></div>)}
           </div>
