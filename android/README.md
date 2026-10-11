@@ -13,7 +13,7 @@ shapes as the iPhone shell (`ios/README.md`); only the transport differs.
 ### Identity
 
 - Package / applicationId `dev.gibbous.android`, minSdk 26, compileSdk/targetSdk 36, Kotlin, Gradle (wrapper
-  committed). `versionName` "1.0.0", `versionCode` 1 (bump `versionCode` for every Play upload; the page reads it as
+  committed). `versionName` "1.1.0", `versionCode` 1 (bump `versionCode` for every Play upload; the page reads it as
   `build`).
 
 ### Document start
@@ -96,3 +96,13 @@ Debug builds also accept `gibbousDebug` (logged to logcat tag `GibbousShell`).
   `https://host[:port]/login?token=…`, or `http://` only for 127.0.0.1/localhost/::1/*.local. Remembers the origin
   (never the token: the sign-in is one load of `/login?token=…`, which sets the cookie in the WebView's
   CookieManager).
+
+## Native bridge implementation
+
+The origin-scoped AndroidX WebMessageListener also rejects subframes. Older WebViews without that API fail
+closed (update Android System WebView); there is deliberately no `addJavascriptInterface` fallback, which cannot
+prove the caller's frame/origin. File shares use authenticated downloads, isolated cache folders and FileProvider
+grants. Redirects are rejected rather than forwarding the sign-in cookie. Share folders expire after an hour.
+Notification taps use immutable intents; local notifications stop once a push token is registered. The last valid
+page route and badge count persist across process death. Resume events are sent when the activity starts again.
+Android 13+ requires notification permission; haptic output also depends on device settings and hardware.

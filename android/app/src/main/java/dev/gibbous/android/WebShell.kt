@@ -136,7 +136,7 @@ class WebShell(private val activity: MainActivity) {
       if (Links.isSameOrigin(url, Server.origin)) Files.download(activity, url, Links.dispositionName(cd))
       else Files.openExternal(activity, url)
     }
-    if (!listenerSupported) w.addJavascriptInterface(LegacyBridge(), "gibbousAndroid")
+    // Fail closed on outdated WebViews: JavascriptInterface cannot verify the calling frame.
     return w
   }
 
@@ -160,13 +160,6 @@ class WebShell(private val activity: MainActivity) {
     }
   }
 
-  /** Fallback for WebViews without WEB_MESSAGE_LISTENER: same JS API, origin checked against the main frame URL. */
-  private inner class LegacyBridge {
-    @JavascriptInterface
-    fun postMessage(data: String) {
-      main.post { if (Links.isSameOrigin(web.url, Server.origin)) receive(data) }
-    }
-  }
 
   private fun startScripts(): String {
     val v = Links.jsString(BuildConfig.VERSION_NAME)
@@ -188,7 +181,18 @@ class WebShell(private val activity: MainActivity) {
     when (name) {
       "gibbousServer" -> activity.showConnect()
       "gibbousDebug" -> if (BuildConfig.DEBUG) logi("page $body")
-      else -> logi("bridge: $name (not implemented yet)")
+      "gibbousNotify" -> if (Server.pushToken == null) Notifications.notify(activity, body)
+      "gibbousBadge" -> Server.badge = body.optInt("count", 0)
+      "gibbousRoute" -> { Server.route = body.optString("route"); if (BuildConfig.DEBUG) logi("route remembered") }
+      "gibbousOpen" -> body.optString("url").takeIf { it.isNotBlank() }?.let { Files.openExternal(activity, it) }
+      "gibbousShare" -> {
+        val raw = body.optString("url")
+        val url = runCatching { URI(Server.origin + "/").resolve(raw).toString() }.getOrDefault(raw)
+        if (raw.isNotBlank() && Links.isSameOrigin(url, Server.origin)) shareUrl(url, body.optString("filename").takeIf { it.isNotBlank() })
+        else Files.shareText(activity, listOf(body.optString("text"), raw).filter { it.isNotBlank() }.joinToString("\n"), body.optString("title"))
+      }
+      "gibbousHaptic" -> Haptics.perform(web, body.optString("style"))
+      "gibbousPush" -> send(mapOf("type" to "pushError", "message" to "This build has no Firebase configuration (google-services.json)."))
     }
   }
 

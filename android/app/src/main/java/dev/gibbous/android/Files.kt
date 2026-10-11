@@ -38,6 +38,7 @@ object Files {
       try {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15_000; c.readTimeout = 60_000
+        c.instanceFollowRedirects = false // Never forward the sign-in cookie across a redirect.
         if (cookie != null) c.setRequestProperty("Cookie", cookie)
         val code = c.responseCode
         if (code == 200) {
