@@ -8,12 +8,14 @@ import { applyPrefs, go } from './ui';
 import { healViewportOnBlur, trackKeyboard } from './viewport';
 import { installMacShell } from './macBridge';
 import { inIosApp, installIosShell } from './iosBridge';
+import { installDesktopShell } from './desktopBridge';
 
 applyPrefs();
 installIosShell({ go, refresh: () => useStore.getState().load(), reconnect: () => { if (useStore.getState().authed) rpc.kick(); else useStore.getState().load(); } });
 // Safari's keyboard workarounds. The iPhone app resizes the web view above the keyboard itself, so they'd fight it.
 if (!inIosApp()) { healViewportOnBlur(); trackKeyboard(); }
 installMacShell();
+installDesktopShell({ go, refresh: () => useStore.getState().load() });
 // A newer build was deployed while this tab was open and one of its chunks is gone: reload once onto the new build.
 const reloadOnce = () => {
   if (Date.now() - Number(sessionStorage.getItem('gibbous.reloadedAt') ?? 0) < 30_000) return false;

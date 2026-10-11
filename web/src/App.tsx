@@ -2,6 +2,7 @@ import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 
 import { X, Search, CornerDownLeft, Copy } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo } from './store';
 import { inIosApp, iosBadge } from './iosBridge';
+import { desktopBadge, inDesktopApp } from './desktopBridge';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
 import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, sourceLabel, applyPrefs, type Route } from './ui';
@@ -105,6 +106,7 @@ export function App() {
   useEffect(() => {
     document.title = waiting ? `(${waiting}) Gibbous` : 'Gibbous';
     if (inIosApp()) iosBadge(waiting); // iPhone app: icon badge
+    else if (inDesktopApp()) desktopBadge(waiting); // Windows/Linux app: taskbar/launcher count, title, tray
     else (window as any).webkit?.messageHandlers?.gibbousBadge?.postMessage(waiting); // macOS app: Dock + menu-bar count
   }, [waiting]);
 

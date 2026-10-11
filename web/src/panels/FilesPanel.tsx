@@ -5,6 +5,7 @@ import { toastError, useStore } from '../store';
 import { IconButton, Button, inputCls } from '../ui';
 import { Markdown } from '../thread/Items';
 import { baseName, dirPrefix } from '../paths';
+import { desktopOpen, inDesktopApp } from '../desktopBridge';
 
 const LANG: Record<string, string> = { ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', py: 'python', rs: 'rust', go: 'go', md: 'markdown', json: 'json', yml: 'yaml', yaml: 'yaml', sh: 'bash', zsh: 'bash', css: 'css', html: 'xml', c: 'c', h: 'c', cpp: 'cpp', toml: 'ini', sql: 'sql', swift: 'swift', kt: 'kotlin', java: 'java', rb: 'ruby' };
 
@@ -14,7 +15,7 @@ export const EDITORS: Record<string, (p: string) => string> = {
 };
 // Inside Gibbous.app a location change to vscode:// failed as a navigation and the app reloaded itself; window.open
 // goes through the app's new-window hook, which hands any URL to macOS.
-export const openInEditor = (absPath: string) => { const u = editorUrl(absPath); if ((window as any).webkit?.messageHandlers?.gibbousNotify) window.open(u); else location.href = u; };
+export const openInEditor = (absPath: string) => { const u = editorUrl(absPath); if (inDesktopApp()) desktopOpen(u)?.catch(toastError); else if ((window as any).webkit?.messageHandlers?.gibbousNotify) window.open(u); else location.href = u; };
 export const editorUrl = (absPath: string) => (EDITORS[localStorage.getItem('gibbous.editor') ?? 'VS Code'] ?? EDITORS['VS Code'])(absPath);
 
 export function FilesPanel({ thread, onMention }: { thread: Thread; onMention(path: string): void }) {

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "connect-screen",
+  "description": "The app's own connect screen (ui/index.html). Server pages get their own capability at runtime (lib.rs allow_server).",
+  "windows": ["main"],
+  "permissions": ["allow-bridge"]
+}
