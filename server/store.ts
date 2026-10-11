@@ -88,8 +88,8 @@ export interface Settings {
 export interface State {
   projects: Project[]; threads: Thread[]; hosts: Host[];
   settings: Settings;
-  // subs: Web Push (PWA/browsers); apns: iOS shell device tokens (apns.ts).
-  push: { vapid?: { publicKey: string; privateKey: string }; subs: any[]; apns: { token: string; env: 'sandbox' | 'production'; at: number }[] };
+  // subs: Web Push (PWA/browsers); apns: iOS shell device tokens (apns.ts); fcm: Android shell tokens (fcm.ts).
+  push: { vapid?: { publicKey: string; privateKey: string }; subs: any[]; apns: { token: string; env: 'sandbox' | 'production'; at: number }[]; fcm: { token: string; at: number }[] };
   budgetAlerted?: string;   // 'YYYY-MM' the monthly budget alert last fired for
 }
 
@@ -112,7 +112,9 @@ export function migrate(raw: any): State {
     })),
     hosts: rest.hosts ?? [],
     settings: { ...defaultSettings(), ...settings, notify: { ...defaultSettings().notify, ...keep(notify, ['input', 'done', 'failure'] as const) } },
-    push: { subs: [], ...rest.push, apns: (Array.isArray(rest.push?.apns) ? rest.push.apns : []).filter((d: any) => typeof d?.token === 'string' && (d.env === 'sandbox' || d.env === 'production')) },
+    push: { subs: [], ...rest.push, apns: (Array.isArray(rest.push?.apns) ? rest.push.apns : []).filter((d: any) => typeof d?.token === 'string' && (d.env === 'sandbox' || d.env === 'production')),
+      // Same token rule as fcm.ts validToken (not imported: fcm.ts imports this module).
+      fcm: (Array.isArray(rest.push?.fcm) ? rest.push.fcm : []).filter((d: any) => typeof d?.token === 'string' && /^[A-Za-z0-9_:\-]{20,4096}$/.test(d.token)).map((d: any) => ({ token: d.token, at: Number(d.at) || 0 })) },
   };
 }
 

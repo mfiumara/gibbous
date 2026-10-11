@@ -3,6 +3,7 @@ import webpush from 'web-push';
 import { EventEmitter } from 'node:events';
 import { state, save } from './store.ts';
 import * as apns from './apns.ts';
+import * as fcm from './fcm.ts';
 
 if (!state.push.vapid) { state.push.vapid = webpush.generateVAPIDKeys(); save(); }
 webpush.setVapidDetails('mailto:gibbous@localhost', state.push.vapid.publicKey, state.push.vapid.privateKey);
@@ -26,6 +27,7 @@ export function notify(n: { title: string; body: string; url?: string; tag?: str
   notifications.emit('notify', n);
   if (state.settings.notify?.[n.kind] === false) return;
   void sendApns(n);
+  void sendFcm(n);
   for (const sub of state.push.subs) {
     webpush.sendNotification(sub, JSON.stringify(n), { TTL: 3600 }).catch(err => {
       if (err.statusCode === 404 || err.statusCode === 410) {
@@ -56,29 +58,63 @@ export const setApnsSender = (s: apns.Sender | undefined) => { apnsSender = s ??
 // Fire-and-forget; dead tokens (410 / BadDeviceToken / DeviceTokenNotForTopic) are dropped.
 export async function sendApns(n: { title: string; body: string; url?: string; tag?: string; kind: NotifyKind }) {
   try {
-    const devices = [...state.push.apns];
-    if (!devices.length || (apnsSender === apns.send && !apns.configured())) return;
+    const devices = apnsTargets();
+    if (!devices.length) return;
     const badge = badgeSource();
     lastBadge = badge;
-    const dead = await apns.deliver(devices, apns.buildPayload(n, badge), apnsSender);
-    if (dead.length) { state.push.apns = state.push.apns.filter(d => !dead.includes(d.token)); save(); }
+    dropApns(await apns.deliver(devices, apns.buildPayload(n, badge), apnsSender));
   } catch (e) { console.warn('[apns] send failed', e); }
 }
+const apnsTargets = () => (state.push.apns.length && (apnsSender !== apns.send || apns.configured()) ? [...state.push.apns] : []);
+function dropApns(dead: string[]) { if (dead.length) { state.push.apns = state.push.apns.filter(d => !dead.includes(d.token)); save(); } }
 
-// The iPhone icon badge = agents waiting on you (same count as the tab title). Every alert carries it, and when the
-// count changes without an alert (answered on the Mac, a request expired) a silent badge-only push keeps the closed app right.
+// ── Android shell (FCM) ─────────────────────────────────────────────────
+export function registerFcm(token: string) {
+  state.push.fcm = state.push.fcm.filter(x => x.token !== token);
+  state.push.fcm.push({ token, at: Date.now() });
+  save();
+}
+export function unregisterFcm(token: string) {
+  const before = state.push.fcm.length;
+  state.push.fcm = state.push.fcm.filter(x => x.token !== token);
+  if (state.push.fcm.length !== before) save();
+  return before !== state.push.fcm.length;
+}
+export const fcmStatus = () => ({ configured: fcm.configured(), devices: state.push.fcm.length });
+
+let fcmSender: fcm.Sender = fcm.send;
+export const setFcmSender = (s: fcm.Sender | undefined) => { fcmSender = s ?? fcm.send; }; // tests
+
+// Fire-and-forget; dead tokens (404 / UNREGISTERED / SENDER_ID_MISMATCH) are dropped.
+export async function sendFcm(n: { title: string; body: string; url?: string; tag?: string; kind: NotifyKind }) {
+  try {
+    const devices = fcmTargets();
+    if (!devices.length) return;
+    const badge = badgeSource();
+    lastBadge = badge;
+    dropFcm(await fcm.deliver(devices, fcm.alertData(n, badge), fcmSender));
+  } catch (e) { console.warn('[fcm] send failed', e); }
+}
+const fcmTargets = () => (state.push.fcm.length && (fcmSender !== fcm.send || fcm.configured()) ? [...state.push.fcm] : []);
+function dropFcm(dead: string[]) { if (dead.length) { state.push.fcm = state.push.fcm.filter(d => !dead.includes(d.token)); save(); } }
+
+// The app icon badge = agents waiting on you (same count as the tab title). Every alert carries it, and when the
+// count changes without an alert (answered on the Mac, a request expired) a silent badge-only push keeps the closed
+// apps right (iPhone via APNs, Android via FCM; one shared last-sent count).
 let badgeSource = () => 0, lastBadge = -1, badgeTimer: ReturnType<typeof setTimeout> | undefined;
 export const setBadgeSource = (f: () => number) => { badgeSource = f; };
 export function badgeChanged(delayMs = 2000) {
   clearTimeout(badgeTimer);
   badgeTimer = setTimeout(async () => {
     try {
-      const badge = badgeSource(), devices = [...state.push.apns];
-      if (badge === lastBadge || !devices.length || (apnsSender === apns.send && !apns.configured())) return;
+      const badge = badgeSource(), ios = apnsTargets(), android = fcmTargets();
+      if (badge === lastBadge || (!ios.length && !android.length)) return;
       lastBadge = badge;
-      const dead = await apns.deliver(devices, { aps: { badge } }, apnsSender);
-      if (dead.length) { state.push.apns = state.push.apns.filter(d => !dead.includes(d.token)); save(); }
-    } catch (e) { console.warn('[apns] badge failed', e); }
+      await Promise.all([
+        ios.length ? apns.deliver(ios, { aps: { badge } }, apnsSender).then(dropApns) : undefined,
+        android.length ? fcm.deliver(android, fcm.badgeData(badge), fcmSender).then(dropFcm) : undefined,
+      ]);
+    } catch (e) { console.warn('[push] badge failed', e); }
   }, delayMs);
   badgeTimer.unref?.();
 }

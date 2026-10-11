@@ -173,7 +173,7 @@ test('HTTP/2 sender: headers, path, JWT, 200 and 410 end to end', async t => {
 
 test('state migration: push.apns defaults to [] and drops malformed devices', () => {
   assert.deepEqual(migrate({}).push.apns, []);
-  assert.deepEqual(migrate({ push: { subs: [{ endpoint: 'x' }] } }).push, { subs: [{ endpoint: 'x' }], apns: [] });
+  assert.deepEqual(migrate({ push: { subs: [{ endpoint: 'x' }] } }).push, { subs: [{ endpoint: 'x' }], apns: [], fcm: [] });
   const m = migrate({ push: { subs: [], apns: [{ token: TOKEN, env: 'sandbox', at: 1 }, { token: 5 }, { token: TOKEN, env: 'dev' }] } });
   assert.deepEqual(m.push.apns, [{ token: TOKEN, env: 'sandbox', at: 1 }]);
 });

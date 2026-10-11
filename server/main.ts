@@ -14,8 +14,9 @@ import * as kanban from './kanban.ts';
 import { gatewayChat, gatewayAvailable } from './gateway.ts';
 import { MESSAGING_SOURCES } from './sources.ts';
 import { attachTerminal } from './pty.ts';
-import { subscribe, vapidPublicKey, notify, notifications, registerApns, unregisterApns, apnsStatus, setBadgeSource, badgeChanged } from './push.ts';
+import { subscribe, vapidPublicKey, notify, notifications, registerApns, unregisterApns, apnsStatus, registerFcm, unregisterFcm, fcmStatus, setBadgeSource, badgeChanged } from './push.ts';
 import { parseDevice, validToken } from './apns.ts';
+import { validToken as validFcmToken } from './fcm.ts';
 import * as g from './git.ts';
 import { smoke } from './smoke.ts';
 import { redact, tail } from './diagnostics.ts';
@@ -153,7 +154,7 @@ function publicState() {
     requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
-    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(),
+    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), fcm: fcmStatus(), build: webBuild(), prs: prBadges(),
     platform: process.platform, service: serviceInfo(), // per-OS copy in the web app ("this Mac", restart command)
   };
 }
@@ -287,7 +288,7 @@ route('GET', '/api/diagnostics', () => {
   const bundle = {
     gibbous: pkg.version, node: process.version, os: `${os.type()} ${os.release()} ${os.arch()}`, uptimeMin: Math.round(process.uptime() / 60),
     hermes: { ready: hc.ready, ...health }, hosts: hostStatus().map(h => ({ name: h.name, connected: h.connected })),
-    counts: { projects: state.projects.length, threads: state.threads.length, pushDevices: state.push.subs.length, apnsDevices: state.push.apns.length },
+    counts: { projects: state.projects.length, threads: state.threads.length, pushDevices: state.push.subs.length, apnsDevices: state.push.apns.length, fcmDevices: state.push.fcm.length },
     stateBytes: fs.statSync(path.join(GIBBOUS_HOME, 'state.json'), { throwIfNoEntry: false })?.size ?? 0,
     settings: state.settings,
     logs: { gibbous: tail(path.join(GIBBOUS_HOME, 'gibbous.log')), hermesServe: tail(path.join(GIBBOUS_HOME, 'hermes-serve.log'), 60) },
@@ -455,7 +456,7 @@ route('POST', '/api/media/reveal', async (_, b) => {
   return { ok: true };
 });
 route('POST', '/api/push/subscribe', (_, b) => { subscribe(b); return { ok: true }; });
-route('POST', '/api/push/test', () => { notify({ kind: 'input', title: 'Gibbous', body: 'Notifications work.', url: '/', test: true }); return { ok: true, apns: apnsStatus() }; });
+route('POST', '/api/push/test', () => { notify({ kind: 'input', title: 'Gibbous', body: 'Notifications work.', url: '/', test: true }); return { ok: true, apns: apnsStatus(), fcm: fcmStatus() }; });
 // iOS shell device tokens (APNs). Sending needs GIBBOUS_HOME/apns.json; registering works without it.
 route('GET', '/api/push/apns', () => apnsStatus());
 route('POST', '/api/push/apns', (_, b) => {
@@ -467,6 +468,17 @@ route('POST', '/api/push/apns', (_, b) => {
 route('DELETE', '/api/push/apns', (_, b) => {
   if (!validToken(b?.token)) throw new HttpError(400, 'token must be 64-200 hex chars');
   return { ok: true, removed: unregisterApns(b.token) };
+});
+// Android shell device tokens (FCM). Sending needs GIBBOUS_HOME/fcm.json (service account); registering works without it.
+route('GET', '/api/push/fcm', () => fcmStatus());
+route('POST', '/api/push/fcm', (_, b) => {
+  if (!validFcmToken(b?.token)) throw new HttpError(400, 'token must be 20-4096 chars of A-Z a-z 0-9 _ : -');
+  registerFcm(b.token);
+  return { ok: true, configured: fcmStatus().configured };
+});
+route('DELETE', '/api/push/fcm', (_, b) => {
+  if (!validFcmToken(b?.token)) throw new HttpError(400, 'token must be 20-4096 chars of A-Z a-z 0-9 _ : -');
+  return { ok: true, removed: unregisterFcm(b.token) };
 });
 
 route('GET', '/api/fs/ls', (_, __, u) => {
