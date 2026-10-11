@@ -28,6 +28,19 @@
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
+      <!-- gibbous://connect?link=<urlencoded sign-in link> -->
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="gibbous" android:host="connect" />
+      </intent-filter>
     </activity>
+
+    <!-- The QR scanner (zxing-android-embedded, no Play services): portrait like the rest of the app. -->
+    <activity
+      android:name="com.journeyapps.barcodescanner.CaptureActivity"
+      android:screenOrientation="fullSensor"
+      tools:replace="screenOrientation" />
   </application>
 </manifest>

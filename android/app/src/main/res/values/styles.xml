@@ -23,4 +23,10 @@
     <item name="iconTint">@color/text</item>
     <item name="rippleColor">#22FFFFFF</item>
   </style>
+  <style name="Gibbous.Dialog" parent="ThemeOverlay.Material3.Dialog.Alert">
+    <item name="colorPrimary">@color/tide</item>
+    <item name="colorSurface">#FF1F2228</item>
+    <item name="colorOnSurface">@color/text</item>
+    <item name="android:textColorPrimary">@color/text</item>
+  </style>
 </resources>

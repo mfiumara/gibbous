@@ -77,5 +77,6 @@ dependencies {
   implementation(libs.androidx.browser)
   implementation(libs.androidx.splashscreen)
   implementation(libs.material)
+  implementation(libs.zxing.embedded)
   testImplementation(libs.junit)
 }

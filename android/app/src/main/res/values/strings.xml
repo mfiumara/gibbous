@@ -15,4 +15,18 @@
   <string name="scan_prompt">Point at the sign-in code in Settings → Devices</string>
   <string name="channel_name">Gibbous</string>
   <string name="channel_description">Replies and agents waiting for you</string>
+  <string name="connect_to">Connect to %1$s?</string>
+  <string name="connect_to_detail">Gibbous will sign in to the server at %1$s.</string>
+  <string name="error_bad_deeplink">That sign-in link isn\'t valid. Scan the code in Settings → Devices again.</string>
+  <string name="error_bad_code">That code isn\'t a Gibbous sign-in code.</string>
+  <string name="error_http">Use the https sign-in link (Tailscale). Plain http only works for a server on this device.</string>
+  <string name="error_not_link">That isn\'t a Gibbous sign-in link. It looks like https://your-computer…ts.net:8444/login?token=…</string>
+  <string name="error_clipboard_empty">Copy the sign-in link first, then tap Paste.</string>
+  <string name="error_signed_out">You\'re signed out. Scan the sign-in code again to continue.</string>
+  <string name="error_link_rejected">That sign-in link wasn\'t accepted. Scan the current code in Settings → Devices on your computer.</string>
+  <string name="error_wrong_host">The server doesn\'t answer to %1$s. Use the sign-in link from Settings → Devices.</string>
+  <string name="unreachable_offline">This phone is offline. Gibbous will reconnect as soon as it\'s back online.</string>
+  <string name="unreachable_https">%1$s needs an https address. Use the Tailscale sign-in link from Settings → Devices.</string>
+  <string name="unreachable_certificate">%1$s answered with a certificate this phone doesn\'t trust.</string>
+  <string name="unreachable_down">%1$s isn\'t answering. Check that the computer is awake, Gibbous is running and Tailscale is on for both devices.</string>
 </resources>
