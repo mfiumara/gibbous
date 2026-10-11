@@ -8,7 +8,7 @@ export type LiveSub = Extract<Item, { kind: 'subagent' }>;
 
 export interface StoredSub {
   sessionId: string; parentSessionId: string; depth: number;
-  goal: string; title?: string; model?: string;
+  goal: string; title?: string; model?: string; effort?: string;
   startedAt?: number; endedAt?: number; endReason?: string;
   lastActivityAt?: number; activity?: string;
   messages: number; toolCalls: number; tokens: number; lastText?: string;
@@ -20,7 +20,7 @@ export interface Agent {
   key: string;              // stable: the child session id when known, else the live subagent id
   sessionId?: string;       // child session (transcript)
   liveId?: string;          // subagent_id for subagent.steer / subagent.interrupt
-  goal: string; model?: string; depth: number;
+  goal: string; model?: string; effort?: string; depth: number;
   state: AgentState; status: string;   // normalized state + Hermes' own words
   activity?: string;        // what it is doing right now
   tools: string[]; summary?: string; lastText?: string;
@@ -57,7 +57,7 @@ export function mergeAgents(stored: StoredSub[], live: LiveSub[], now = Date.now
     // Live events win while they say something; a finished child is finished whatever the stream last said.
     const state = r.endedAt ? storedState(r, now) : l ? liveState(l.status) : storedState(r, now);
     return {
-      key: r.sessionId, sessionId: r.sessionId, liveId: l?.id, goal: r.goal, model: r.model ?? l?.model, depth: r.depth,
+      key: r.sessionId, sessionId: r.sessionId, liveId: l?.id, goal: r.goal, model: r.model ?? l?.model, effort: r.effort, depth: r.depth,
       state, status: l?.status ?? r.endReason ?? (state === 'running' ? 'running' : state),
       activity: state === 'running' ? (l?.tools.at(-1) ?? r.activity) : undefined,
       tools: l?.tools ?? [], summary: l?.summary, lastText: r.lastText,

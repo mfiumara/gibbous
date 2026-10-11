@@ -48,7 +48,23 @@ function summaryLine(agents: Agent[]) {
 // One card for a group of subagents: collapsed, the moon + "2/9 subagents working" + what one of them is doing;
 // click to unfold it in place with each subagent on its own line (click a line for its transcript), click the
 // header to fold it back. Used in the timeline where Hermes delegated, and under the status line otherwise.
+const elapsedOf = (a: Agent) => a.startedAt ? (a.endedAt ?? Date.now()) - a.startedAt : undefined;
+
+// The card's quiet second line for one subagent: model · effort · tokens, and a running timer (or the final time).
+const shortModelName = (m?: string) => m?.replace(/^.*\//, '').replace(/^(claude|anthropic)-/, '');
+function AgentMeta({ a }: { a: Agent }) {
+  const t = elapsedOf(a);
+  return <span className="flex items-center gap-1.5 min-w-0 font-mono text-[11.5px] text-ash tabular-nums">
+    {a.model && <span className="truncate min-w-0 max-sm:hidden">{shortModelName(a.model)}{a.effort && <span className="text-ash/70"> · {a.effort}</span>}</span>}
+    {!!a.tokens && <span className="flex-none min-w-[5.5ch] text-right">{fmtTokens(a.tokens)}</span>}
+    {t != null && <span className={`flex-none min-w-[7ch] text-right ${isLive(a) ? 'text-tide' : ''}`}>{fmtDuration(t)}</span>}
+  </span>;
+}
+
 export function SubagentGroup({ agents, all, onOpen, open, setOpen }: { agents: Agent[]; all: Agent[]; onOpen(key?: string): void; open: boolean; setOpen(f: (o: boolean) => boolean): void }) {
+  const [, tick] = useState(0);
+  const anyLive = agents.some(isLive);
+  useEffect(() => { if (!anyLive) return; const t = setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t); }, [anyLive]);
   if (!agents.length) return null;
   const working = agents.filter(isLive), done = !working.length;
   const now = working.find(a => a.activity) ?? working[0];
@@ -61,7 +77,7 @@ export function SubagentGroup({ agents, all, onOpen, open, setOpen }: { agents: 
         {lead}
         <span className="flex-1 min-w-0">
           <span className="block text-[12.5px] text-moon">{title}</span>
-          <span className={`block truncate text-[11.5px] text-dust transition-opacity duration-200 ${open ? 'opacity-0' : ''}`}>{now ? <>{agentName(now, all.indexOf(now))}{now.activity && <span className="font-mono text-ash"> · {now.activity}</span>}</> : agents.map((a) => agentName(a, all.indexOf(a))).join(' · ')}</span>
+          <span className={`block truncate text-[11.5px] text-dust transition-opacity duration-200 ${open ? 'opacity-0' : ''}`}>{now ? <span className="flex items-center gap-1.5 min-w-0"><span className="truncate min-w-0 flex-none max-w-[45%]">{agentName(now, all.indexOf(now))}</span><AgentMeta a={now} /></span> : agents.map((a) => agentName(a, all.indexOf(a))).join(' · ')}</span>
         </span>
         <ChevronRight size={14} className={`flex-none text-ash transition-[transform,color] duration-300 ease-out group-hover/sa:text-moon ${open ? 'rotate-90' : ''}`} />
       </button>
@@ -72,8 +88,8 @@ export function SubagentGroup({ agents, all, onOpen, open, setOpen }: { agents: 
           <button onClick={() => onOpen(a.key)} className="press w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-[13px] text-dust transition-colors duration-200 hover:text-moon hover:bg-ridge/60">
             <span className="w-4 grid place-items-center flex-none"><AgentDot a={a} size={11} /></span>
             <span className="text-moon/90 truncate min-w-0 flex-none max-w-[55%]">{agentName(a, all.indexOf(a))}</span>
-            <span className="truncate min-w-0 font-mono text-[11.5px] text-ash">{isLive(a) ? a.activity : firstLine(a.summary ?? a.lastText)}</span>
-            <span className="ml-auto pl-2 flex-none text-[11px] font-mono text-ash">{label[a.state]}</span>
+            <span className="ml-auto pl-2 flex-none max-w-[65%] flex justify-end"><AgentMeta a={a} /></span>
+            <span className="pl-1 flex-none min-w-[5ch] text-right text-[11px] font-mono text-ash max-sm:hidden">{isLive(a) ? '' : label[a.state]}</span>
           </button>
         </li>
       ))}</ul>
@@ -97,7 +113,6 @@ export function SubagentLine({ item, agents, onOpen }: { item: LiveSub; agents: 
 }
 
 // ── the panel: an overview of every subagent; pick one for its transcript ─────────────────────────────────────────
-const elapsedOf = (a: Agent) => a.startedAt ? (a.endedAt ?? Date.now()) - a.startedAt : undefined;
 
 export function SubagentsPanel({ agents, sid, focus, onFocus }: { agents: Agent[]; sid?: string; focus?: string; onFocus(key?: string): void }) {
   const [, tick] = useState(0);
