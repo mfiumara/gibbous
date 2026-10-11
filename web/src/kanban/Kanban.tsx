@@ -157,7 +157,7 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
   const [creating, setCreating] = useState(false);
   const [linkMenu, setLinkMenu] = useState(false);
   const [more, setMore] = useState<Record<string, boolean>>({});
-  const [view, setViewState] = useState<ViewKind>(() => stored(viewKey(board.slug)) === 'graph' ? 'graph' : 'board');
+  const [view, setViewState] = useState<ViewKind>(() => stored(viewKey(board.slug)) === 'board' ? 'board' : 'graph');
   const setView = (v: ViewKind) => { store(viewKey(board.slug), v); setViewState(v); };
   const [hideDonePref, setHideDonePref] = useState(() => stored(hideKey(board.slug)));
   const [links, setLinks] = useState<Link[]>();
