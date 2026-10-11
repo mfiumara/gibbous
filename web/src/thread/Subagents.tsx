@@ -1,7 +1,7 @@
 // Subagents: a count chip on the thread's status line, one quiet line per subagent in the timeline, and a side panel:
 // an overview of all of them (what each is doing or found), then one subagent's own transcript (← → between them).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Square, Send, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Square, Send, ChevronLeft, ChevronRight, Wrench } from 'lucide-react';
 import { api } from '../api';
 import { useRpc } from '../rpc';
 import { toastError } from '../store';
@@ -54,10 +54,12 @@ const elapsedOf = (a: Agent) => a.startedAt ? (a.endedAt ?? Date.now()) - a.star
 const shortModelName = (m?: string) => m?.replace(/^.*\//, '').replace(/^(claude|anthropic)-/, '');
 function AgentMeta({ a }: { a: Agent }) {
   const t = elapsedOf(a);
-  return <span className="flex items-center gap-1.5 min-w-0 font-mono text-[11.5px] text-ash tabular-nums">
-    {a.model && <span className="truncate min-w-0 max-sm:hidden">{shortModelName(a.model)}{a.effort && <span className="text-ash/70"> · {a.effort}</span>}</span>}
-    {!!a.tokens && <span className="flex-none min-w-[5.5ch] text-right">{fmtTokens(a.tokens)}</span>}
-    {t != null && <span className={`flex-none min-w-[7ch] text-right ${isLive(a) ? 'text-tide' : ''}`}>{fmtDuration(t)}</span>}
+  // Fixed-width columns so every row lines up: model (left), tool calls, tokens, time (right-aligned numbers).
+  return <span className="flex items-center gap-3 min-w-0 font-mono text-[11.5px] text-ash tabular-nums">
+    <span className="w-[20ch] truncate text-left max-sm:hidden">{a.model ? <>{shortModelName(a.model)}{a.effort && <span className="text-ash/60"> · {a.effort}</span>}</> : ''}</span>
+    <span className="w-[6ch] flex-none text-right" data-tip="Tool calls">{a.toolCalls ? <>{a.toolCalls}<Wrench size={9} className="inline ml-0.5 -mt-px opacity-60" aria-label="tool calls" /></> : ''}</span>
+    <span className="w-[6ch] flex-none text-right" data-tip="Tokens">{a.tokens ? fmtTokens(a.tokens) : ''}</span>
+    <span className={`w-[7ch] flex-none text-right ${isLive(a) ? 'text-tide' : ''}`}>{t != null ? fmtDuration(t) : ''}</span>
   </span>;
 }
 
@@ -87,9 +89,8 @@ export function SubagentGroup({ agents, all, onOpen, open, setOpen }: { agents: 
         <li key={a.key}>
           <button onClick={() => onOpen(a.key)} className="press w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-[13px] text-dust transition-colors duration-200 hover:text-moon hover:bg-ridge/60">
             <span className="w-4 grid place-items-center flex-none"><AgentDot a={a} size={11} /></span>
-            <span className="text-moon/90 truncate min-w-0 flex-none max-w-[55%]">{agentName(a, all.indexOf(a))}</span>
-            <span className="ml-auto pl-2 flex-none max-w-[65%] flex justify-end"><AgentMeta a={a} /></span>
-            <span className="pl-1 flex-none min-w-[5ch] text-right text-[11px] font-mono text-ash max-sm:hidden">{isLive(a) ? '' : label[a.state]}</span>
+            <span className="text-moon/90 truncate min-w-0 flex-1">{agentName(a, all.indexOf(a))}</span>
+            <span className="ml-auto pl-2 flex-none flex justify-end"><AgentMeta a={a} /></span>
           </button>
         </li>
       ))}</ul>
