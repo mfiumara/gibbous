@@ -3,6 +3,18 @@
 package dev.gibbous.android
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.os.Message
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.widget.EditText
+import androidx.appcompat.app.AlertDialog
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.Uri
@@ -82,6 +94,15 @@ class WebShell(private val activity: MainActivity) {
     container.addView(unreachable)
     retryButton.setOnClickListener { retry() }
     unreachable.findViewById<View>(R.id.change).setOnClickListener { activity.showConnect() }
+    // Edge to edge: the page sees zero safe-area insets. The content is padded by the bars and cutout, and at the
+    // bottom by max(navigation bar, keyboard), so the WebView (and the page's innerHeight) shrinks with the IME.
+    ViewCompat.setOnApplyWindowInsetsListener(container) { v, insets ->
+      val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+      v.updatePadding(left = bars.left, top = bars.top, right = bars.right, bottom = maxOf(bars.bottom, ime.bottom))
+      if (BuildConfig.DEBUG) logi("insets bars=$bars ime=${ime.bottom}")
+      WindowInsetsCompat.CONSUMED
+    }
     Shell.live = this
   }
 
@@ -109,6 +130,12 @@ class WebShell(private val activity: MainActivity) {
     if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) WebSettingsCompat.setAlgorithmicDarkeningAllowed(s, false)
     CookieManager.getInstance().setAcceptThirdPartyCookies(w, false)
     w.webViewClient = Client()
+    w.webChromeClient = Chrome()
+    // Content-Disposition: attachment (and anything the WebView can't show): saved with the sign-in cookie.
+    w.setDownloadListener { url, _, cd, _, _ ->
+      if (Links.isSameOrigin(url, Server.origin)) Files.download(activity, url, Links.dispositionName(cd))
+      else Files.openExternal(activity, url)
+    }
     if (!listenerSupported) w.addJavascriptInterface(LegacyBridge(), "gibbousAndroid")
     return w
   }
@@ -325,7 +352,105 @@ class WebShell(private val activity: MainActivity) {
       }
     }
 
-    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = false
+    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+      val url = request.url.toString()
+      val scheme = request.url.scheme?.lowercase() ?: return false
+      if (scheme == "about" || scheme == "blob" || scheme == "data") return false
+      if (scheme == "http" || scheme == "https") {
+        if (Links.isSameOrigin(url, Server.origin)) {
+          // A file opened as a page would replace the app with no way back: share it instead.
+          if (request.isForMainFrame && Links.path(url) in Links.FILE_PATHS) { shareUrl(url, null); return true }
+          return false
+        }
+        if (!request.isForMainFrame) return false  // embeds (video players, previews) inside the page
+        Files.openExternal(activity, url)
+        return true
+      }
+      // mailto:, tel:, vscode://, …
+      Files.openExternal(activity, url)
+      return true
+    }
+
+    // The renderer was killed (memory) or crashed: a fresh WebView at the same route instead of a dead app.
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+      logi("render process gone (crash=${detail.didCrash()}): recreating the web view")
+      recreateWebView()
+      return true
+    }
+  }
+
+  private fun recreateWebView() {
+    val old = web
+    container.removeView(old)
+    old.destroy()
+    startScript = null
+    configuredOrigin = null
+    pageReady = false
+    web = makeWebView()
+    container.addView(web, 0, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    Server.origin?.let { load(Server.homeUrl(it)) }
+  }
+
+  /** A server file: downloaded with the sign-in cookie, then the share sheet. */
+  fun shareUrl(url: String, filename: String?) {
+    Files.toast(activity, activity.getString(R.string.preparing_file))
+    Files.fetch(activity, url, filename) { f, err ->
+      if (f != null) Files.shareFile(activity, f)
+      else {
+        loge("share download failed: $err")
+        dialog().setTitle(R.string.file_failed).setMessage(err).setPositiveButton(android.R.string.ok, null).show()
+      }
+    }
+  }
+
+  private fun dialog() = AlertDialog.Builder(activity, R.style.Gibbous_Dialog)
+
+  // ── chrome: uploads and JS dialogs (Gibbous uses confirm/prompt) ─────────
+  private inner class Chrome : WebChromeClient() {
+    override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+      val intent = params.createIntent()
+      if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+      return activity.chooseFiles(intent, callback)
+    }
+
+    private fun allowed() = activity.hasWindowFocus() || activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+
+    override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult): Boolean {
+      if (!allowed()) { result.cancel(); return true }
+      dialog().setMessage(message).setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }.setOnCancelListener { result.cancel() }.show()
+      return true
+    }
+
+    override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean {
+      if (!allowed()) { result.cancel(); return true }
+      dialog().setMessage(message)
+        .setNegativeButton(R.string.cancel) { _, _ -> result.cancel() }
+        .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
+        .setOnCancelListener { result.cancel() }.show()
+      return true
+    }
+
+    override fun onJsPrompt(view: WebView, url: String, message: String, defaultValue: String?, result: JsPromptResult): Boolean {
+      if (!allowed()) { result.cancel(); return true }
+      val input = EditText(activity).apply { setText(defaultValue ?: ""); setSingleLine() }
+      val pad = (20 * activity.resources.displayMetrics.density).toInt()
+      val box = FrameLayout(activity).apply { setPadding(pad, pad / 2, pad, 0); addView(input) }
+      dialog().setMessage(message).setView(box)
+        .setNegativeButton(R.string.cancel) { _, _ -> result.cancel() }
+        .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm(input.text.toString()) }
+        .setOnCancelListener { result.cancel() }.show()
+      return true
+    }
+
+    // setSupportMultipleWindows(false): no new windows are ever created.
+    override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean = false
+  }
+
+  /** System back: the page's own history first, then leave the app. */
+  fun goBack(): Boolean {
+    if (!web.canGoBack()) return false
+    web.goBack()
+    return true
   }
 
   fun destroy() {

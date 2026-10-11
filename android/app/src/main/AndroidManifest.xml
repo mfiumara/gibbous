@@ -37,6 +37,15 @@
       </intent-filter>
     </activity>
 
+    <!-- Files shared from the server (cacheDir/share) go to other apps through this provider. -->
+    <provider
+      android:name="androidx.core.content.FileProvider"
+      android:authorities="${applicationId}.files"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+    </provider>
+
     <!-- The QR scanner (zxing-android-embedded, no Play services): portrait like the rest of the app. -->
     <activity
       android:name="com.journeyapps.barcodescanner.CaptureActivity"

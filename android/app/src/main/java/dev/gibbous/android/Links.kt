@@ -113,6 +113,13 @@ object Links {
 
   fun isHttp(url: String): Boolean = url.startsWith("http://", true) || url.startsWith("https://", true)
 
+  /** The file name a server url stands for: `/api/media?path=/a/b.png` → `b.png`, else the last path segment. */
+  fun fileName(url: String): String {
+    val u = try { URI(url) } catch (_: Exception) { return "file" }
+    val p = query(u.rawQuery)["path"]?.takeIf { it.isNotBlank() } ?: u.path ?: ""
+    return safeName(p.trimEnd('/').substringAfterLast('/').substringAfterLast('\\'))
+  }
+
   /** A file name that can't escape its folder. */
   fun safeName(n: String?): String {
     val s = (n ?: "").replace('/', '-').replace('\\', '-').replace(':', '-').trim()

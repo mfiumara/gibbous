@@ -7,6 +7,10 @@ package dev.gibbous.android
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.Uri
+import android.webkit.ValueCallback
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.View
@@ -34,6 +38,29 @@ class MainActivity : ComponentActivity() {
 
   private val scanner = registerForActivityResult(ScanContract()) { r -> r.contents?.let { connect?.scanned(it) } }
 
+  // <input type=file>: the system picker; every selected document goes back to the page.
+  private var fileCallback: ValueCallback<Array<Uri>>? = null
+  private val filePicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+    val cb = fileCallback ?: return@registerForActivityResult
+    fileCallback = null
+    val data = r.data
+    val uris = if (r.resultCode != RESULT_OK || data == null) null else {
+      val clip = data.clipData
+      if (clip != null && clip.itemCount > 0) Array(clip.itemCount) { clip.getItemAt(it).uri }
+      else data.data?.let { arrayOf(it) }
+    }
+    logi("file chooser: ${uris?.size ?: 0} file(s)")
+    cb.onReceiveValue(uris)
+  }
+
+  fun chooseFiles(intent: Intent, callback: ValueCallback<Array<Uri>>): Boolean {
+    fileCallback?.onReceiveValue(null)
+    fileCallback = callback
+    return try { filePicker.launch(intent); true } catch (e: Exception) {
+      loge("no file picker", e); fileCallback = null; false
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     val splash = installSplashScreen()
     super.onCreate(savedInstanceState)
@@ -54,6 +81,16 @@ class MainActivity : ComponentActivity() {
     }
     notificationTap(i)
     watchNetwork()
+    // System back: the page's history first (thread → Home), then leave the app.
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        val s = shell
+        if (s != null && current === s.container && s.goBack()) return
+        isEnabled = false
+        onBackPressedDispatcher.onBackPressed()
+        isEnabled = true
+      }
+    })
   }
 
   override fun onNewIntent(intent: Intent) {

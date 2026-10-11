@@ -29,4 +29,10 @@
   <string name="unreachable_https">%1$s needs an https address. Use the Tailscale sign-in link from Settings → Devices.</string>
   <string name="unreachable_certificate">%1$s answered with a certificate this phone doesn\'t trust.</string>
   <string name="unreachable_down">%1$s isn\'t answering. Check that the computer is awake, Gibbous is running and Tailscale is on for both devices.</string>
+  <string name="downloading">Downloading…</string>
+  <string name="downloaded">Saved to %1$s</string>
+  <string name="download_failed">Couldn\'t download that file. %1$s</string>
+  <string name="preparing_file">Getting the file…</string>
+  <string name="file_failed">Couldn\'t get that file</string>
+  <string name="no_app_for_link">No app on this phone opens that link.</string>
 </resources>

@@ -112,6 +112,13 @@ class LinksTest {
     assertEquals("-etc-passwd", Links.safeName("/etc/passwd"))
   }
 
+  @Test fun fileNamesFromUrls() {
+    assertEquals("b.png", Links.fileName("https://h.ts.net/api/media?path=%2FUsers%2Fx%2Fb.png"))
+    assertEquals("shot.jpg", Links.fileName("https://h.ts.net/api/image?path=/tmp/shot.jpg&w=1"))
+    assertEquals("report.pdf", Links.fileName("https://h.ts.net/files/report.pdf"))
+    assertEquals("file", Links.fileName("https://h.ts.net/"))
+  }
+
   @Test fun jsStrings() {
     assertEquals("\"a\\\"b\\\\c\\n\"", Links.jsString("a\"b\\c\n"))
   }
