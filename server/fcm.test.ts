@@ -14,6 +14,8 @@ const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 20
 const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
 const decode = (s: string) => JSON.parse(Buffer.from(s, 'base64url').toString());
 const tick = (ms = 50) => new Promise(r => setTimeout(r, ms));
+// Wait for fire-and-forget sends (token exchange + HTTP) instead of a fixed sleep: a loaded machine takes seconds.
+async function until(ok: () => boolean, ms = 10_000) { const end = Date.now() + ms; while (!ok() && Date.now() < end) await tick(20); }
 const TOK = (c: string) => `${c}`.repeat(24) + ':APA91b_x-y';
 
 // One local server standing in for both Google's token endpoint and FCM.
@@ -161,7 +163,7 @@ test('notify fan-out over HTTP: dead tokens dropped, per-kind settings respected
 
   hits.length = 0;
   notify({ kind: 'done', title: 'Done', body: 'b', tag: 'th_9', url: '#/t/th_9' });
-  await tick(300);
+  await until(() => sends().length >= 5 && state.push.fcm.length === 2);
   assert.equal(sends().length, 5);
   assert.deepEqual(JSON.parse(sends().find(x => x.body.includes(live))!.body).message.data,
     { type: 'notify', title: 'Done', body: 'b', url: '#/t/th_9', tag: 'th_9', kind: 'done', badge: '1' });
@@ -177,7 +179,7 @@ test('notify fan-out over HTTP: dead tokens dropped, per-kind settings respected
   // Badge-only to Android when the count changed (alerts already sent badge 1).
   badgeChanged(0); await tick(150);
   assert.equal(sends().length, 0, 'unchanged count sends nothing');
-  n = 0; badgeChanged(0); await tick(300);
+  n = 0; badgeChanged(0); await until(() => sends().length >= 2);
   assert.equal(sends().length, 2);
   for (const x of sends()) assert.deepEqual(JSON.parse(x.body).message.data, { type: 'badge', badge: '0' });
 
