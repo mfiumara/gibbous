@@ -287,6 +287,20 @@
   animation: lunation 3s steps(36) infinite, fade .3s var(--ease-out) both; }
 @keyframes lunation { to { background-position-x: calc(var(--s) * -36); } }
 [data-theme="light"] .moon-loader { filter: drop-shadow(0 0 1px rgb(0 0 0 / .35)); }
+/* Compaction: full moon (frame 18 of the strip) implodes to a speck, holds, then springs back to size. */
+.moon-implode { display: inline-block; flex: none; width: var(--s); height: var(--s); border-radius: 9999px;
+  background: url(/moon/phases.webp) calc(var(--s) * -18) 0 / calc(var(--s) * 36) var(--s) no-repeat;
+  animation: implode 1.8s cubic-bezier(.55, 0, .35, 1) infinite, fade .3s var(--ease-out) both; }
+@keyframes implode {
+  0%, 8% { transform: scale(1); filter: brightness(1.15); }
+  62% { transform: scale(.14); filter: brightness(1.6); }
+  70% { transform: scale(.14); filter: brightness(1.6); }
+  86% { transform: scale(1.08); }
+  100% { transform: scale(1); filter: brightness(1.15); }
+}
+[data-theme="light"] .moon-implode { filter: drop-shadow(0 0 1px rgb(0 0 0 / .35)); }
+@media (prefers-reduced-motion: reduce) { .moon-implode { animation: none; } }
+[data-motion="off"] .moon-implode { animation: none; }
 /* The sidebar's still moon reddens with the real one during an eclipse (--blood, ui.tsx). */
 .moon-still { filter: sepia(var(--blood, 0)) saturate(calc(1 + 2.5 * var(--blood, 0))) hue-rotate(calc(-12deg * var(--blood, 0))) brightness(calc(1 - .25 * var(--blood, 0))); }
 [data-theme="light"] .moon-still { filter: sepia(var(--blood, 0)) saturate(calc(1 + 2.5 * var(--blood, 0))) hue-rotate(calc(-12deg * var(--blood, 0))) drop-shadow(0 0 1px rgb(0 0 0 / .35)); }

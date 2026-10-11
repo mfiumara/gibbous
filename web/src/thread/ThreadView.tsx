@@ -4,7 +4,11 @@ import { api } from '../api';
 import { HumanTaskCard } from '../HumanTask';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
-import { Moon, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
+import { Moon, MoonImplode, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
+
+// Hermes' status lines lead with an emoji (🗜️ Compacting…); the moon icon already says it.
+const COMPACTING = /compact|compress/i;
+const LEAD_EMOJI = /^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u;
 import { reduce, checkpointFor, endedLabel, withQueuedBubble, type Timeline, type Item } from './timeline';
 import { getCached, putCached, onCached, mergeTail, prependOlder, reconcile, revive, type Paging } from './cache';
 import { firstPage, resumeWith, olderPages } from './load';
@@ -394,7 +398,7 @@ export function ThreadView({ id }: { id: string }) {
                 case 'notice': return <p key={it.id} className={`${anim} text-[13px] rounded-lg px-3 py-2 border ${it.tone === 'error' ? 'border-oxide/40 text-oxide bg-oxide/5' : 'border-line text-dust'} whitespace-pre-wrap`}>{it.text}</p>;
               }
             })}
-            {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade"><Moon thread="running" size={9} /><span className="truncate">{tl.status ?? waitingOn ?? 'Waxing…'}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
+            {running && <p className="flex items-center gap-2 text-[13px] text-tide animate-fade">{COMPACTING.test(tl.status ?? '') ? <MoonImplode size={13} /> : <Moon thread="running" size={9} />}<span className="truncate">{(tl.status ?? waitingOn ?? 'Waxing…').replace(LEAD_EMOJI, '')}</span>{tl.turnStartedAt && <Elapsed since={tl.turnStartedAt} className="ml-auto text-[12px] text-ash font-mono" />}</p>}
             {/* Working subagents whose card isn't already right above (stored-only, or the delegation scrolled up). */}
             {liveBelow && <div className="mt-2"><SubagentGroup agents={agents} all={agents} onOpen={openAgents} open={groupOpen} setOpen={setGroupOpen} /></div>}
             {thread.status === 'error' && !running && thread.error && !tl.items.some(i => i.kind === 'notice') && <p className="text-[13px] text-oxide select-text">{thread.error}</p>}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, Zap, Search, Check, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useRpc } from '../rpc';
 import { useStore, toastError } from '../store';
-import { Menu, MoonLoader, MoonDisc, PhaseMoon, inputCls, useSheet, useRichTip } from '../ui';
+import { Menu, MoonImplode, MoonDisc, PhaseMoon, inputCls, useSheet, useRichTip } from '../ui';
 export { PhaseMoon };
 import type { ModelOptionProvider, SessionLiveInfo, Usage } from '../hermes/contract';
 
@@ -145,7 +145,7 @@ function ContextCard({ usage: u, compacting }: { usage?: Usage; compacting?: boo
   if (u?.cache_hit_pct != null) rows.push(['Cache hits', `${Math.round(u.cache_hit_pct)}%`]);
   return (
     <div className="w-[208px] flex flex-col items-center">
-      {compacting ? <MoonLoader size={88} label="Compacting context" /> : <MoonDisc fraction={(pct ?? 0) / 100} size={88} />}
+      {compacting ? <MoonImplode size={88} /> : <MoonDisc fraction={(pct ?? 0) / 100} size={88} />}
       <p className="mt-3 text-[22px] leading-none font-medium tabular-nums text-moon">{compacting ? 'Compacting' : pct != null ? `${pct}%` : '—'}</p>
       <p className="mt-1 label text-ash">{compacting ? 'Summarizing earlier turns' : 'of the context window'}</p>
       {!compacting && rows.length > 0 && (
@@ -167,7 +167,7 @@ export function ContextMeter({ usage, compacting }: { usage?: Usage; compacting?
   return (
     <span role="img" aria-label={compacting ? 'Compacting context' : `Context window ${pct}% used`}
       className="inline-grid place-items-center size-8 rounded-lg hover:bg-ridge flex-none" data-tip={contextTip(usage, compacting)} data-tip-rich={rich}>
-      {compacting ? <MoonLoader size={15} label="Compacting context" /> : <PhaseMoon fraction={pct / 100} color={tone} size={15} />}
+      {compacting ? <MoonImplode size={15} /> : <PhaseMoon fraction={pct / 100} color={tone} size={15} />}
     </span>
   );
 }

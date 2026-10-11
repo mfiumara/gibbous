@@ -117,6 +117,11 @@ export function MoonLoader({ size = 32, label = 'Loading', className = '' }: { s
   return <span role="status" aria-label={label} className={`moon-loader ${className}`} style={{ '--s': `${size}px`, '--tonight': tonight } as React.CSSProperties} />;
 }
 
+// Compaction: the full moon collapses to a point and springs back, the context being squeezed down.
+export function MoonImplode({ size = 14, label = 'Compacting context', className = '' }: { size?: number; label?: string; className?: string }) {
+  return <span role="status" aria-label={label} className={`moon-implode ${className}`} style={{ '--s': `${size}px` } as React.CSSProperties} />;
+}
+
 export function Logo({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
