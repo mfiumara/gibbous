@@ -96,7 +96,11 @@ export class Installer extends EventEmitter {
     if (!this.running || !c?.pid) return false;
     this.cancelled = true;
     if (process.platform === 'win32') execFile('taskkill', ['/pid', String(c.pid), '/T', '/F'], () => {});
-    else { try { process.kill(-c.pid, 'SIGTERM'); } catch { c.kill('SIGTERM'); } }
+    else {
+      try { process.kill(-c.pid, 'SIGTERM'); } catch { c.kill('SIGTERM'); }
+      // A shell can lose a SIGTERM that lands mid-fork, leaving a background child behind: finish the group off.
+      setTimeout(() => { try { process.kill(-c.pid!, 'SIGKILL'); } catch { /* group already gone */ } }, 1000).unref();
+    }
     return true;
   }
 
