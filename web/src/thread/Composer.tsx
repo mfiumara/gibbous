@@ -125,11 +125,12 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
         if (r.type === 'send' && r.message) await rpc.call('prompt.submit', { session_id: sid, text: r.message });
       } else {
         // Images queue themselves on the session; files come back as @file: refs that must lead the message.
-        const refs: string[] = [];
+        const refs: string[] = [], imagePaths: string[] = [];
         for (const f of files) {
           if (f.kind === 'image') {
             const r = await rpc.call('image.attach_bytes', { session_id: sid, content_base64: f.dataUrl.split(',')[1], filename: f.name });
             if (!r.attached) throw new Error(`Couldn't attach ${f.name}`);
+            if (r.path) imagePaths.push(r.path);
           } else {
             const r = await rpc.call('file.attach', { session_id: sid, data_url: f.dataUrl, name: f.name });
             if (!r.attached || !r.ref_text) throw new Error(`Couldn't attach ${f.name}`);
@@ -137,7 +138,9 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
           }
         }
         const message = [refs.join('\n'), body].filter(Boolean).join('\n\n') || (files.some(f => f.kind === 'image') ? 'What do you see in this image?' : '');
-        const images = files.some(f => f.kind === 'image'), shown = body || files.map(f => f.name).join(', ');
+        // The bubble shown right away carries the images as @image refs (same shape Hermes stores), so they stay visible.
+        const images = files.some(f => f.kind === 'image');
+        const shown = [body || (images ? 'What do you see in this image?' : files.map(f => f.name).join(', ')), ...imagePaths.map(p => `@image:${p}`)].join('\n');
         // Mid-turn text waits in Gibbous' line (queue.ts), handed to Hermes one at a time: Hermes would merge queued
         // text into a single prompt. Images already sit on the session, so those go to Hermes now.
         if (running && mode !== 'steer' && !edit && !images && tid) {
