@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, useState, type ReactNode } from 'react';
+import { Children, memo, useDeferredValue, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -27,6 +27,12 @@ const nodeText = (n: any): string => typeof n === 'string' ? n : Array.isArray(n
 // Streaming re-parses the whole message on every delta. Deferred, React parses at low priority and drops stale
 // passes, so a long reply streaming in never blocks scrolling or typing.
 const MD_PLUGINS = { remark: [remarkGfm], rehype: [[rehypeHighlight, { detect: false, ignoreMissing: true }]] as any };
+const BR = /<br\s*\/?>/i;
+function withBreaks(children: ReactNode): ReactNode {
+  return Children.map(children, c => typeof c !== 'string' || !BR.test(c) ? c
+    : c.split(/<br\s*\/?>/gi).flatMap((part, i) => i ? [<br key={i} />, part] : [part]));
+}
+
 export const Markdown = memo(function Markdown({ text: live }: { text: string }) {
   const text = useDeferredValue(live);
   return <div className="prose-moon"><ReactMarkdown remarkPlugins={MD_PLUGINS.remark} rehypePlugins={MD_PLUGINS.rehype}
@@ -36,6 +42,9 @@ export const Markdown = memo(function Markdown({ text: live }: { text: string })
         ? <a {...p} onClick={e => { e.preventDefault(); viewMedia(String(p.href), baseName(new URLSearchParams(String(p.href).split('?')[1]).get('path') ?? '')); }} />
         : <a {...p} target="_blank" rel="noreferrer" />,
       img: ({ node: _n, src, alt }) => <img src={imageSrc(String(src ?? ''))} alt={alt ?? ''} loading="lazy" className="cursor-zoom-in" onClick={() => viewMedia(imageSrc(String(src ?? '')), alt || String(src ?? '').split('/').pop())} />,
+      // Agents write line breaks inside table cells as `<br>` (Markdown has no other way); raw HTML stays off.
+      td: ({ node: _n, children, ...p }) => <td {...p}>{withBreaks(children)}</td>,
+      th: ({ node: _n, children, ...p }) => <th {...p}>{withBreaks(children)}</th>,
       pre: ({ node: _n, children, ...p }) => (
         <div className="group/code relative">
           <pre {...p}>{children}</pre>

@@ -218,7 +218,8 @@
     border-bottom: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); }
   .prose-moon tbody tr:first-child td { padding-top: .7em; }
   .prose-moon td strong { font-weight: 600; color: var(--color-moon); }
-  .prose-moon td code { overflow-wrap: anywhere; }
+  /* Code in cells (hashes, flags) never splits mid-token: the column grows to fit, a too-wide table scrolls. */
+  .prose-moon td code { overflow-wrap: normal; white-space: nowrap; }
   .prose-moon hr { border-color: var(--color-line); }
   .prose-moon img { border-radius: 8px; border: 1px solid var(--color-line); max-height: 420px; }
 
