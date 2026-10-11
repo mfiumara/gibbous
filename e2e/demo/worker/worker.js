@@ -53,9 +53,9 @@ export default {
   async fetch(req, env) {
     load();
     const u = new URL(req.url);
-    const authed = cookie(req, AUTH) === env.DEMO_TOKEN;
+    const authed = !!env.DEMO_TOKEN && cookie(req, AUTH) === env.DEMO_TOKEN;
     if (u.pathname === '/login') {
-      if ((u.searchParams.get('token') ?? '') !== env.DEMO_TOKEN) return json({ error: 'bad token' }, 401);
+      if (!env.DEMO_TOKEN || (u.searchParams.get('token') ?? '') !== env.DEMO_TOKEN) return json({ error: 'bad token' }, 401);
       const next = u.searchParams.get('next') ?? '';
       const h = signIn(req, env);
       h.set('Location', /^#\/[\w/?=&%.~-]*$/.test(next) ? `/${next}` : '/');
@@ -63,7 +63,7 @@ export default {
     }
     if (u.pathname === '/api/login' && req.method === 'POST') {
       const b = await req.json().catch(() => ({}));
-      if (String(b.token ?? '') !== env.DEMO_TOKEN) return json({ error: 'bad token' }, 401);
+      if (!env.DEMO_TOKEN || String(b.token ?? '') !== env.DEMO_TOKEN) return json({ error: 'bad token' }, 401);
       const h = signIn(req, env); h.set('Content-Type', 'application/json');
       return new Response('{"ok":true}', { status: 200, headers: h });
     }

@@ -16,6 +16,5 @@
   },
   "durable_objects": { "bindings": [{ "name": "DEMO", "class_name": "Demo" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Demo"] }],
-  // The demo's sign-in link is public on purpose (App Review notes, the website): it only opens this recorded demo.
-  "vars": { "DEMO_TOKEN": "demo-a95f47b826bdcae17773" }
+  // DEMO_TOKEN is a Worker secret (wrangler secret put DEMO_TOKEN), not in git: the demo is for App Review only.
 }

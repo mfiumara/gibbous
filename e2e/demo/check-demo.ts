@@ -9,7 +9,8 @@ import { CHROME, SCRATCH, sleep } from './lib.ts';
 
 const BASE = (process.argv.slice(2).find(a => !a.startsWith('--')) ?? 'https://demo.gibbousapp.com').replace(/\/$/, '');
 const SHOTS = process.argv.find(a => a.startsWith('--shots='))?.slice(8) ?? path.join(SCRATCH, 'demo-check');
-const TOKEN = /"DEMO_TOKEN":\s*"([^"]+)"/.exec(fs.readFileSync(path.join(import.meta.dirname, 'worker/wrangler.jsonc'), 'utf8'))![1];
+// The sign-in token is a Worker secret, kept out of git: $DEMO_TOKEN or ~/.config/gibbous/demo-token.
+const TOKEN = (process.env.DEMO_TOKEN ?? fs.readFileSync(path.join(process.env.HOME!, '.config/gibbous/demo-token'), 'utf8')).trim();
 fs.mkdirSync(SHOTS, { recursive: true });
 
 const b = await puppeteer.launch({ executablePath: CHROME, headless: true, defaultViewport: null, args: ['--hide-scrollbars'] });

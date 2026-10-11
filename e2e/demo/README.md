@@ -69,8 +69,10 @@ normal speed. Desktop clips are 1920Ã—1200 (`REC_DPR=1`). The phone clip is 804Ã
 ## Hosted demo (demo.gibbousapp.com)
 
 A free Cloudflare Worker that serves the real web app and imitates the Gibbous server with recordings of this demo, so
-App Review and website visitors can use Gibbous without a server. Sign-in link (public on purpose; it only opens the
-recorded demo): `https://demo.gibbousapp.com/login?token=demo-a95f47b826bdcae17773`.
+App Review can use the iPhone app without a real server. It is for App Review only: not linked anywhere, `robots.txt`
+disallows everything, and the sign-in token is a Worker secret kept out of git (`wrangler secret put DEMO_TOKEN`; a
+local copy for `check-demo.ts` lives in `~/.config/gibbous/demo-token`). The sign-in link
+(`https://demo.gibbousapp.com/login?token=<token>`) goes only in the App Store review details.
 
 ```sh
 pnpm build                                        # if web/dist is stale
