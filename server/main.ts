@@ -465,8 +465,20 @@ route('GET', '/api/fs/ls', (_, __, u) => {
   const dir = path.resolve(u.searchParams.get('path') || process.env.HOME!);
   const entries = fs.readdirSync(dir, { withFileTypes: true })
     .filter(d => d.isDirectory() && !d.name.startsWith('.'))
-    .map(d => d.name).sort();
+    .map(d => d.name).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })); // Finder order, not ASCII
   return { path: dir, parent: path.dirname(dir), entries, repo: fs.existsSync(path.join(dir, '.git')) };
+});
+
+// New folder from the Add project picker: one plain name inside an existing folder under $HOME.
+route('POST', '/api/fs/mkdir', (_, b) => {
+  const parent = path.resolve(String(b?.path ?? '')), name = String(b?.name ?? '').trim();
+  const home = os.homedir();
+  if (!name || name === '.' || name === '..' || /[/\\\0]/.test(name) || name.length > 255) throw new HttpError(400, 'Use a plain folder name');
+  if (parent !== home && !parent.startsWith(home + path.sep)) throw new HttpError(400, 'Folders can only be made inside your home folder');
+  const dir = path.join(parent, name);
+  if (fs.existsSync(dir)) throw new HttpError(409, `${name} already exists`);
+  fs.mkdirSync(dir);
+  return { path: dir };
 });
 
 // Images referenced by conversations (attachments, generated images, screenshots): image files under $HOME only.

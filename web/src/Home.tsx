@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Menu, Folder, Paperclip, ArrowUp, CornerLeftUp, GitBranch, ChevronDown, Server } from 'lucide-react';
+import { Menu, Folder, FolderPlus, Paperclip, ArrowUp, CornerLeftUp, GitBranch, ChevronDown, Server } from 'lucide-react';
 import { api, type Project, type Thread } from './api';
 import { useStore, toastError, NONE } from './store';
 import { useAttachments, AttachmentChips, filesFrom, handOff } from './attachments';
@@ -168,6 +168,12 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose(): 
   const [path, setPath] = useState('');
   const [listing, setListing] = useState<{ path: string; parent: string; entries: string[]; repo: boolean }>();
   const [busy, setBusy] = useState(false);
+  const [newName, setNewName] = useState<string | null>(null); // null: not naming a new folder
+  const mkdir = () => {
+    const name = newName?.trim();
+    if (!listing || !name) return setNewName(null);
+    api.post<{ path: string }>('/api/fs/mkdir', { path: listing.path, name }).then(r => { setNewName(null); browse(r.path); }).catch(toastError);
+  };
   const browse = (p?: string) => api.get<NonNullable<typeof listing>>(`/api/fs/ls${p ? `?path=${encodeURIComponent(p)}` : ''}`).then(l => { setListing(l); setPath(l.path); }).catch(toastError);
   useEffect(() => { if (open) browse(); }, [open]);
   const add = async () => {
@@ -184,7 +190,18 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose(): 
       <input className={inputCls + ' font-mono text-[13px]'} value={path} onChange={e => setPath(e.target.value)} onKeyDown={e => e.key === 'Enter' && browse(path)} aria-label="Folder path" />
       {listing && (
         <ul className="h-64 overflow-y-auto well rounded-xl p-1 text-[13px]">
-          <li><button onClick={() => browse(listing.parent)} className="press w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-dust hover:bg-ridge"><CornerLeftUp size={13} />..</button></li>
+          <li className="flex items-center gap-1">
+            <button onClick={() => browse(listing.parent)} className="press flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-dust hover:bg-ridge"><CornerLeftUp size={13} />..</button>
+            <button onClick={() => setNewName('')} className="press flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-dust hover:text-moon hover:bg-ridge"><FolderPlus size={13} />New folder</button>
+          </li>
+          {newName !== null && <li className="flex items-center gap-2 px-2.5 py-1">
+            <FolderPlus size={13} className="text-tide flex-none" />
+            <input autoFocus value={newName} onChange={e => setNewName(e.target.value)} placeholder="Folder name" aria-label="New folder name"
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); mkdir(); } if (e.key === 'Escape') { e.stopPropagation(); setNewName(null); } }}
+              onBlur={() => !newName?.trim() && setNewName(null)}
+              className="flex-1 min-w-0 h-7 px-2 rounded-md bg-transparent border border-tide/50 focus:outline-none text-[13px]" />
+            <Button onClick={mkdir} disabled={!newName.trim()}>Create</Button>
+          </li>}
           {listing.entries.map(e => <li key={e}><button onClick={() => browse(`${listing.path}/${e}`)} className="press w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-ridge text-left"><Folder size={13} className="text-dust" />{e}</button></li>)}
         </ul>
       )}
