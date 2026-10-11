@@ -1,8 +1,10 @@
 //! Gibbous for Windows and Linux: a native window around the Gibbous server, like desktop/Gibbous.swift on macOS.
 //! Signs in to the LOCAL server by itself (GIBBOUS_HOME/login-url + secret.json), or to a server whose sign-in link you
 //! pasted on the connect screen (ui/index.html). Page ⇄ app contract: web/src/desktopBridge.ts.
+//! Builds with a bundled server (tauri.server.conf.json) start it when nothing answers locally: server.rs.
 mod link;
 mod notify;
+mod server;
 
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
@@ -14,7 +16,7 @@ use serde_json::{json, Value};
 use tauri::menu::{CheckMenuItem, MenuBuilder, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent, Wry};
+use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent, Wry};
 use url::Url;
 
 pub use link::*;
@@ -47,6 +49,10 @@ struct Shell {
     status: Mutex<Status>,
     base: Mutex<Url>,
     autostart: Mutex<Option<CheckMenuItem<Wry>>>,
+    /// resources/gibbous-server, when this build carries the server.
+    bundle: Option<PathBuf>,
+    server: server::LocalServer,
+    background: Mutex<Option<CheckMenuItem<Wry>>>,
 }
 
 impl Shell {
@@ -107,6 +113,34 @@ fn target(app: &AppHandle) -> Target {
     Target { base, token, local }
 }
 
+fn is_loopback(u: &Url) -> bool {
+    matches!(u.host_str(), Some("127.0.0.1" | "localhost" | "[::1]" | "::1"))
+}
+
+/// Start the bundled server when this computer's Gibbous doesn't answer: not for a pasted remote server or
+/// $GIBBOUS_URL, and never next to your own service or the background one (those start it themselves). True while
+/// the app's own server is running (it may still be booting).
+fn ensure_server(app: &AppHandle) -> bool {
+    let sh = shell(app);
+    let Some(bundle) = sh.bundle.clone() else { return false };
+    if sh.server.running() {
+        return true;
+    }
+    let t = target(app);
+    let remote = sh.saved.lock().unwrap().server.is_some() || std::env::var_os("GIBBOUS_URL").is_some();
+    if remote || !is_loopback(&t.base) || server::own_service() || server::background_enabled() || reachable(&t.base) {
+        return false;
+    }
+    let port = t.base.port_or_known_default().unwrap_or(7878);
+    match sh.server.start(&bundle, &gibbous_home(app), port) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("gibbous: {e}");
+            false
+        }
+    }
+}
+
 fn reachable(u: &Url) -> bool {
     let Some(host) = u.host_str() else { return false };
     let port = u.port_or_known_default().unwrap_or(80);
@@ -163,7 +197,8 @@ fn connect(app: &AppHandle, show_connect_page: bool) {
         let route = shell(app).saved.lock().unwrap().route.clone().unwrap_or_default();
         let _ = w.navigate(login_url(&t.base, &t.token, &route));
     } else {
-        set_status(app, &t.base, if show_connect_page { "signin" } else { "unreachable" }, t.local);
+        let starting = !show_connect_page && ensure_server(app);
+        set_status(app, &t.base, if show_connect_page { "signin" } else if starting { "starting" } else { "unreachable" }, t.local);
         if !w.url().is_ok_and(|u| is_app_page(&u)) {
             let _ = w.navigate(app_page());
         }
@@ -174,8 +209,11 @@ fn retry_loop(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(3));
         let st = shell(&app).status.lock().unwrap().clone();
-        if st.state == "unreachable" {
+        if st.state == "unreachable" || st.state == "starting" {
             let base = shell(&app).base.lock().unwrap().clone();
+            if !reachable(&base) && ensure_server(&app) && st.state == "unreachable" {
+                set_status(&app, &base, "starting", st.local);
+            }
             if reachable(&base) {
                 let a = app.clone();
                 let _ = app.run_on_main_thread(move || connect(&a, false));
@@ -430,7 +468,8 @@ fn build_window(app: &AppHandle, hidden: bool) -> tauri::Result<WebviewWindow> {
     *shell(app).base.lock().unwrap() = t.base.clone();
     allow_server(app, &t.base);
     let up = reachable(&t.base);
-    set_status(app, &t.base, if up { "ok" } else { "unreachable" }, t.local);
+    let starting = !up && ensure_server(app);
+    set_status(app, &t.base, if up { "ok" } else if starting { "starting" } else { "unreachable" }, t.local);
     let start = if up {
         let route = shell(app).saved.lock().unwrap().route.clone().unwrap_or_default();
         WebviewUrl::External(login_url(&t.base, &t.token, &route))
@@ -494,7 +533,16 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .item(&MenuItem::with_id(app, "new", "New thread", true, None::<&str>)?)
         .item(&MenuItem::with_id(app, "inbox", "Inbox", true, None::<&str>)?)
         .item(&PredefinedMenuItem::separator(app)?)
-        .item(&autostart)
+        .item(&autostart);
+    let menu = if shell(app).bundle.is_some() {
+        // Your own install (scripts/install-service.*) already runs Gibbous at login; the app leaves it alone.
+        let bg = CheckMenuItem::with_id(app, "background", "Keep Gibbous running in the background", !server::own_service(), server::background_enabled(), None::<&str>)?;
+        *shell(app).background.lock().unwrap() = Some(bg.clone());
+        menu.item(&bg)
+    } else {
+        menu
+    };
+    let menu = menu
         .item(&MenuItem::with_id(app, "signin", "Sign in with a link…", true, None::<&str>)?)
         .item(&MenuItem::with_id(app, "reload", "Reload", true, None::<&str>)?)
         .item(&PredefinedMenuItem::separator(app)?)
@@ -529,6 +577,27 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = i.set_checked(al.is_enabled().unwrap_or(false));
             }
         }
+        "background" => {
+            let a = app.clone();
+            std::thread::spawn(move || {
+                let on = !server::background_enabled();
+                let sh = shell(&a);
+                // The service takes over the same port: stop ours first; turning it off starts ours again.
+                if on {
+                    sh.server.stop();
+                }
+                if let Err(e) = server::set_background(on) {
+                    eprintln!("gibbous: background server: {e}");
+                    native_notify(&a, "Couldn't change the background server", &e, "", "");
+                }
+                if let Some(i) = sh.background.lock().unwrap().as_ref() {
+                    let _ = i.set_checked(server::background_enabled());
+                }
+                std::thread::sleep(Duration::from_secs(1));
+                let b = a.clone();
+                let _ = a.run_on_main_thread(move || connect(&b, false));
+            });
+        }
         "quit" => app.exit(0),
         _ => {}
     })
@@ -555,6 +624,16 @@ fn register_hotkey(app: &AppHandle) {
 }
 
 pub fn run() {
+    let ctx = tauri::generate_context!();
+    // `gibbous --serve`: the background service's entry point, no window.
+    if std::env::args().any(|a| a == "--serve") {
+        let dir = tauri::utils::platform::resource_dir(ctx.package_info(), &tauri::Env::default()).ok();
+        let Some(bundle) = server::bundle_dir(dir) else {
+            eprintln!("gibbous --serve: this build has no bundled server");
+            std::process::exit(1)
+        };
+        std::process::exit(server::serve(&bundle));
+    }
     let hidden = std::env::args().any(|a| a == "--hidden");
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| show(app)))
@@ -571,12 +650,16 @@ pub fn run() {
             let h = app.handle().clone();
             let file = h.path().app_config_dir()?.join("settings.json");
             let saved: Saved = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+            let bundle = server::bundle_dir(h.path().resource_dir().ok());
             h.manage(Shell {
                 file,
                 saved: Mutex::new(saved),
                 status: Mutex::new(Status { server: String::new(), state: "connecting".into(), local: false }),
                 base: Mutex::new(Url::parse(DEFAULT_SERVER).unwrap()),
                 autostart: Mutex::new(None),
+                bundle,
+                server: Default::default(),
+                background: Mutex::new(None),
             });
             build_window(&h, hidden)?;
             if let Err(e) = build_tray(&h) {
@@ -595,6 +678,14 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Gibbous");
+        .build(ctx)
+        .expect("error while running Gibbous")
+        .run(|app, e| {
+            // Quit stops the server this app started (a background service or your own one keeps running).
+            if let RunEvent::Exit = e {
+                if let Some(sh) = app.try_state::<Shell>() {
+                    sh.server.stop();
+                }
+            }
+        });
 }

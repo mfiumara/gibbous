@@ -182,20 +182,19 @@ export function kanbanDbPath(s: string, env: NodeJS.ProcessEnv = process.env, ho
 }
 
 export interface KanbanLink { parent: string; child: string }
-const linkDbs = new Map<string, DatabaseSync>();
 // node:sqlite opens a live WAL db read-only fine (Python's `mode=ro` doesn't). A missing db or table = no links.
+// Opened per read (boardLinks caches the result): a handle kept open would lock the file on Windows.
 export function readLinks(file: string): KanbanLink[] {
-  if (!fs.existsSync(file)) { linkDbs.get(file)?.close(); linkDbs.delete(file); return []; }
+  if (!fs.existsSync(file)) return [];
+  let db: DatabaseSync | undefined;
   try {
-    let db = linkDbs.get(file);
-    if (!db) { db = new DatabaseSync(file, { readOnly: true }); db.exec('PRAGMA busy_timeout = 2000'); linkDbs.set(file, db); }
+    db = new DatabaseSync(file, { readOnly: true }); db.exec('PRAGMA busy_timeout = 2000');
     return (db.prepare('SELECT parent_id AS parent, child_id AS child FROM task_links ORDER BY rowid').all() as any[])
       .map(r => ({ parent: String(r.parent), child: String(r.child) }));
   } catch (e: any) {
     if (/no such table/.test(String(e?.message))) return [];
-    linkDbs.get(file)?.close(); linkDbs.delete(file);   // a replaced file: reopen next time
     throw new KanbanError(502, `Could not read the board's links: ${e?.message ?? e}`);
-  }
+  } finally { db?.close(); }
 }
 
 export function boardLinks(s: string, env: NodeJS.ProcessEnv = process.env) {

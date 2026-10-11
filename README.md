@@ -4,9 +4,15 @@ A cockpit for the Hermes agent running on your computer (macOS, Linux, Windows):
 
 ## Install
 
+### Desktop app (one download)
+
+The desktop apps carry their own Gibbous server: Gibbous for macOS (notarized DMG, universal) and for Windows (`.exe`/`.msi`) and Linux (`.deb`/`.AppImage`) from GitHub Releases. Nothing else to install besides [Hermes Agent](https://github.com/NousResearch/hermes-agent). On launch the app uses a Gibbous server that already answers on this computer (your own install below, at `127.0.0.1:7878` or the port in `~/.gibbous/login-url`); otherwise it starts the one inside the app, with the same data folder (`~/.gibbous`), and stops it when you quit. *Keep Gibbous running in the background* (menu-bar item on macOS, tray on Windows/Linux) hands it to a login service instead (a Login Item on macOS, a `gibbous-app` systemd user unit on Linux, the "Gibbous app server" Scheduled Task on Windows) so agents and notifications keep going after you quit; it's unavailable when your own service is installed, which the app never touches. The bundled server (Node 22, the server, the web app) updates with the app. The App Store/TestFlight Mac app is a window onto a server you run yourself.
+
+### From source
+
 Needs Node.js 22.18+ (runs the server's TypeScript directly), pnpm, git, and [Hermes Agent](https://github.com/NousResearch/hermes-agent) installed for your user. Gibbous finds the `hermes` command through `HERMES_BIN`, then your `PATH`, then the installer's default location (`~/.local/bin/hermes`, or `%LOCALAPPDATA%\hermes\bin\hermes.exe` on Windows), and reads Hermes' data from `HERMES_HOME` or its default (`~/.hermes`, or `%LOCALAPPDATA%\hermes` on Windows).
 
-### macOS
+#### macOS
 
 ```sh
 pnpm install
@@ -17,7 +23,7 @@ scripts/build-mac-app.sh       # optional: ~/Applications/Gibbous.app
 
 Restart: `launchctl kickstart -k gui/$(id -u)/dev.gibbous.server`.
 
-### Linux (and WSL)
+#### Linux (and WSL)
 
 ```sh
 pnpm install                   # builds node-pty: needs python3, make and a C++ compiler (build-essential)
@@ -26,7 +32,7 @@ scripts/install-service.sh     # builds the web app, runs Gibbous as a systemd -
 
 Restart with `systemctl --user restart gibbous`; logs go to `~/.gibbous/gibbous.log`. The installer enables lingering when allowed, so Gibbous keeps running while you're logged out. On WSL, turn systemd on first (`[boot] systemd=true` in `/etc/wsl.conf`, then `wsl --shutdown`), or run `node server/main.ts` by hand; open the login link in your Windows browser (WSL forwards `127.0.0.1`). Terminals use your `$SHELL`; revealing a saved file opens its folder with `xdg-open` (Windows Explorer on WSL).
 
-### Windows
+#### Windows
 
 ```powershell
 pnpm install
@@ -126,12 +132,12 @@ Logs: `~/.gibbous/gibbous.log` and `~/.gibbous/hermes-serve.log` (`%USERPROFILE%
 The version lives in `ios/project.yml` (`MARKETING_VERSION`) and `package.json`. Both release scripts use the App Store Connect API key in `~/.appstoreconnect` (see `ios/tools/asc.mjs`).
 
 ```sh
-scripts/release-mac.sh   # notarized dist/Gibbous-<version>.dmg (needs a Developer ID Application certificate)
+scripts/release-mac.sh   # notarized dist/Gibbous-<version>.dmg with the bundled server (cloud Developer ID signing via Xcode)
 scripts/release-ios.sh   # archive the iPhone app and upload it to App Store Connect / TestFlight
 node e2e/demo/run.ts     # demo footage and screenshots: isolated instance, scripted fake Hermes, no tokens spent
 ```
 
-The DMG is the unsandboxed `dev.gibbous.desktop` app (signs in to the local server with no setup), attached to a GitHub release. Submitting the iPhone build for App Review is done in App Store Connect.
+The DMG is the unsandboxed `dev.gibbous.desktop` app (signs in to the local server with no setup, or starts its own: `scripts/bundle-server.mjs` stages Node 22 + server + web, `scripts/mac-embed-server.sh` embeds and signs it), attached to a GitHub release. The Windows/Linux installers come from `.github/workflows/desktop.yml` on a `v*` tag, with the same bundle (`node scripts/bundle-smoke.mjs <bundle>` boots one without Hermes). Submitting the iPhone build for App Review is done in App Store Connect.
 
 ## Deliberate shortcuts
 

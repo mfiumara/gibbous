@@ -16,7 +16,7 @@
   .status { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: 22px; }
   .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dust); }
   .status[data-state=unreachable] .dot { background: var(--oxide); }
-  .status[data-state=connecting] .dot, .status[data-state=ok] .dot { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  .status[data-state=connecting] .dot, .status[data-state=starting] .dot, .status[data-state=ok] .dot { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .3; } }
   .status span { overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
   label { display: block; font-size: 12px; color: var(--dust); margin-bottom: 6px; }
@@ -61,6 +61,9 @@
       if (st.state === 'unreachable') {
         $('title').textContent = "Can't reach Gibbous";
         $('statusText').textContent = `Nothing answers at ${st.server}. Start the Gibbous server (or the service), and this window connects by itself.`;
+      } else if (st.state === 'starting') {
+        $('title').textContent = 'Starting Gibbous…';
+        $('statusText').textContent = `Starting the server that comes with this app at ${st.server}. This window signs in as soon as it's up.`;
       } else if (st.state === 'signin') {
         $('title').textContent = 'Sign in to Gibbous';
         $('statusText').textContent = `Current server: ${st.server}`;

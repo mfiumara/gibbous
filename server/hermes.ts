@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { hermesBin, commandFor } from './platform.ts';
+import { findHermes, commandFor } from './platform.ts';
 import WebSocket from 'ws';
 import { GIBBOUS_HOME, readJson, writeJsonAtomic } from './store.ts';
 
@@ -22,16 +22,24 @@ async function alive(b: Backend): Promise<boolean> {
   } catch { return false; }
 }
 
+// No `hermes` command on this machine (and no backend already running): the server keeps going and offers setup.
+export class HermesMissing extends Error {
+  status = 503;
+  constructor() { super("Hermes isn't installed yet. Finish setup in Gibbous first."); }
+}
+
 // `serve` is spawned detached and its port/token persisted, so restarting Gibbous never kills running agents.
 // Desktop mode (HERMES_DESKTOP=1 + minted token on loopback) is the only way past the dashboard's password gate.
 export async function ensureBackend(port = Number(process.env.GIBBOUS_HERMES_PORT ?? 9120)): Promise<Backend> {
   const saved = readJson<Backend | null>(BACKEND_FILE, null);
   if (saved && await alive(saved)) return saved;
+  // Resolved per OS (platform.ts): HERMES_BIN, PATH, ~/.local/bin/hermes, %LOCALAPPDATA%\hermes\bin\hermes.exe.
+  const bin = findHermes();
+  if (!bin) throw new HermesMissing();
   const b: Backend = { port, token: randomBytes(24).toString('hex') };
   const logFile = path.join(GIBBOUS_HOME, 'hermes-serve.log'), log = fs.openSync(logFile, 'a');
-  // Resolved per OS (platform.ts): HERMES_BIN, PATH, ~/.local/bin/hermes, %LOCALAPPDATA%\hermes\bin\hermes.exe.
   // windowsHide: no console window pops up for the detached server on Windows.
-  const c = commandFor(hermesBin(), ['serve', '--port', String(port), '--skip-build']);
+  const c = commandFor(bin, ['serve', '--port', String(port), '--skip-build']);
   const child = spawn(c.cmd, c.args, {
     detached: true, stdio: ['ignore', log, log], windowsHide: true, windowsVerbatimArguments: !!c.verbatim,
     env: { ...process.env, HERMES_DESKTOP: '1', HERMES_DASHBOARD_SESSION_TOKEN: b.token },

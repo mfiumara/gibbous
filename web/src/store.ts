@@ -5,15 +5,19 @@ import { rpc } from './rpc';
 import { showsTarget } from './notify';
 import { inIosApp, inMobileApp, appNotify, nativeBanners } from './mobileBridge';
 import type { Service } from './paths';
+import { appendLog, type HermesSetup } from './onboarding';
 import { desktopNotify, inDesktopApp } from './desktopBridge';
 import { desktopNotification } from './desktopshell';
 
 interface Toast { id: number; title: string; body?: string; url?: string; tone?: 'error' | 'info'; action?: { label: string; run(): void } }
 
 interface S {
-  loaded: boolean; authed: boolean | null; connected: boolean;
+  loaded: boolean; authed: boolean | null;
+  connected: boolean;   // Hermes' gateway answered on /ws (RPC usable)
+  serverUp: boolean;    // the socket to the Gibbous server is open, Hermes or not (first-run setup has no Hermes yet)
   projects: Project[]; threads: Thread[]; requests: OpenRequest[];
-  settings?: Settings; hermesReady: boolean; hermes?: { ready: boolean; version?: string; updateAvailable?: boolean; gatewayRunning?: boolean }; gatewayReplies?: boolean;
+  settings?: Settings; hermesReady: boolean; hermes?: HermesSetup; gatewayReplies?: boolean;
+  setupLog: string[]; setupResult?: { ok: boolean; error?: string; at: number }; // the Hermes installer's live output (Setup.tsx)
   hosts: (Host & { connected: boolean })[]; tailnetUrl: string | null; tailnetLogin: string | null; vapidPublicKey: string;
   build?: string | null; // web build the server serves now (see LOADED_BUILD)
   prs: Record<string, PrBadge>; // thread id → its GitHub PR (worktree threads only)
@@ -40,7 +44,7 @@ const upsert = <T extends { id: string }>(list: T[], item: T, front = false) => 
 
 let toastId = 0;
 export const useStore = create<S>((set, get) => ({
-  loaded: false, authed: null, connected: false,
+  loaded: false, authed: null, connected: false, serverUp: false, setupLog: [],
   projects: [], threads: [], requests: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {},
   toasts: [], sidebar: false, palette: false,
   hiddenProjects: JSON.parse(localStorage.getItem('gibbous.hiddenProjects') ?? '[]'),
@@ -120,6 +124,9 @@ rpc.onGibbous = (kind, data) => {
     case 'settings': useStore.setState({ settings: data }); break;
     case 'hermes': useStore.setState({ hermesReady: data.ready }); break;
     case 'health': useStore.setState({ hermes: { ...s.hermes, ready: s.hermesReady, ...data } }); break;
+    case 'setup': useStore.setState({ hermes: { ...s.hermes, ready: s.hermesReady, ...data } }); break;
+    case 'setupLog': useStore.setState({ setupLog: appendLog(s.setupLog, String(data.line), !!data.replace) }); break;
+    case 'setupDone': useStore.setState({ setupResult: data }); break;
     case 'notify': {
       // Inside the apps every notification is a native banner, foreground too, except for the thread you're looking at
       // (the test always shows). Plain browsers keep the in-app toast.
@@ -141,6 +148,10 @@ rpc.onGibbous = (kind, data) => {
     case 'reload': s.load(); break;
     case 'build': useStore.setState({ build: data }); break;
   }
+};
+rpc.onSocket = open => {
+  useStore.setState({ serverUp: open });
+  if (open && !rpc.ready && useStore.getState().authed) useStore.getState().load(); // no Hermes yet: still resync Gibbous' own state
 };
 rpc.onStatus = connected => {
   useStore.setState({ connected });

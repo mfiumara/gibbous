@@ -163,7 +163,7 @@ function useSidebarWidth() {
 }
 
 export function Sidebar({ route, onAddProject }: { route: Route; onAddProject(): void }) {
-  const { projects, threads, connected, hermesReady, sidebar, hosts } = useStore(useShallow(s => ({ projects: s.projects, threads: s.threads, connected: s.connected, hermesReady: s.hermesReady, sidebar: s.sidebar, hosts: s.hosts })));
+  const { projects, threads, connected, hermesReady, missing, sidebar, hosts } = useStore(useShallow(s => ({ projects: s.projects, threads: s.threads, connected: s.serverUp || s.connected, hermesReady: s.hermesReady, missing: s.hermes?.installed === false, sidebar: s.sidebar, hosts: s.hosts })));
   const width = useSidebarWidth();
   // Rows are memoized: a minute tick keeps their "5m" ages current.
   const [minute, setMinute] = useState(0);
@@ -284,7 +284,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
     return [...m.entries()];
   }, [visible]);
   const activeId = route.name === 'thread' ? route.id : undefined;
-  const status = !connected ? { cls: 'bg-oxide', text: 'Reconnecting' } : !hermesReady ? { cls: 'bg-halo animate-pulse', text: 'Hermes starting' } : null;
+  const status = !connected ? { cls: 'bg-oxide', text: 'Reconnecting' } : !hermesReady ? { cls: 'bg-halo animate-pulse', text: missing ? 'Hermes not installed' : 'Hermes starting' } : null;
 
   const nav = (href: string, icon: React.ReactNode, label: string, active: boolean, badge?: number) => (
     <a href={href} onClick={close} aria-current={active ? 'page' : undefined} className={`${rowCls(active)} px-3 py-1.5 pointer-coarse:py-2.5`}>

@@ -13,7 +13,7 @@ import { baseName } from './paths';
 // ── routing (hash-based so the PWA works from any path) ────────────────
 export type Route =
   | { name: 'home'; projectId?: string; host?: string } | { name: 'thread'; id: string } | { name: 'board'; projectId: string } | { name: 'kanban'; slug?: string }
-  | { name: 'inbox' } | { name: 'sessions'; tool?: string } | { name: 'import' } | { name: 'search'; q: string } | { name: 'settings'; tab: string } | { name: 'rooms'; id?: string } | { name: 'automations' };
+  | { name: 'inbox' } | { name: 'sessions'; tool?: string } | { name: 'import' } | { name: 'search'; q: string } | { name: 'settings'; tab: string } | { name: 'rooms'; id?: string } | { name: 'automations' } | { name: 'setup' };
 
 export function parse(h: string): Route {
   const [path, query = ''] = h.replace(/^#/, '').split('?');
@@ -26,7 +26,7 @@ export function parse(h: string): Route {
   if (a === 'settings') return { name: 'settings', tab: b ?? '' }; // '' = the section list (phones); desktop shows General
   if (a === 'rooms') return { name: 'rooms', id: b };
   if (a === 'sessions') return { name: 'sessions', tool: b || undefined };
-  if (a === 'inbox' || a === 'automations' || a === 'import') return { name: a };
+  if (a === 'inbox' || a === 'automations' || a === 'import' || a === 'setup') return { name: a };
   return { name: 'home' };
 }
 

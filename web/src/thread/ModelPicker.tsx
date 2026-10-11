@@ -29,6 +29,19 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
   useEffect(() => { if (open && !providers) load(); }, [open, providers]);
   useEffect(() => { if (!open) setQ(''); }, [open]);
   const run = (cmd: string) => sid && rpc.call('slash.exec', { session_id: sid, command: cmd }).then(r => r.warning && useStore.getState().toast({ title: r.warning }), toastError);
+  // config.set, not `/model`: the slash mirror only touches a live, idle agent, so a pick made while a turn runs (or
+  // retries after the credits ran out) or before the agent exists silently did nothing. config.set defers a busy
+  // session's pick to the next message, builds the agent when it's missing, and asks before a pricey model.
+  const pick = async (provider: string, model: string, confirmed = false): Promise<void> => {
+    if (!sid) return;
+    const toast = useStore.getState().toast;
+    try {
+      const r = await rpc.call('config.set', { session_id: sid, key: 'model', value: `${model} --provider ${provider}`, ...(confirmed ? { confirm_expensive_model: true } : {}) });
+      if (r.confirm_required) { if (window.confirm(r.confirm_message || `Switch to ${model}?`)) return pick(provider, model, true); return; }
+      if (r.deferred) toast({ title: `${shortModel(model)} takes over from your next message`, body: 'The turn running now finishes on the old model. Stop it to switch right away.' });
+      else if (r.warning) toast({ title: r.warning });
+    } catch (e) { toastError(e); }
+  };
   const needle = q.toLowerCase();
   const isCurrent = (p: ModelOptionProvider, m: string) => info?.model === m && (!info.provider || info.provider === p.slug);
   return (
@@ -64,7 +77,7 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
               const models = (p.models ?? []).filter(m => !needle || m.toLowerCase().includes(needle) || p.name.toLowerCase().includes(needle)).slice(0, needle ? 60 : 30);
               if (!models.length) return null;
               return <div key={p.slug} className="py-1"><p className="label px-2 py-1">{p.name}</p>
-                {models.map(m => <button key={m} onClick={() => { run(`/model ${m} --provider ${p.slug}`); setOpen(false); }}
+                {models.map(m => <button key={m} onClick={() => { pick(p.slug, m); setOpen(false); }}
                   className="press w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left font-mono text-[12.5px] hover:bg-ridge">
                   <span className="flex-1 truncate">{m}</span>{isCurrent(p, m) && <Check size={13} className="text-tide" />}
                 </button>)}

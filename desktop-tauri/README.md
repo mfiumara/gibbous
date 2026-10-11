@@ -7,6 +7,12 @@ server's web app; nothing of the UI is bundled except the connect screen (`ui/in
   `~/.gibbous`, on Windows `%USERPROFILE%\.gibbous`). When nothing answers it shows *Can't reach Gibbous* and connects
   as soon as the server is up. Paste a sign-in link there (or tray → *Sign in with a link…*) to use another computer's
   Gibbous; it's remembered. `GIBBOUS_URL=http://host:port` overrides the server.
+- **Carries its own server** (release builds): `resources/gibbous-server` = Node 22 + the Gibbous server + the web app
+  (`scripts/bundle-server.mjs`, added by `src-tauri/tauri.server.conf.json`). When nothing answers on this computer's
+  port and you haven't installed Gibbous yourself, the app starts it (same `~/.gibbous`), shows *Starting Gibbous…*,
+  signs in, and stops it on Quit. Tray → *Keep Gibbous running in the background* hands it to a login service that
+  runs `gibbous --serve` (systemd user unit `gibbous-app.service`; Scheduled Task *Gibbous app server*); greyed out when
+  your own `gibbous.service` / *Gibbous* task exists, which the app never touches. Code: `src-tauri/src/server.rs`.
 - **Notifications** as system notifications (every thread except the one on screen); a click opens the thread.
 - **Tray icon**: Open, New thread, Inbox, Launch at login, Sign in with a link, Reload, Quit. Closing the window keeps
   Gibbous in the tray. **Ctrl+Alt+Space** shows/hides the window (X11 and Windows; Wayland doesn't allow global keys).
@@ -23,7 +29,8 @@ per server origin (`allow_server` in `lib.rs`), the connect-screen-only messages
 
 ## Install
 
-The Gibbous server has to run on the same computer (or paste a link to one elsewhere): see the main README.
+Release installers bring their own server; you only need Hermes. Builds without the bundle need a Gibbous server on
+the same computer (or paste a link to one elsewhere): see the main README.
 
 **Linux** (x86_64 and arm64)
 - Debian/Ubuntu: `sudo apt install ./Gibbous_<version>_amd64.deb` (pulls `libwebkit2gtk-4.1-0`), then *Gibbous* in the app menu.
@@ -43,12 +50,25 @@ npx tauri build                     # on the target OS (Linux needs libwebkit2gt
 (cd src-tauri && cargo test --lib)  # sign-in/link helpers
 ```
 
+With the bundled server (what CI ships): stage it, then build with the extra config.
+
+```sh
+pnpm install && node scripts/bundle-server.mjs --target win32-x64 --out desktop-tauri/server-bundle   # or linux-x64…
+node scripts/bundle-smoke.mjs desktop-tauri/server-bundle/gibbous-server    # boots it: fresh home, no Hermes
+cd desktop-tauri && npx tauri build --config src-tauri/tauri.server.conf.json
+```
+
 Linux packages from macOS, in Docker (host arch; arm64 on Apple silicon):
 
 ```sh
 docker build -t gibbous-tauri-linux desktop-tauri/docker
+docker run --rm -v "$PWD:/repo:ro" -v "$PWD/desktop-tauri:/src" gibbous-tauri-linux sh /src/docker/stage-server.sh
 docker run --rm -v "$PWD/desktop-tauri:/src" -v gibbous-cargo:/usr/local/cargo/registry \
-  -v gibbous-tauri-target:/target -v gibbous-tauri-cache:/root/.cache gibbous-tauri-linux sh /src/docker/build.sh
+  -v gibbous-tauri-target:/target -v gibbous-tauri-cache:/root/.cache gibbous-tauri-linux \
+  sh /src/docker/build.sh --config src-tauri/tauri.server.conf.json     # drop --config for a window-only build
+# fresh machine, no Gibbous/Hermes: the app starts its server and signs in; `gibbous --serve` boots it too
+docker run --rm -v "$PWD:/repo:ro" -v "$PWD/desktop-tauri:/src" -v gibbous-tauri-target:/target -v <out>:/out \
+  gibbous-tauri-linux sh /src/docker/bundled-smoke.sh
 ```
 
 Windows: `.github/workflows/desktop.yml` (windows-latest + ubuntu-22.04; artifacts on every run, a draft release on a

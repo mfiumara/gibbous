@@ -24,6 +24,8 @@ const RoomsView = lazy(() => import('./Rooms').then(m => ({ default: m.RoomsView
 const AutomationsView = lazy(() => import('./Automations').then(m => ({ default: m.AutomationsView })));
 const Welcome = lazy(() => import('./Welcome').then(m => ({ default: m.Welcome })));
 const SettingsView = lazy(() => import('./Settings').then(m => ({ default: m.SettingsView })));
+const Setup = lazy(() => import('./Setup').then(m => ({ default: m.Setup })));
+import { needsSetup } from './onboarding';
 import { SkyMoon } from './SkyMoon';
 import { HealthBanner } from './HealthBanner';
 
@@ -110,6 +112,13 @@ export function App() {
     else (window as any).webkit?.messageHandlers?.gibbousBadge?.postMessage(waiting); // macOS app: Dock + menu-bar count
   }, [waiting]);
 
+  // Setup incomplete (Hermes missing, or running without a usable model): Home opens setup instead. Only Home, so a
+  // link to a thread or Settings still works; replace(), so Back doesn't bounce into setup again.
+  const setupNeeded = useStore(s => needsSetup(s.hermes, s.hermesReady));
+  useEffect(() => {
+    if (setupNeeded && route.name === 'home' && !route.projectId && !route.host && !location.hash.startsWith('#/new')) location.replace('#/setup');
+  }, [setupNeeded, route]);
+
   // A fresh Gibbous (no threads, no projects) opens on the import picker until it's used or skipped.
   const fresh = useStore(s => !s.welcomeDone && !s.threads.length && !s.projects.length);
   const screenRef = useRef<HTMLDivElement>(null);
@@ -125,10 +134,20 @@ export function App() {
     r.name === 'settings' ? <SettingsView tab={r.tab} /> :
     r.name === 'rooms' ? <RoomsView id={r.id} /> :
     r.name === 'automations' ? <AutomationsView /> :
+    r.name === 'setup' ? null : // full screen, below
     <Home projectId={r.projectId} host={r.host} onAddProject={() => setAdding(true)} />;
 
   if (!loaded) return <div className="h-full grid place-items-center"><MoonLoader size={56} label="Starting Gibbous" /></div>;
   if (!authed) return <Login />;
+  // First-run setup (Hermes missing, or no model yet) is its own calm full screen, without the sidebar.
+  if (route.name === 'setup') return (
+    <div className="h-full relative">
+      <SkyMoon />
+      <Suspense fallback={<div className="h-full grid place-items-center"><MoonLoader size={40} /></div>}><Setup /></Suspense>
+      <Toasts />
+      <TooltipHost />
+    </div>
+  );
 
   return (
     <div className="h-full flex overflow-hidden">
@@ -226,7 +245,7 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
       ...threads.filter(t => t.status !== 'archived').sort((a, b) => b.updatedAt - a.updatedAt)
         .map(t => ({ label: t.title, hint: t.readOnly ? sourceLabel(t.source) : projects.find(p => p.id === t.projectId)?.name ?? 'chat', href: `/t/${t.id}`, status: t.status })),
       ...(projects.length > 1 ? [{ label: 'Filter projects in the sidebar…', hint: 'filter', keywords: 'show hide projects sidebar toggle', stay: true, run: () => setMode('projects') }] : []),
-      { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Sessions', hint: 'go', href: '/sessions', keywords: 'history past conversations cli desktop paseo acp discord telegram claude code codex t3' }, ...TOOLS.filter(t => t.id !== 'opencode').map(t => ({ label: `${t.label} sessions`, hint: 'sessions', href: `/sessions/${t.id}`, keywords: `history ${t.tip}` })), { label: 'Import sessions…', hint: 'go', href: '/import', keywords: 'bring claude code codex history welcome first run' }, { label: 'Settings', hint: 'go', href: '/settings' },
+      { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Sessions', hint: 'go', href: '/sessions', keywords: 'history past conversations cli desktop paseo acp discord telegram claude code codex t3' }, ...TOOLS.filter(t => t.id !== 'opencode').map(t => ({ label: `${t.label} sessions`, hint: 'sessions', href: `/sessions/${t.id}`, keywords: `history ${t.tip}` })), { label: 'Import sessions…', hint: 'go', href: '/import', keywords: 'bring claude code codex history welcome first run' }, { label: 'Set up the agent…', hint: 'go', href: '/setup', keywords: 'install hermes model provider api key sign in chatgpt claude onboarding first run' }, { label: 'Settings', hint: 'go', href: '/settings' },
       ...SETTINGS.map(([id, label, keywords]) => ({ label: `${label} settings`, hint: 'settings', href: `/settings/${id}`, keywords })),
       ...(here ? [
         { label: here.pinned ? 'Unpin this thread' : 'Pin this thread', hint: 'action', run: () => { api.patch(`/api/threads/${here.id}`, { pinned: !here.pinned }).catch(toastError); } },
