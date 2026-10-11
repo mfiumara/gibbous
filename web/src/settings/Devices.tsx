@@ -6,7 +6,7 @@ import { useStore, toastError } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { Button, Switch } from '../ui';
 import { Section, Row } from './common';
-import { changeServer, inIosApp, onPushStatus, pushStatus, requestPush, shellVersion } from '../iosBridge';
+import { changeServer, inMobileApp, mobilePlatform, onPushStatus, pushStatus, requestPush, shellVersion } from '../mobileBridge';
 import { thisMachine } from '../paths';
 import { inDesktopApp } from '../desktopBridge';
 
@@ -36,11 +36,11 @@ export function NotificationsTab() {
       toast({ title: 'Notifications are on for this device' });
     } catch (e) { toastError(e); }
   };
-  const ios = inIosApp(); // the iPhone app: native push (APNs) instead of Web Push
-  const mac = !ios && !!(window as any).webkit?.messageHandlers?.gibbousNotify; // inside Gibbous.app: native macOS banners, no web push
+  const phone = inMobileApp(); // the iPhone/Android app: native push (APNs/FCM) instead of Web Push
   const desktop = inDesktopApp(); // the Windows/Linux app: native notifications, no web push
+  const mac = !phone && !desktop && !!(window as any).webkit?.messageHandlers?.gibbousNotify; // inside Gibbous.app: native macOS banners, no web push
   return <>
-    {ios ? <IphoneNotifications /> : desktop ? <Section title="This computer" description="The Gibbous app shows system notifications for every thread except the one on screen. If a test doesn't appear, check the system's notification settings (Focus Assist / Do Not Disturb)."
+    {phone ? <PhoneNotifications /> : desktop ? <Section title="This computer" description="The Gibbous app shows system notifications for every thread except the one on screen. If a test doesn't appear, check the system's notification settings (Focus Assist / Do Not Disturb)."
       aside={<Button onClick={() => api.post('/api/push/test').catch(toastError)}>Send a test</Button>} /> : mac ? <Section title="This Mac" description="Gibbous.app shows macOS notifications while its window isn't focused. If a test doesn't appear, allow Gibbous in System Settings → Notifications."
       aside={<Button onClick={() => api.post('/api/push/test').catch(toastError)}>Send a test</Button>} /> :
     <Section title="This device" description="Turn on separately on each device."
@@ -55,14 +55,16 @@ export function NotificationsTab() {
   </>;
 }
 
-// The iPhone app: APNs registration (iosBridge.ts posts the token to /api/push/apns) and the way back to its
-// connect screen.
-function IphoneNotifications() {
+// The phone apps: push registration (mobileBridge.ts posts the token to /api/push/apns on iPhone, /api/push/fcm on
+// Android) and the way back to the app's connect screen.
+const phoneName = () => mobilePlatform() === 'android' ? 'Android phone' : 'iPhone';
+function PhoneNotifications() {
   const push = useSyncExternalStore(onPushStatus, pushStatus);
   const label = push.state === 'on' ? 'On' : push.state === 'asking' ? 'Turning on…' : push.state === 'off' ? 'Off' : push.message;
-  return <Section title="This iPhone" description={`Gibbous for iPhone${shellVersion() ? ` ${shellVersion()}` : ''}.`}>
+  const app = mobilePlatform() === 'android' ? 'Android' : 'iPhone';
+  return <Section title={`This ${phoneName()}`} description={`Gibbous for ${app}${shellVersion() ? ` ${shellVersion()}` : ''}.`}>
     <div>
-      <Row title="Notifications on this iPhone" description={<span className={push.state === 'on' || push.state === 'off' || push.state === 'asking' ? '' : 'text-oxide select-text'}>{label}</span>}>
+      <Row title={`Notifications on this ${phoneName()}`} description={<span className={push.state === 'on' || push.state === 'off' || push.state === 'asking' ? '' : 'text-oxide select-text'}>{label}</span>}>
         <div className="flex gap-2">
           {push.state === 'on' && <Button onClick={() => api.post('/api/push/test').catch(toastError)}>Send a test</Button>}
           <Button tone={push.state === 'on' ? undefined : 'primary'} onClick={requestPush} disabled={push.state === 'asking'}>{push.state === 'off' || push.state === 'asking' ? 'Turn on' : push.state === 'on' ? 'Re-register' : 'Try again'}</Button>
@@ -79,15 +81,15 @@ export function PhoneTab() {
   const { tailnetUrl, tailnetLogin, toast, service } = useStore(useShallow(s => ({ tailnetUrl: s.tailnetUrl, tailnetLogin: s.tailnetLogin, toast: s.toast, service: s.service })));
   // QR encodes the sign-in link (token inside): scan with the phone camera, it opens Safari signed in.
   const qr = useMemo(() => tailnetLogin ? renderSVG(tailnetLogin, { border: 1, pixelSize: 6, blackColor: 'currentColor', whiteColor: 'transparent' }) : '', [tailnetLogin]);
-  const ios = inIosApp();
-  if (!tailnetUrl) return <>{ios && <Section title="This iPhone"><div><ServerRow /></div></Section>}<Section title="Phone" description={`Tailscale isn't running on ${thisMachine(service)}, so Gibbous is only reachable locally. Install Tailscale here and on your phone, then run scripts/tailscale.sh.`} /></>;
+  const phone = inMobileApp();
+  if (!tailnetUrl) return <>{phone && <Section title={`This ${phoneName()}`}><div><ServerRow /></div></Section>}<Section title="Phone" description={`Tailscale isn't running on ${thisMachine(service)}, so Gibbous is only reachable locally. Install Tailscale here and on your phone, then run scripts/tailscale.sh.`} /></>;
   return <>
-    {ios && <Section title="This iPhone"><div><ServerRow /></div></Section>}
+    {phone && <Section title={`This ${phoneName()}`}><div><ServerRow /></div></Section>}
     <Section title="Sign in on your phone" description={<>Scan with your phone's camera. Only your Tailscale devices can open it.</>}>
       <div className="flex flex-col sm:flex-row items-center gap-6">
         <div className="rounded-2xl bg-white p-3 text-[#111] shadow-[var(--shadow)] [&>svg]:size-48" aria-label="Sign-in QR code" role="img" dangerouslySetInnerHTML={{ __html: qr }} />
         <div className="space-y-3 text-[13px] text-dust">
-          {ios ? <p className="flex gap-2"><Smartphone size={15} className="flex-none mt-0.5 text-moon" /><span>Signs in another phone: scan with its camera to open Gibbous in Safari, or copy the link below and paste it into the Gibbous app's connect screen.</span></p> : <>
+          {phone ? <p className="flex gap-2"><Smartphone size={15} className="flex-none mt-0.5 text-moon" /><span>Signs in another phone: scan with its camera to open Gibbous in the browser, or copy the link below and paste it into the Gibbous app's connect screen.</span></p> : <>
             <p className="flex gap-2"><Smartphone size={15} className="flex-none mt-0.5 text-moon" /><span>To install: open the link, then <b className="text-moon">Share → Add to Home Screen</b>. The installed app keeps its own sign-in: on its sign-in screen, tap <b className="text-moon">Paste link</b> after copying the link below.</span></p>
             <p>Then turn on notifications in Settings, inside the installed app.</p>
           </>}

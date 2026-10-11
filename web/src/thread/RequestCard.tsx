@@ -5,7 +5,7 @@ import { ShieldAlert, HelpCircle, KeyRound } from 'lucide-react';
 import { api, type OpenRequest } from '../api';
 import { toastError, useStore } from '../store';
 import { Button, inputCls, go } from '../ui';
-import { haptic } from '../iosBridge';
+import { haptic } from '../mobileBridge';
 
 const answer = (r: OpenRequest, result: unknown) =>
   api.post(`/api/requests/${encodeURIComponent(r.id)}/answer`, { result }).catch(toastError);

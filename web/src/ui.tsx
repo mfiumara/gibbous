@@ -4,7 +4,7 @@ import { screenChange } from './screenTransition';
 import { Download, X, Check as CheckIcon, Minus } from 'lucide-react';
 import { api, type ThreadStatus, type KanbanStatus } from './api';
 import { useStore, toastError } from './store';
-import { haptic, inIosApp, shareNative } from './iosBridge';
+import { haptic, inMobileApp, shareNative } from './mobileBridge';
 import { desktopDownload, desktopReveal, inDesktopApp } from './desktopBridge';
 import { SHEET_QUERY, decide, offset, dismiss } from './sheet';
 import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel } from './moon';
@@ -465,7 +465,8 @@ export function TooltipHost() {
 // Gibbous session, so /api/media answered "login required". viewMedia() shows it right here instead.
 export const viewMedia = (src: string, name = '') => dispatchEvent(new CustomEvent('gibbous:view', { detail: { src, name } }));
 const mediaFile = (src: string) => { try { return new URL(src, location.origin).searchParams.get('path') ?? undefined; } catch { return undefined; } };
-const inMacApp = () => !inIosApp() && !inDesktopApp() && !!(window as any).webkit?.messageHandlers?.gibbousNotify;
+// Gibbous.app: webkit handlers but no phone/desktop platform (the iPhone app has the same handlers).
+const inMacApp = () => !inMobileApp() && !inDesktopApp() && !!(window as any).webkit?.messageHandlers?.gibbousNotify;
 
 // Save a file the agent made. A plain <a download> navigated Gibbous.app (and an iPhone home-screen app) to the file
 // itself, with no way back. The Mac app asks this Mac's server to copy it into ~/Downloads; phones get the share
@@ -474,8 +475,8 @@ export async function saveMedia(filePath: string) {
   const name = baseName(filePath) || 'file', url = `/api/media?path=${encodeURIComponent(filePath)}`;
   const toast = useStore.getState().toast;
   try {
-    // The iPhone app downloads it with the session's cookies and shows the share sheet (Save to Files / Photos).
-    if (inIosApp() && shareNative({ url, filename: name, title: name })) return;
+    // The phone apps download it with the session's cookies and show the share sheet (Save to Files / Photos).
+    if (inMobileApp() && shareNative({ url, filename: name, title: name })) return;
     // The Windows/Linux app downloads it with the page's cookies into the user's Downloads (works for a remote server too).
     if (inDesktopApp()) {
       const saved = await desktopDownload(url, name);

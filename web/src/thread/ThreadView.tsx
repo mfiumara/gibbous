@@ -28,7 +28,7 @@ const ProcessesPanel = lazy(() => import('../panels/ProcessesPanel').then(m => (
 const ScreenPanel = lazy(() => import('../panels/ScreenPanel').then(m => ({ default: m.ScreenPanel })));
 import { filesFrom } from '../attachments';
 import { findLocalUrls } from '../panels/preview-urls';
-import { haptic } from '../iosBridge';
+import { haptic } from '../mobileBridge';
 import { thisMachine } from '../paths';
 
 const PANELS: PanelDef[] = [

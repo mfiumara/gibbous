@@ -1,7 +1,7 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { X, Search, CornerDownLeft, Copy } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo } from './store';
-import { inIosApp, iosBadge } from './iosBridge';
+import { inMobileApp, appBadge } from './mobileBridge';
 import { desktopBadge, inDesktopApp } from './desktopBridge';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type ThreadStatus } from './api';
@@ -105,7 +105,7 @@ export function App() {
   const waiting = useStore(s => s.requests.length);
   useEffect(() => {
     document.title = waiting ? `(${waiting}) Gibbous` : 'Gibbous';
-    if (inIosApp()) iosBadge(waiting); // iPhone app: icon badge
+    if (inMobileApp()) appBadge(waiting); // phone apps: icon badge
     else if (inDesktopApp()) desktopBadge(waiting); // Windows/Linux app: taskbar/launcher count, title, tray
     else (window as any).webkit?.messageHandlers?.gibbousBadge?.postMessage(waiting); // macOS app: Dock + menu-bar count
   }, [waiting]);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HAPTICS, hapticStyle, hapticDue, HAPTIC_GAP, openPath, isExternal, pushResult } from './iosshell.ts';
+import { HAPTICS, hapticStyle, hapticDue, HAPTIC_GAP, openPath, isExternal, pushResult, shellPlatform, androidMessage, pushRegistration } from './mobileshell.ts';
 
 const O = 'https://mac.tail1234.ts.net:8444';
 
@@ -55,4 +55,42 @@ test('push registration answers → Settings status', () => {
   assert.equal(pushResult(404, { error: 'not found' }).state, 'outdated');
   assert.match(pushResult(404, undefined).message!, /Update the Gibbous server/);
   assert.deepEqual(pushResult(500, { error: 'boom' }), { state: 'error', message: 'boom' });
+});
+
+test('push registration on Android: the Firebase message, 404 still means an outdated server', () => {
+  assert.deepEqual(pushResult(200, { ok: true, configured: true }, 'android'), { state: 'on' });
+  assert.deepEqual(pushResult(200, { ok: true, configured: false }, 'android'), { state: 'unconfigured', message: 'Push needs a Firebase service account on the server' });
+  assert.match(pushResult(200, { ok: true, configured: false }, 'ios').message!, /APNs key/);
+  assert.equal(pushResult(404, undefined, 'android').state, 'outdated');
+  assert.deepEqual(pushResult(400, { error: 'bad token' }, 'android'), { state: 'error', message: 'bad token' });
+});
+
+test('shell platform: from __gibbousShell first, then data-shell; Mac/desktop shells are not phones', () => {
+  assert.equal(shellPlatform({ platform: 'ios' }), 'ios');
+  assert.equal(shellPlatform({ platform: 'android' }), 'android');
+  assert.equal(shellPlatform(undefined, 'android'), 'android');
+  assert.equal(shellPlatform(undefined, 'ios'), 'ios');
+  assert.equal(shellPlatform({ platform: 'android' }, 'ios'), 'android');
+  assert.equal(shellPlatform({ platform: 'windows' }), undefined);
+  assert.equal(shellPlatform({ platform: 'linux' }, 'android'), undefined);
+  assert.equal(shellPlatform({}, 'mac'), undefined); // Gibbous.app's shell values have no platform
+  assert.equal(shellPlatform(undefined, undefined), undefined);
+  assert.equal(shellPlatform(null, ''), undefined);
+});
+
+test('Android messages: one JSON string with the iOS handler name and body', () => {
+  const s = androidMessage('gibbousNotify', { title: 'T', body: 'B', url: '#/t/th_1' });
+  assert.equal(typeof s, 'string');
+  assert.deepEqual(JSON.parse(s), { name: 'gibbousNotify', body: { title: 'T', body: 'B', url: '#/t/th_1' } });
+  assert.deepEqual(JSON.parse(androidMessage('gibbousPush', {})), { name: 'gibbousPush', body: {} });
+});
+
+test('push token endpoint per platform', () => {
+  const t = 'x'.repeat(40);
+  assert.deepEqual(pushRegistration('android', t, 'fcm'), { path: '/api/push/fcm', body: { token: t } });
+  assert.deepEqual(pushRegistration('android', t), { path: '/api/push/fcm', body: { token: t } });
+  assert.deepEqual(pushRegistration('ios', t, 'fcm'), { path: '/api/push/fcm', body: { token: t } });
+  assert.deepEqual(pushRegistration('ios', t, 'production'), { path: '/api/push/apns', body: { token: t, env: 'production' } });
+  assert.deepEqual(pushRegistration('ios', t, 'sandbox'), { path: '/api/push/apns', body: { token: t, env: 'sandbox' } });
+  assert.deepEqual(pushRegistration('ios', t, undefined), { path: '/api/push/apns', body: { token: t, env: 'sandbox' } });
 });

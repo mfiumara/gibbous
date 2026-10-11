@@ -7,13 +7,13 @@ import { useStore } from './store';
 import { applyPrefs, go } from './ui';
 import { healViewportOnBlur, trackKeyboard } from './viewport';
 import { installMacShell } from './macBridge';
-import { inIosApp, installIosShell } from './iosBridge';
+import { inMobileApp, installMobileShell } from './mobileBridge';
 import { installDesktopShell } from './desktopBridge';
 
 applyPrefs();
-installIosShell({ go, refresh: () => useStore.getState().load(), reconnect: () => { if (useStore.getState().authed) rpc.kick(); else useStore.getState().load(); } });
-// Safari's keyboard workarounds. The iPhone app resizes the web view above the keyboard itself, so they'd fight it.
-if (!inIosApp()) { healViewportOnBlur(); trackKeyboard(); }
+installMobileShell({ go, refresh: () => useStore.getState().load(), reconnect: () => { if (useStore.getState().authed) rpc.kick(); else useStore.getState().load(); } });
+// Safari's keyboard workarounds. The phone apps resize the web view above the keyboard themselves, so they'd fight it.
+if (!inMobileApp()) { healViewportOnBlur(); trackKeyboard(); }
 installMacShell();
 installDesktopShell({ go, refresh: () => useStore.getState().load() });
 // A newer build was deployed while this tab was open and one of its chunks is gone: reload once onto the new build.
@@ -48,8 +48,8 @@ function nativeFeel() {
 }
 
 useStore.getState().load().then(() => { if (useStore.getState().authed) rpc.connect(); });
-// The iPhone app has native push and loads every build live: no service worker there.
-if ('serviceWorker' in navigator && !inIosApp()) navigator.serviceWorker.register('/sw.js').catch(() => {});
+// The phone apps have native push and load every build live: no service worker there.
+if ('serviceWorker' in navigator && !inMobileApp()) navigator.serviceWorker.register('/sw.js').catch(() => {});
 // Clicking a push notification while the app is open routes in-place.
 navigator.serviceWorker?.addEventListener('message', e => { if (e.data?.url) location.hash = String(e.data.url).replace(/^\/#/, ''); });
 

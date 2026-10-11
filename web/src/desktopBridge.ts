@@ -1,7 +1,7 @@
 // The Windows/Linux app's side of the page (desktop-tauri/, Tauri v2). The app sets window.__gibbousShell
 // ({platform:'windows'|'linux', version, build}) at document start and exposes window.gibbousDesktop.post(name, body)
-// (→ the Rust `bridge` command; returns a Promise). Every helper is a no-op in browsers, Gibbous.app and the iPhone app.
-import { isExternal, openPath } from './iosshell';
+// (→ the Rust `bridge` command; returns a Promise). Every helper is a no-op in browsers, Gibbous.app and the phone apps.
+import { isExternal, openPath } from './mobileshell';
 import { isRoute } from './macshell';
 import { desktopPlatform } from './desktopshell';
 
