@@ -204,11 +204,15 @@
      made every column's min-content one letter, so auto layout crushed short columns into vertical letters); headers
      stay on one line; too wide for the column → the card scrolls sideways. */
   .prose-moon table { display: block; width: fit-content; max-width: 100%; overflow-x: auto; border-collapse: collapse;
-    font-size: .94em; font-variant-numeric: tabular-nums; border: 1px solid var(--color-line); border-radius: 10px; }
-  .prose-moon th, .prose-moon td { padding: .5em .85em; text-align: left; vertical-align: top; overflow-wrap: normal; word-break: normal; }
-  .prose-moon td { border-top: 1px solid var(--color-line); min-width: 3em; }
-  .prose-moon td:first-child { min-width: 7em; }
-  .prose-moon th { white-space: nowrap; font-weight: 600; font-size: .92em; color: var(--color-dust); background: color-mix(in srgb, var(--color-crater) 70%, transparent); }
+    font-size: .94em; font-variant-numeric: tabular-nums; }
+  /* Borderless: alignment and spacing do the work. Small-caps label headers, regular body, generous column gaps. */
+  .prose-moon th, .prose-moon td { padding: .42em 1.6em .42em 0; text-align: left; vertical-align: top; overflow-wrap: normal; word-break: normal; }
+  .prose-moon th:last-child, .prose-moon td:last-child { padding-right: 0; }
+  .prose-moon td { min-width: 3em; }
+  .prose-moon td:first-child { min-width: 7em; color: var(--color-moon); }
+  .prose-moon th { white-space: nowrap; font-family: var(--font-mono); font-weight: 500; font-size: .74em; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--color-ash); padding-bottom: .7em; }
+  .prose-moon td strong { font-weight: 600; }
   .prose-moon td code { overflow-wrap: anywhere; }
   .prose-moon hr { border-color: var(--color-line); }
   .prose-moon img { border-radius: 8px; border: 1px solid var(--color-line); max-height: 420px; }
