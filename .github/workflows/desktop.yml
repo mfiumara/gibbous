@@ -1,10 +1,11 @@
 # Gibbous desktop app for Windows and Linux (desktop-tauri/, Tauri v2). macOS keeps the Swift app (desktop/).
-# Runs on a desktop-v* tag (draft GitHub release with the installers) or by hand (artifacts only).
+# Runs on a v* / desktop-v* tag (installers attached to a draft GitHub release; the notarized Mac DMG is added by
+# scripts/release-mac.sh + `gh release upload`) or by hand (artifacts only).
 name: desktop
 
 on:
   push:
-    tags: ['desktop-v*']
+    tags: ['v*', 'desktop-v*']
   pull_request:
     paths: ['desktop-tauri/**', '.github/workflows/desktop.yml']
   workflow_dispatch:
@@ -66,8 +67,8 @@ jobs:
           tauriScript: npx tauri
           args: --bundles ${{ matrix.bundles }}
           tagName: ${{ github.ref_name }}
-          releaseName: Gibbous desktop ${{ github.ref_name }}
-          releaseBody: Gibbous for Windows (.exe / .msi) and Linux (.deb / .AppImage). macOS uses the notarized DMG.
+          releaseName: Gibbous ${{ github.ref_name }}
+          releaseBody: Gibbous for macOS (notarized .dmg), Windows (.exe / .msi) and Linux (.deb / .AppImage).
           releaseDraft: true
 
       - uses: actions/upload-artifact@v4
