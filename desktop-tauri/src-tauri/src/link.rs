@@ -200,10 +200,12 @@ mod tests {
         assert_eq!(safe_filename("../../etc/passwd"), "passwd");
         assert_eq!(safe_filename("C:\\x\\a:b.png"), "a_b.png");
         assert_eq!(safe_filename(".."), "download");
-        let taken = ["/d/a.png", "/d/a 2.png"];
-        let p = unique_path(std::path::Path::new("/d"), "a.png", |p| taken.contains(&p.to_str().unwrap()));
-        assert_eq!(p, std::path::PathBuf::from("/d/a 3.png"));
-        let p = unique_path(std::path::Path::new("/d"), "README", |_| false);
-        assert_eq!(p, std::path::PathBuf::from("/d/README"));
+        // Built with join, so the separator is the platform's (Windows joins with '\\').
+        let d = std::path::Path::new("/d");
+        let taken = [d.join("a.png"), d.join("a 2.png")];
+        let p = unique_path(d, "a.png", |p| taken.iter().any(|t| t == p));
+        assert_eq!(p, d.join("a 3.png"));
+        let p = unique_path(d, "README", |_| false);
+        assert_eq!(p, d.join("README"));
     }
 }
