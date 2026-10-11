@@ -9,6 +9,8 @@ import { useRoute, Moon, Kbd, Modal, TooltipHost, MediaViewer, MoonLoader, go, s
 import { BINDINGS, helpRows } from './keys';
 import { vimKey, vimEscape } from './vim';
 import { Sidebar } from './Sidebar';
+import { HumanTaskEditor, editHumanTask } from './HumanTask';
+import { attentionCount, openHumanTask } from '../../server/humanTasks';
 import { ProjectFilter } from './ProjectFilter';
 import { Home, AddProjectDialog } from './Home';
 import { ThreadView } from './thread/ThreadView';
@@ -87,7 +89,7 @@ export function App() {
 
   // Favicon: the moon, plus a dot while agents work (tide) or wait on you (halo).
   const working = useStore(s => s.threads.some(t => t.status === 'running'));
-  const needs = useStore(s => s.requests.length > 0);
+  const needs = useStore(s => attentionCount(s.requests.length, s.threads) > 0);
   useEffect(() => {
     const link = document.querySelector<HTMLLinkElement>('link[rel=icon][sizes="32x32"]');
     if (!link) return;
@@ -104,7 +106,7 @@ export function App() {
   }, [working, needs]);
 
   // Tab title shows how many agents wait on you.
-  const waiting = useStore(s => s.requests.length);
+  const waiting = useStore(s => attentionCount(s.requests.length, s.threads));
   useEffect(() => {
     document.title = waiting ? `(${waiting}) Gibbous` : 'Gibbous';
     if (inIosApp()) iosBadge(waiting); // iPhone app: icon badge
@@ -163,6 +165,7 @@ export function App() {
         </div>
       </main>
       <AddProjectDialog open={adding} onClose={() => setAdding(false)} />
+      <HumanTaskEditor />
       {palette && <Palette start={palette === 'projects' ? 'projects' : undefined} onClose={() => useStore.setState({ palette: false })} />}
       <Modal open={help} onClose={() => setHelp(false)} title="Keyboard shortcuts" wide>
         <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
@@ -248,6 +251,8 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
       { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Sessions', hint: 'go', href: '/sessions', keywords: 'history past conversations cli desktop paseo acp discord telegram claude code codex t3' }, ...TOOLS.filter(t => t.id !== 'opencode').map(t => ({ label: `${t.label} sessions`, hint: 'sessions', href: `/sessions/${t.id}`, keywords: `history ${t.tip}` })), { label: 'Import sessions…', hint: 'go', href: '/import', keywords: 'bring claude code codex history welcome first run' }, { label: 'Set up the agent…', hint: 'go', href: '/setup', keywords: 'install hermes model provider api key sign in chatgpt claude onboarding first run' }, { label: 'Settings', hint: 'go', href: '/settings' },
       ...SETTINGS.map(([id, label, keywords]) => ({ label: `${label} settings`, hint: 'settings', href: `/settings/${id}`, keywords })),
       ...(here ? [
+        { label: openHumanTask(here) ? 'Edit my task…' : 'Add a task for me…', hint: 'action', run: () => editHumanTask(here) },
+        ...(openHumanTask(here) ? [{ label: 'Complete my task', hint: 'action', run: () => { api.post(`/api/threads/${here.id}/human-task/done`).catch(toastError); } }] : []),
         { label: here.pinned ? 'Unpin this thread' : 'Pin this thread', hint: 'action', run: () => { api.patch(`/api/threads/${here.id}`, { pinned: !here.pinned }).catch(toastError); } },
         ...(here.status !== 'archived' ? [{ label: 'Archive this thread', hint: 'action', run: () => archiveWithUndo(here) }] : []),
       ] : []),

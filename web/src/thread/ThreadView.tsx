@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FolderGit2, FileCode2, SquareTerminal, Gauge, X, ArrowDown, Globe, Activity, MonitorPlay, ChevronLeft, Paperclip, Clock, Bot } from 'lucide-react';
 import { api } from '../api';
+import { HumanTaskCard } from '../HumanTask';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
 import { Moon, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
@@ -341,6 +342,7 @@ export function ThreadView({ id }: { id: string }) {
         {dragOver && <div className="absolute inset-2 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-tide/60 bg-basalt/80 backdrop-blur-sm pointer-events-none animate-fade">
           <p className="flex items-center gap-2 text-[15px] text-moon"><Paperclip size={18} className="text-tide" />Drop to attach</p></div>}
         <ThreadHeader thread={thread} tl={tl} panels={panels} panel={panel} setPanel={setPanel} onBranch={branch} onExport={exportThread} />
+        <HumanTaskCard thread={thread} />
         {finding && <FindBar root={content} onClose={() => setFinding(false)} version={tl.items.length} />}
 
         <div ref={scroller} data-pane="doc" tabIndex={-1} onWheel={markGesture} onTouchMove={markGesture} onPointerDown={markGesture} onKeyDown={markGesture} onScroll={e => {
@@ -365,7 +367,7 @@ export function ThreadView({ id }: { id: string }) {
               <Skeleton className="h-6 w-1/3" />
             </div>}
             {!loading && !tl.items.length && <div className="pt-10 text-center text-sm text-dust animate-rise">
-              <p>{thread.worktree ? <>Working in <span className="font-mono text-moon/80">{thread.worktree.branch}</span>, a fresh worktree off <span className="font-mono">{thread.worktree.base}</span>.</> : <>Working in <span className="font-mono text-moon/80">{thread.cwd}</span>.</>}</p>
+              <p>{thread.worktree ? <>Working in <span className="font-mono text-moon/80">{thread.worktree.branch}</span>, a fresh worktree off <span className="font-mono">{thread.worktree.base}</span>.</> : <>Working in <span className="font-mono break-all text-moon/80">{thread.cwd}</span>.</>}</p>
               <p className="text-ash mt-1">Start typing below.</p>
             </div>}
             {items.map((it, i) => {

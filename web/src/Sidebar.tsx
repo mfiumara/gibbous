@@ -7,6 +7,8 @@ import { EDGE, axis, progress, settle } from './drawer';
 import { prefetch } from './thread/prefetch';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 import { quiet } from './screenTransition';
+import { TaskCheck, editHumanTask } from './HumanTask';
+import { openHumanTask } from '../../server/humanTasks';
 import { haptic, inIosApp } from './iosBridge';
 
 // Navigating from the open drawer: the drawer slides away itself, so the screen change gets no transition on top.
@@ -99,6 +101,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
         {archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
       </button>
       <Menu open={menu} onClose={() => setMenu(false)} align="left">
+        <MenuItem icon={<Check />} onClick={() => { setMenu(false); editHumanTask(t); }}>{openHumanTask(t) ? 'Edit my task…' : 'Add a task for me…'}</MenuItem>
         <MenuItem icon={<Pencil />} onClick={() => { setMenu(false); setRenaming(true); }}>Rename</MenuItem>
         <MenuItem icon={t.pinned ? <PinOff /> : <Pin />} onClick={() => { setMenu(false); api.patch(`/api/threads/${t.id}`, { pinned: !t.pinned }).catch(toastError); }}>{t.pinned ? 'Unpin' : 'Pin to top'}</MenuItem>
         <MenuItem icon={archived ? <ArchiveRestore /> : <Archive />} onClick={() => { setMenu(false); toggleArchive(); }}>{archived ? 'Unarchive' : 'Archive'}</MenuItem>
@@ -344,6 +347,14 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
       </div>}
       <SelectCtx.Provider value={selCtx}>
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pt-3 pb-3 space-y-3.5">
+        {threads.some(openHumanTask) && <Section id="for-me" title="For me" count={threads.filter(openHumanTask).length} collapsed={!!collapsed['for-me']} toggle={toggle} icon={<Check size={12} className="text-tide" />}>
+          {threads.filter(openHumanTask).sort((a, b) => b.humanTask!.at - a.humanTask!.at).map(t => <div key={t.id} className={`flex gap-1 pl-2 pr-1 py-1 rounded-lg ${t.id === activeId ? 'bg-ridge' : 'hover:bg-ridge/55'}`}>
+            <TaskCheck thread={t} />
+            <a href={`#/t/${t.id}`} onClick={close} className="flex-1 min-w-0 py-1 rounded-md" aria-current={t.id === activeId ? 'page' : undefined}>
+              <p className="truncate text-[13px] text-moon">{t.title}</p><p className="truncate text-[11.5px] text-dust mt-0.5" title={t.humanTask!.text}>{t.humanTask!.text}</p>
+            </a>
+          </div>)}
+        </Section>}
         {showArchived && <div className="flex items-center gap-2 px-2 text-[12px] text-dust animate-fade">
           <Archive size={12} className="text-tide" /><span className="flex-1">Archived · {all.length} {all.length === 1 ? 'thread' : 'threads'}</span>
           <button onClick={() => setShowArchived(false)} className="press text-tide hover:underline">Show active</button>

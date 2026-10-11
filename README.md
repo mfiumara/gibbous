@@ -2,6 +2,10 @@
 
 A cockpit for the Hermes agent running on your computer (macOS, Linux, Windows): parallel threads in git worktrees, each project's Hermes kanban board, live diffs, a terminal, and approvals from your phone.
 
+## Tasks for you
+
+Mark a thread with one **For me** task from its ⋯ menu or sidebar context menu. Open tasks appear above Pinned and count toward the app badge; tick the round checkbox when finished. Agents can file these too after explicit opt-in: [setup and caller identity](docs/human-tasks.md).
+
 ## Install
 
 ### Desktop app (one download)
