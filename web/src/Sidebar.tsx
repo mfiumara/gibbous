@@ -117,7 +117,7 @@ function Section({ id, title, count, accent, collapsed, toggle, actions, icon, h
   const chevron = <ChevronDown size={12} className={`text-ash transition-transform duration-200 ${collapsed ? '-rotate-90' : ''}`} />;
   const label = <>{icon}<span className={`label truncate ${active ? 'text-tide' : 'text-moon/75'}`}>{title}</span>
     {count != null && <span className="label text-ash">{count}</span>}
-    {!!accent && <span className="label text-tide">{accent} live</span>}</>;
+    {!!accent && <span className="label text-tide whitespace-nowrap flex-none">{accent} live</span>}</>;
   return (
     <section className={`relative transition-opacity ${drag?.dragging ? 'opacity-40' : ''}`}
       onDragOver={drag ? e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; drag.onOver(); } : undefined}
