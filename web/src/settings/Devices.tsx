@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Button, Switch } from '../ui';
 import { Section, Row } from './common';
 import { changeServer, inIosApp, onPushStatus, pushStatus, requestPush, shellVersion } from '../iosBridge';
+import { inDesktopApp } from '../desktopBridge';
 
 function b64ToBytes(b64: string) {
   const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
@@ -36,8 +37,10 @@ export function NotificationsTab() {
   };
   const ios = inIosApp(); // the iPhone app: native push (APNs) instead of Web Push
   const mac = !ios && !!(window as any).webkit?.messageHandlers?.gibbousNotify; // inside Gibbous.app: native macOS banners, no web push
+  const desktop = inDesktopApp(); // the Windows/Linux app: native notifications, no web push
   return <>
-    {ios ? <IphoneNotifications /> : mac ? <Section title="This Mac" description="Gibbous.app shows macOS notifications while its window isn't focused. If a test doesn't appear, allow Gibbous in System Settings → Notifications."
+    {ios ? <IphoneNotifications /> : desktop ? <Section title="This computer" description="The Gibbous app shows system notifications for every thread except the one on screen. If a test doesn't appear, check the system's notification settings (Focus Assist / Do Not Disturb)."
+      aside={<Button onClick={() => api.post('/api/push/test').catch(toastError)}>Send a test</Button>} /> : mac ? <Section title="This Mac" description="Gibbous.app shows macOS notifications while its window isn't focused. If a test doesn't appear, allow Gibbous in System Settings → Notifications."
       aside={<Button onClick={() => api.post('/api/push/test').catch(toastError)}>Send a test</Button>} /> :
     <Section title="This device" description="Turn on separately on each device."
       aside={<div className="flex gap-2"><Button onClick={() => api.post('/api/push/test').catch(toastError)}>Send a test</Button><Button tone="primary" onClick={enable} disabled={perm === 'unsupported'}>{perm === 'granted' ? 'Re-register' : 'Turn on'}</Button></div>}>

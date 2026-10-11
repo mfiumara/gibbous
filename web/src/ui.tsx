@@ -5,6 +5,7 @@ import { Download, X, Check as CheckIcon, Minus } from 'lucide-react';
 import { api, type ThreadStatus, type KanbanStatus } from './api';
 import { useStore, toastError } from './store';
 import { haptic, inIosApp, shareNative } from './iosBridge';
+import { desktopDownload, desktopReveal, inDesktopApp } from './desktopBridge';
 import { SHEET_QUERY, decide, offset, dismiss } from './sheet';
 import { moonPhase, nextFullMoon, eclipseShade, upcomingEclipses, eclipseLabel } from './moon';
 
@@ -463,7 +464,7 @@ export function TooltipHost() {
 // Gibbous session, so /api/media answered "login required". viewMedia() shows it right here instead.
 export const viewMedia = (src: string, name = '') => dispatchEvent(new CustomEvent('gibbous:view', { detail: { src, name } }));
 const mediaFile = (src: string) => { try { return new URL(src, location.origin).searchParams.get('path') ?? undefined; } catch { return undefined; } };
-const inMacApp = () => !inIosApp() && !!(window as any).webkit?.messageHandlers?.gibbousNotify;
+const inMacApp = () => !inIosApp() && !inDesktopApp() && !!(window as any).webkit?.messageHandlers?.gibbousNotify;
 
 // Save a file the agent made. A plain <a download> navigated Gibbous.app (and an iPhone home-screen app) to the file
 // itself, with no way back. The Mac app asks this Mac's server to copy it into ~/Downloads; phones get the share
@@ -474,6 +475,11 @@ export async function saveMedia(filePath: string) {
   try {
     // The iPhone app downloads it with the session's cookies and shows the share sheet (Save to Files / Photos).
     if (inIosApp() && shareNative({ url, filename: name, title: name })) return;
+    // The Windows/Linux app downloads it with the page's cookies into the user's Downloads (works for a remote server too).
+    if (inDesktopApp()) {
+      const saved = await desktopDownload(url, name);
+      if (saved) { toast({ title: 'Saved to Downloads', body: saved.split(/[\\/]/).pop(), action: { label: 'Show', run: () => { desktopReveal(saved)?.catch(toastError); } } }); return; }
+    }
     if (inMacApp()) {
       const r = await api.post<{ saved: string }>('/api/media/save', { path: filePath });
       toast({ title: 'Saved to Downloads', body: r.saved.split('/').pop(), action: { label: 'Show', run: () => { api.post('/api/media/reveal', { path: r.saved }).catch(toastError); } } });

@@ -1,0 +1,16 @@
+{
+  "name": "gibbous-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Gibbous for Windows and Linux (Tauri v2 shell). Not part of the pnpm workspace on purpose.",
+  "license": "MIT",
+  "scripts": {
+    "tauri": "tauri",
+    "icons": "tauri icon ../desktop/AppIcon-1024.png -o src-tauri/icons",
+    "build": "tauri build",
+    "dev": "tauri dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.2"
+  }
+}

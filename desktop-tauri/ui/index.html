@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gibbous</title>
+<style>
+  :root { color-scheme: dark; --bg: #16181d; --card: #1d2027; --line: #2b2f38; --moon: #e8e4da; --dust: #9a9890; --accent: #e9d8a6; --oxide: #e5866b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--moon); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Ubuntu, Cantarell, sans-serif; -webkit-user-select: none; user-select: none; cursor: default; }
+  main { min-height: 100%; display: grid; place-items: center; padding: 32px; }
+  .card { width: min(440px, 100%); }
+  .moon { width: 56px; height: 56px; border-radius: 50%; margin: 0 0 20px; background: radial-gradient(circle at 62% 42%, #f4efe2 0 38%, #cfc8b6 60%, #8d8778 100%); box-shadow: inset -14px -4px 0 0 rgba(22,24,29,.88), 0 0 36px rgba(233,216,166,.12); }
+  h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
+  p { margin: 0 0 18px; color: var(--dust); }
+  .status { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-bottom: 22px; }
+  .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--dust); }
+  .status[data-state=unreachable] .dot { background: var(--oxide); }
+  .status[data-state=connecting] .dot, .status[data-state=ok] .dot { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .status span { overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+  label { display: block; font-size: 12px; color: var(--dust); margin-bottom: 6px; }
+  .row { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line); background: #121418; color: var(--moon); font: inherit; outline: none; }
+  input:focus { border-color: #4a4f5c; }
+  button { padding: 9px 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--moon); font: inherit; }
+  button:hover { background: #252932; }
+  button.primary { background: var(--moon); color: #16181d; border-color: transparent; font-weight: 600; }
+  button.primary:hover { background: #fff; }
+  .err { color: var(--oxide); min-height: 21px; margin: 8px 0 0; font-size: 13px; }
+  .foot { margin-top: 18px; display: flex; gap: 8px; }
+  code { font: 12px ui-monospace, "Cascadia Code", "DejaVu Sans Mono", monospace; color: var(--moon); }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <div class="moon" aria-hidden="true"></div>
+    <h1 id="title">Connecting to Gibbous…</h1>
+    <p id="help">Gibbous runs as a small server next to your agent. This window signs in to it by itself.</p>
+    <div class="status" id="status" data-state="connecting"><div class="dot"></div><span id="statusText">Looking for the server…</span></div>
+    <form id="form">
+      <label for="link">Or paste a sign-in link (Settings → Devices on a signed-in device, or <code>~/.gibbous/login-url</code>)</label>
+      <div class="row">
+        <input id="link" type="password" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:7878/login?token=…">
+        <button class="primary" type="submit">Connect</button>
+      </div>
+      <div class="err" id="err" role="alert"></div>
+    </form>
+    <div class="foot"><button id="retry" type="button">Retry</button><button id="forget" type="button" hidden>Use this computer's server</button></div>
+  </div>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const post = (n, b) => window.gibbousDesktop ? window.gibbousDesktop.post(n, b) : Promise.reject(new Error('Open this page in the Gibbous app'));
+  const busy = { v: false };
+  async function refresh() {
+    try {
+      const st = await post('status');
+      const el = $('status'); el.dataset.state = st.state;
+      if (st.state === 'unreachable') {
+        $('title').textContent = "Can't reach Gibbous";
+        $('statusText').textContent = `Nothing answers at ${st.server}. Start the Gibbous server (or the service), and this window connects by itself.`;
+      } else if (st.state === 'signin') {
+        $('title').textContent = 'Sign in to Gibbous';
+        $('statusText').textContent = `Current server: ${st.server}`;
+      } else {
+        $('title').textContent = 'Connecting to Gibbous…';
+        $('statusText').textContent = `Signing in to ${st.server}…`;
+      }
+      $('forget').hidden = st.local;
+    } catch (e) { $('statusText').textContent = String(e && e.message || e); }
+  }
+  $('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (busy.v) return; busy.v = true; $('err').textContent = '';
+    try { await post('connect', { link: $('link').value }); }
+    catch (err) { $('err').textContent = String(err && err.message || err); }
+    finally { busy.v = false; refresh(); }
+  });
+  $('retry').addEventListener('click', () => post('retry').catch(err => { $('err').textContent = String(err); }).finally(refresh));
+  $('forget').addEventListener('click', () => post('forget').catch(err => { $('err').textContent = String(err); }).finally(refresh));
+  document.addEventListener('contextmenu', e => { if (!e.target.closest('input')) e.preventDefault(); });
+  refresh(); setInterval(refresh, 1500);
+</script>
+</body>
+</html>

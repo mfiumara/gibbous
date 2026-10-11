@@ -4,6 +4,8 @@ import { api, ApiError, type PrBadge, type Project, type Thread, type Settings, 
 import { rpc } from './rpc';
 import { showsTarget } from './notify';
 import { inIosApp, iosNotify, iosNativeBanners } from './iosBridge';
+import { desktopNotify, inDesktopApp } from './desktopBridge';
+import { desktopNotification } from './desktopshell';
 
 interface Toast { id: number; title: string; body?: string; url?: string; tone?: 'error' | 'info'; action?: { label: string; run(): void } }
 
@@ -126,6 +128,7 @@ rpc.onGibbous = (kind, data) => {
         else if (!here) s.toast({ title: data.title, body: data.body, url: data.url });
         break;
       }
+      if (inDesktopApp()) { const n = desktopNotification(data, here); if (n) desktopNotify(n); break; } // Windows/Linux app: same rule
       const bridge = (window as any).webkit?.messageHandlers?.gibbousNotify; // macOS app: banners show while focused too
       if (bridge) { if (!here) bridge.postMessage(data); break; }
       if (document.visibilityState === 'visible' && !here) s.toast({ title: data.title, body: data.body, url: data.url });
