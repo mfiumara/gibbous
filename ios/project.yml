@@ -44,6 +44,15 @@ targets:
           - AppIcon-1024.png
           - make-icons.sh
           - "*.entitlements"
+          - dev.gibbous.desktop.server.plist
+    # Developer ID DMG only (scripts/release-mac.sh sets GIBBOUS_SERVER_BUNDLE): embeds Node + the server. A no-op for
+    # the sandboxed TestFlight/App Store builds.
+    postBuildScripts:
+      - name: Embed the Gibbous server (Developer ID only)
+        script: exec sh "$SRCROOT/../scripts/mac-embed-server.sh"
+        inputFiles:
+          - $(SRCROOT)/../scripts/mac-embed-server.sh
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.gibbous.ios

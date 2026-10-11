@@ -1,7 +1,8 @@
 // Gibbous for macOS: a native window around the local Gibbous server (WKWebView), with native notifications.
-// Build: scripts/build-mac-app.sh (local ad-hoc, unsandboxed), or the GibbousMac target in ios/project.yml (App
-// Sandbox, TestFlight). Everything here must stay sandbox-safe: no subprocesses, and no file access outside
-// ~/Downloads, files the user picks, and the read-only ~/.gibbous exception (which App Store builds don't have).
+// Build: scripts/build-mac-app.sh (local ad-hoc, unsandboxed), the GibbousMac target in ios/project.yml (App Sandbox,
+// TestFlight), or scripts/release-mac.sh (Developer ID DMG). Everything here must stay sandbox-safe: no file access
+// outside ~/Downloads, files the user picks, and the read-only ~/.gibbous exception (which App Store builds don't
+// have). The one subprocess, the bundled server (LocalServer below), only exists in the Developer ID DMG.
 import Cocoa
 import WebKit
 import UserNotifications
@@ -78,10 +79,107 @@ func loginURL(next: String = "") -> URL {
   return c.url!
 }
 
+// ── bundled server (Developer ID DMG only) ──────────────────────────────
+// The DMG app carries Node + the Gibbous server in Contents/Resources/gibbous-server (scripts/bundle-server.mjs,
+// embedded by scripts/mac-embed-server.sh). On launch: a server already answering on the local port (your own
+// install, or the background agent) is used as is; otherwise the app starts its bundled one with the same data
+// (~/.gibbous) and stops it on quit, unless "Keep Gibbous running in the background" registered the login agent
+// (Contents/Library/LaunchAgents/dev.gibbous.desktop.server.plist via SMAppService).
+let bundledServer: URL? = {
+  guard ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] == nil,
+        let u = Bundle.main.resourceURL?.appendingPathComponent("gibbous-server/run"),
+        FileManager.default.isExecutableFile(atPath: u.path) else { return nil }
+  return u
+}()
+
+final class LocalServer {
+  private var proc: Process?
+  private var stopping = false
+  private var starts: [Date] = []
+  let agent = SMAppService.agent(plistName: "dev.gibbous.desktop.server.plist")
+
+  var available: Bool { bundledServer != nil }
+  /// The server the app talks to is this Mac's (not a pasted remote one, not $GIBBOUS_URL).
+  var isLocal: Bool { ProcessInfo.processInfo.environment["GIBBOUS_URL"] == nil && ["127.0.0.1", "localhost", "::1"].contains(base.host ?? "") }
+  /// A Gibbous you installed yourself (scripts/install-service.sh): the app never starts a second one, and never
+  /// touches that service.
+  var ownService: Bool { FileManager.default.fileExists(atPath: realHome.appendingPathComponent("Library/LaunchAgents/dev.gibbous.server.plist").path) }
+  var background: Bool { agent.status == .enabled }
+  var running: Bool { proc?.isRunning == true }
+
+  /// Any HTTP answer on the local port means a server is up (the sign-in route answers 401 without a token).
+  func answering(_ done: @escaping (Bool) -> Void) {
+    var r = URLRequest(url: base.appendingPathComponent("login"), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 1.5)
+    r.httpMethod = "HEAD"
+    URLSession.shared.dataTask(with: r) { _, res, _ in done(res is HTTPURLResponse) }.resume()
+  }
+
+  /// Start the bundled server unless one answers already, or another start is on its way (your login service, the
+  /// background agent). The page load retries until it answers.
+  func ensure() {
+    guard available, isLocal, !ownService, !background, !running else { return }
+    answering { up in if !up { DispatchQueue.main.async { self.start() } } }
+  }
+
+  private func start() {
+    guard let run = bundledServer, !running else { return }
+    starts = starts.filter { $0.timeIntervalSinceNow > -60 } + [Date()]
+    guard starts.count <= 5 else { NSLog("gibbous: bundled server keeps exiting; see ~/.gibbous/gibbous.log"); return }
+    stopping = false
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/sh")
+    p.arguments = [run.path]
+    var env = ProcessInfo.processInfo.environment
+    env["GIBBOUS_PORT"] = String(base.port ?? 7878)
+    env.removeValue(forKey: "GIBBOUS_URL")
+    p.environment = env
+    try? FileManager.default.createDirectory(at: gibbousHome, withIntermediateDirectories: true)
+    let logURL = gibbousHome.appendingPathComponent("gibbous.log")
+    if !FileManager.default.fileExists(atPath: logURL.path) { FileManager.default.createFile(atPath: logURL.path, contents: nil) }
+    if let log = try? FileHandle(forWritingTo: logURL) { log.seekToEndOfFile(); p.standardOutput = log; p.standardError = log }
+    p.standardInput = FileHandle.nullDevice
+    p.terminationHandler = { [weak self] _ in
+      DispatchQueue.main.async {
+        guard let self else { return }
+        self.proc = nil
+        // Crashed (not quit, not handed to the agent): start again, a few times a minute at most.
+        if !self.stopping { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.ensure() } }
+      }
+    }
+    do { try p.run(); proc = p } catch { NSLog("gibbous: couldn't start the bundled server: \(error)") }
+  }
+
+  /// Stop the server this app started (never one it found running).
+  func stop() {
+    stopping = true
+    guard let p = proc, p.isRunning else { return }
+    p.terminate()  // SIGTERM: the server saves state and exits; hermes serve keeps running (detached)
+    let deadline = Date().addingTimeInterval(4)
+    while p.isRunning && Date() < deadline { usleep(50_000) }
+    if p.isRunning { kill(p.processIdentifier, SIGKILL) }
+    proc = nil
+  }
+
+  /// "Keep Gibbous running in the background": hand the server to the login agent (runs the copy inside this app,
+  /// so it updates with the app), or take it back.
+  func setBackground(_ on: Bool) throws {
+    if on {
+      stop()
+      try agent.register()
+      if agent.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
+    } else {
+      try agent.unregister()
+      starts = []
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.ensure() }
+    }
+  }
+}
+
 final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate, WKDownloadDelegate {
   var window: NSWindow!
   var web: Web!
   let defaults = UserDefaults.standard
+  let server = LocalServer()
 
   func applicationDidFinishLaunching(_ n: Notification) {
     let config = WKWebViewConfiguration()
@@ -133,8 +231,10 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
     registerHotKey()
     UNUserNotificationCenter.current().delegate = self
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    server.ensure()
     web.load(URLRequest(url: loginURL(next: lastRoute)))
   }
+  func applicationWillTerminate(_ n: Notification) { if !server.background { server.stop() } }
 
   // Where you were: the page reports every route change, and launch (or a reconnect) reopens it.
   var lastRoute: String { let r = defaults.string(forKey: "route") ?? ""; return isRoute(r) ? r : "" }
@@ -195,6 +295,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
     let err = e as NSError
     let unreachable: Set<Int> = [NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorTimedOut, NSURLErrorCannotFindHost, NSURLErrorNotConnectedToInternet]
     guard err.domain == NSURLErrorDomain, unreachable.contains(err.code) else { return }
+    server.ensure()
     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { w.load(URLRequest(url: loginURL(next: self.lastRoute))) }
   }
 
@@ -358,6 +459,14 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
     let login = NSMenuItem(title: "Launch at login", action: #selector(toggleLogin(_:)), keyEquivalent: "")
     login.state = SMAppService.mainApp.status == .enabled ? .on : .off
     m.addItem(login)
+    if server.available {
+      let bg = NSMenuItem(title: "Keep Gibbous running in the background", action: #selector(toggleBackground(_:)), keyEquivalent: "")
+      bg.state = server.background ? .on : .off
+      // Your own install (scripts/install-service.sh) already runs it at login; the app leaves that service alone.
+      if server.ownService { bg.action = nil; bg.toolTip = "Your own Gibbous service already runs at login" }
+      else { bg.toolTip = "Agents keep working and notifications keep coming after you quit the app" }
+      m.addItem(bg)
+    }
     m.addItem(.separator())
     m.addItem(NSMenuItem(title: "Quit Gibbous", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     m.items.forEach { $0.target = $0.action == #selector(NSApplication.terminate(_:)) ? nil : self }
@@ -370,6 +479,11 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
   @objc func showWindow() { NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil) }
   @objc func newThread() { showWindow(); run("new") }
   @objc func openInbox() { showWindow(); run("inbox") }
+  @objc func toggleBackground(_ item: NSMenuItem) {
+    do { try server.setBackground(!server.background) }
+    catch { let a = NSAlert(); a.messageText = "Couldn't change the background server"; a.informativeText = error.localizedDescription; a.runModal() }
+    item.state = server.background ? .on : .off
+  }
   @objc func toggleLogin(_ item: NSMenuItem) {
     do {
       if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister(); item.state = .off }

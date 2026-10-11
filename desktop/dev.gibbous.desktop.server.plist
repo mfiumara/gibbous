@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- "Keep Gibbous running in the background" (Developer ID app only): registered with SMAppService.agent, so it
+     shows in System Settings → Login Items and always runs the server inside the installed app (it updates with it).
+     Lives in Contents/Library/LaunchAgents; copied there by scripts/mac-embed-server.sh. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.gibbous.desktop.server</string>
+  <key>BundleProgram</key><string>Contents/Resources/gibbous-server/run</string>
+  <key>ProgramArguments</key><array><string>Contents/Resources/gibbous-server/run</string></array>
+  <key>EnvironmentVariables</key><dict><key>GIBBOUS_LOG</key><string>1</string></dict>
+  <key>AssociatedBundleIdentifiers</key><array><string>dev.gibbous.desktop</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>5</integer>
+  <key>ProcessType</key><string>Background</string>
+</dict>
+</plist>

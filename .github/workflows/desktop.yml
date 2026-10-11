@@ -1,4 +1,6 @@
 # Gibbous desktop app for Windows and Linux (desktop-tauri/, Tauri v2). macOS keeps the Swift app (desktop/).
+# Each installer carries its own server (Node 22 + server + web: scripts/bundle-server.mjs → desktop-tauri/server-bundle,
+# added as resources by src-tauri/tauri.server.conf.json), smoke-tested here without Hermes before packaging.
 # Runs on a v* / desktop-v* tag (installers attached to a draft GitHub release; the notarized Mac DMG is added by
 # scripts/release-mac.sh + `gh release upload`) or by hand (artifacts only).
 name: desktop
@@ -7,7 +9,7 @@ on:
   push:
     tags: ['v*', 'desktop-v*']
   pull_request:
-    paths: ['desktop-tauri/**', '.github/workflows/desktop.yml']
+    paths: ['desktop-tauri/**', '.github/workflows/desktop.yml', 'server/**', 'scripts/bundle-server.mjs', 'scripts/bundle-smoke.mjs', 'scripts/server-run.sh']
   workflow_dispatch:
 
 permissions:
@@ -21,8 +23,10 @@ jobs:
         include:
           - os: ubuntu-22.04
             bundles: deb,appimage
+            target: linux-x64
           - os: windows-latest
             bundles: nsis,msi
+            target: win32-x64
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -36,9 +40,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.1
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+
+      # The server's production deps come from the workspace install (node-pty is compiled here on Linux and taken
+      # from its prebuilds on Windows), Node 22 for the target from nodejs.org (checksum-verified).
+      - name: Install the server's dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Stage the bundled server
+        working-directory: .
+        run: node scripts/bundle-server.mjs --target ${{ matrix.target }} --out desktop-tauri/server-bundle
+
+      - name: Smoke the bundled server (fresh home, no Hermes)
+        working-directory: .
+        run: node scripts/bundle-smoke.mjs desktop-tauri/server-bundle/gibbous-server
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -55,7 +78,13 @@ jobs:
 
       - name: Build installers
         if: "!startsWith(github.ref, 'refs/tags/')"
-        run: npx tauri build --bundles ${{ matrix.bundles }}
+        run: npx tauri build --bundles ${{ matrix.bundles }} --config src-tauri/tauri.server.conf.json
+
+      # The packaged app's own entry point for the background service, with its copied resources.
+      - name: Smoke `gibbous --serve`
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        working-directory: .
+        run: node scripts/bundle-smoke.mjs desktop-tauri/src-tauri/target/release/gibbous-server 7997 --exe desktop-tauri/src-tauri/target/release/gibbous${{ runner.os == 'Windows' && '.exe' || '' }}
 
       - name: Build and attach to a draft release
         if: startsWith(github.ref, 'refs/tags/')
@@ -65,7 +94,7 @@ jobs:
         with:
           projectPath: desktop-tauri
           tauriScript: npx tauri
-          args: --bundles ${{ matrix.bundles }}
+          args: --bundles ${{ matrix.bundles }} --config src-tauri/tauri.server.conf.json
           tagName: ${{ github.ref_name }}
           releaseName: Gibbous ${{ github.ref_name }}
           releaseBody: Gibbous for macOS (notarized .dmg), Windows (.exe / .msi) and Linux (.deb / .AppImage).

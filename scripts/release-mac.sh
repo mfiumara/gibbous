@@ -9,7 +9,9 @@
 # private_keys/AuthKey_<keyId>.p8; same key as ios/tools/asc.mjs).
 #
 # The DMG app is the unsandboxed dev.gibbous.desktop build: it reads ~/.gibbous/login-url and signs in to the local
-# server with no setup. It is a window onto Gibbous; the server itself is installed from the repo (README → Install).
+# server with no setup. It also carries its own server (Node 22 + server + web, universal; scripts/bundle-server.mjs),
+# started when no Gibbous server answers. Every bundled binary is signed with the hardened runtime and notarized with
+# the app. SKIP_NOTARIZE=1 stops after the signed export (no Apple upload).
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -n "$DEVELOPER_DIR" ] || export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
@@ -27,6 +29,8 @@ LOCAL_DEVID=$(security find-identity -v -p codesigning | grep -c "Developer ID A
 
 WORK="$ROOT/dist/mac-$VERSION"
 rm -rf "$WORK" && mkdir -p "$WORK"
+echo "Staging the bundled server…"
+node "$ROOT/scripts/bundle-server.mjs" --target darwin-universal --out "$WORK/server"
 cd "$ROOT/ios" && xcodegen generate --quiet
 
 echo "Archiving Gibbous $VERSION ($BUILD)…"
@@ -35,7 +39,8 @@ xcodebuild -project Gibbous.xcodeproj -scheme GibbousMac -configuration Release 
   PRODUCT_BUNDLE_IDENTIFIER=dev.gibbous.desktop \
   CODE_SIGN_ENTITLEMENTS=../desktop/Gibbous-DeveloperID.entitlements \
   ENABLE_APP_SANDBOX=NO ENABLE_HARDENED_RUNTIME=YES \
-  OTHER_CODE_SIGN_FLAGS=--timestamp CURRENT_PROJECT_VERSION="$BUILD"
+  OTHER_CODE_SIGN_FLAGS=--timestamp CURRENT_PROJECT_VERSION="$BUILD" \
+  GIBBOUS_SERVER_BUNDLE="$WORK/server/gibbous-server" ENABLE_USER_SCRIPT_SANDBOXING=NO
 
 cat > "$WORK/ExportOptions.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -50,6 +55,16 @@ xcodebuild -exportArchive -archivePath "$WORK/Gibbous.xcarchive" -exportOptionsP
   -exportPath "$WORK/export" -allowProvisioningUpdates -quiet
 APP="$WORK/export/Gibbous.app"
 codesign --verify --deep --strict "$APP"
+# Every Mach-O inside must carry the Developer ID signature, hardened runtime and a timestamp, or notarization fails.
+find "$APP/Contents/Resources/gibbous-server" -type f -perm -u+x -o -name '*.node' | while read -r f; do
+  file -b "$f" | grep -q Mach-O || continue
+  info=$(codesign -dvv "$f" 2>&1)
+  echo "$info" | grep -q "Authority=Developer ID Application" && echo "$info" | grep -q "flags=.*runtime" && echo "$info" | grep -q "^Timestamp=" \
+    || { echo "not signed for notarization: $f" >&2; echo "$info" >&2; exit 1; }
+done
+codesign -d --entitlements - "$APP/Contents/Resources/gibbous-server/node/node" 2>/dev/null | grep -q allow-jit \
+  || { echo "node lost its entitlements" >&2; exit 1; }
+[ -n "$SKIP_NOTARIZE" ] && { echo "Signed export: $APP (SKIP_NOTARIZE set)"; exit 0; }
 
 echo "Building the DMG…"
 STAGE="$WORK/dmg"; mkdir -p "$STAGE"
