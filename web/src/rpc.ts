@@ -29,14 +29,17 @@ export class Rpc {
   ready = false;
   onGibbous: (kind: string, data: any) => void = () => {};
   onStatus: (connected: boolean) => void = () => {};
+  onSocket: (open: boolean) => void = () => {}; // the Gibbous server socket itself, ready Hermes or not
   private backoff = 500;
 
   connect() {
     const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws${this.host ? `?host=${encodeURIComponent(this.host)}` : ''}`);
     this.ws = ws;
     ws.onmessage = e => this.onFrame(JSON.parse(e.data));
+    ws.onopen = () => this.onSocket(true);
     ws.onclose = () => {
       this.ready = false;
+      this.onSocket(false);
       this.onStatus(false);
       for (const p of this.pending.values()) p.reject({ code: -32000, message: 'connection lost' });
       this.pending.clear();

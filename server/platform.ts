@@ -58,15 +58,27 @@ export function which(name: string, s: Sys = sys()): string | undefined {
   return undefined;
 }
 
-// The `hermes` CLI: HERMES_BIN → PATH → the installers' default locations.
+// Where the official installers put the `hermes` command (scripts/install.sh, install.ps1 in hermes-agent): the
+// launcher in ~/.local/bin (or %LOCALAPPDATA%\hermes\bin), plus the checkout's own launcher dir, which exists even
+// when the PATH change hasn't reached this process yet (a server started before the install never sees it).
+export function knownHermesBins(s: Sys = sys()): string[] {
+  const P = pathOf(s), home = hermesHome(s), checkout = P.join(home, 'hermes-agent', '.hermes', 'bin');
+  return isWin(s)
+    ? [P.join(home, 'bin', 'hermes.exe'), P.join(home, 'bin', 'hermes.cmd'), P.join(checkout, 'hermes.exe'), P.join(checkout, 'hermes.cmd'), P.join(s.home, '.local', 'bin', 'hermes.exe')]
+    : [P.join(s.home, '.local', 'bin', 'hermes'), P.join(checkout, 'hermes'), P.join(home, 'bin', 'hermes'), '/usr/local/bin/hermes'];
+}
+
+// The installed `hermes` CLI, or undefined: HERMES_BIN (only that, when set) → PATH → the installers' locations.
+export function findHermes(s: Sys = sys()): string | undefined {
+  const o = envGet(s, 'HERMES_BIN');
+  if (o) { const f = expandHome(o, s); return s.exists(f) ? f : undefined; }
+  return which('hermes', s) ?? knownHermesBins(s).find(f => s.exists(f));
+}
+
+// The `hermes` CLI to run: the one found, else the default install location (spawning it then fails with ENOENT).
 export function hermesBin(s: Sys = sys()): string {
   const o = envGet(s, 'HERMES_BIN');
-  if (o) return expandHome(o, s);
-  const P = pathOf(s);
-  const known = isWin(s)
-    ? [P.join(nativeHermesHome(s), 'bin', 'hermes.exe'), P.join(nativeHermesHome(s), 'bin', 'hermes.cmd'), P.join(s.home, '.local', 'bin', 'hermes.exe')]
-    : [P.join(s.home, '.local', 'bin', 'hermes')];
-  return which('hermes', s) ?? known.find(f => s.exists(f)) ?? known[0];
+  return findHermes(s) ?? (o ? expandHome(o, s) : knownHermesBins(s)[0]);
 }
 
 // How to start `cmd args…` with child_process.spawn. Windows can't spawn a .cmd/.bat directly (EINVAL since

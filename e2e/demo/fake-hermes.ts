@@ -45,7 +45,9 @@ export interface KanbanData { board: { slug: string; name: string; description: 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session) => Script; model?: string; titleFor?: (input: string) => string;
-  foreign?: ForeignRow[]; kanban?: KanbanData; home?: string }) {
+  foreign?: ForeignRow[]; kanban?: KanbanData; home?: string;
+  // First-run setup (Gibbous onboarding): start without a usable model; sign-ins/keys/model choice make it usable.
+  setup?: { configured?: boolean } }) {
   const home = o.home ?? os.homedir();   // sessions without a cwd sit here (the demo home, never the real one)
   const sockets = new Set<WebSocket>();
   const sessions = new Map<string, Session>();
@@ -229,6 +231,10 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
       return { status: 'streaming' };
     },
     'llm.oneshot': p => ({ text: titleFor(String(p.input ?? '')) }),
+    'setup.status': () => ({ provider_configured: setup.configured, ready: true }),
+    'setup.runtime_check': () => setup.configured ? { ok: true, provider: setup.provider, model: setup.model, source: 'config', free_tier_route: false }
+      : { ok: false, provider: 'nous', model: '', error: 'No usable credentials found for nous.' },
+    'reload.env': () => ({ updated: 0 }),
     'model.options': () => ({ model: o.model ?? 'claude-sonnet-4-5', provider: 'anthropic', providers: [
       { slug: 'anthropic', name: 'Anthropic', authenticated: true, is_current: true, models: ['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5'] },
       { slug: 'openai', name: 'OpenAI', authenticated: true, models: ['gpt-5', 'gpt-5-mini'] },
@@ -263,6 +269,42 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
     'connectors.list': () => ({ available: false, connectors: [] }),
     'vault.list': () => ({ items: [] }),
     'vault.sources': () => ({ sources: [] }),
+  };
+  // Providers Hermes' onboarding REST knows (oauth catalog + model options), a tiny subset with plausible models.
+  const setup = { configured: o.setup?.configured ?? true, provider: 'anthropic', model: o.model ?? 'claude-sonnet-4-5', authed: new Set<string>(o.setup?.configured === false ? [] : ['anthropic']), devices: new Map<string, { provider: string; at: number }>() };
+  const CATALOG: { slug: string; name: string; auth_type: string; key_env: string; models: string[] }[] = [
+    { slug: 'nous', name: 'Nous Portal', auth_type: 'oauth_device_code', key_env: '', models: ['hermes-4-405b', 'hermes-4-70b'] },
+    { slug: 'openai-codex', name: 'ChatGPT or Codex Subscription', auth_type: 'oauth_device_code', key_env: '', models: ['gpt-5.5', 'gpt-5.5-mini'] },
+    { slug: 'anthropic', name: 'Anthropic', auth_type: 'api_key', key_env: 'ANTHROPIC_API_KEY', models: ['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5'] },
+    { slug: 'openai-api', name: 'OpenAI API', auth_type: 'api_key', key_env: 'OPENAI_API_KEY', models: ['gpt-5', 'gpt-5-mini'] },
+    { slug: 'openrouter', name: 'OpenRouter', auth_type: 'api_key', key_env: 'OPENROUTER_API_KEY', models: ['anthropic/claude-sonnet-4.5', 'openai/gpt-5'] },
+    { slug: 'gemini', name: 'Google AI Studio', auth_type: 'api_key', key_env: 'GOOGLE_API_KEY', models: ['gemini-2.5-pro', 'gemini-2.5-flash'] },
+    { slug: 'deepseek', name: 'DeepSeek', auth_type: 'api_key', key_env: 'DEEPSEEK_API_KEY', models: ['deepseek-chat'] },
+    { slug: 'zai', name: 'Z.AI / GLM', auth_type: 'api_key', key_env: 'GLM_API_KEY', models: ['glm-4.6'] },
+  ];
+  const setupRest = (u: URL, method: string, body: any): unknown => {
+    const p = u.pathname;
+    if (p === '/api/providers/oauth' && method === 'GET') return { providers: [
+      ...CATALOG.filter(c => c.auth_type === 'oauth_device_code').map(c => ({ id: c.slug, name: c.name, flow: 'device_code', cli_command: `hermes auth add ${c.slug}`, docs_url: '', status: { logged_in: setup.authed.has(c.slug) } })),
+      { id: 'anthropic', name: 'Anthropic Account', flow: 'external', cli_command: 'hermes auth add anthropic', docs_url: '', status: { logged_in: setup.authed.has('anthropic') } }] };
+    let m = /^\/api\/providers\/oauth\/([^/]+)\/start$/.exec(p);
+    if (m && method === 'POST') { const sid = `dev_${setup.devices.size + 1}`; setup.devices.set(sid, { provider: m[1], at: Date.now() });
+      return { session_id: sid, flow: 'device_code', user_code: 'MOON-4821', verification_url: 'https://example.com/device', expires_in: 900, poll_interval: 2 }; }
+    m = /^\/api\/providers\/oauth\/([^/]+)\/poll\/([^/]+)$/.exec(p);
+    if (m) { const d = setup.devices.get(m[2]); if (!d) return { status: 'error', error_message: 'Session not found or expired' };
+      if (Date.now() - d.at < 5000) return { session_id: m[2], status: 'pending' };
+      setup.authed.add(d.provider); return { session_id: m[2], status: 'approved' }; }
+    if (/^\/api\/providers\/oauth\/sessions\//.test(p) && method === 'DELETE') { setup.devices.delete(p.split('/').pop()!); return { ok: true }; }
+    if (p === '/api/env' && method === 'PUT') { const c = CATALOG.find(x => x.key_env === body?.key); if (c && String(body?.value ?? '').trim()) setup.authed.add(c.slug); return { ok: true, key: body?.key }; }
+    if (p === '/api/model/options') return { model: setup.configured ? setup.model : '', provider: setup.configured ? setup.provider : '',
+      providers: CATALOG.map(c => ({ slug: c.slug, name: c.name, auth_type: c.auth_type, key_env: c.key_env, authenticated: setup.authed.has(c.slug), is_current: setup.configured && c.slug === setup.provider, models: setup.authed.has(c.slug) ? c.models : [] })) };
+    if (p === '/api/model/recommended-default') { const c = CATALOG.find(x => x.slug === u.searchParams.get('provider')); return { provider: c?.slug ?? '', model: c?.models[0] ?? '', free_tier: null }; }
+    if (p === '/api/model/set' && method === 'POST') {
+      if (!setup.authed.has(body?.provider)) return { ok: false, detail: 'not signed in' };
+      if (/opus/.test(String(body?.model)) && !body?.confirm_expensive_model) return { ok: false, scope: 'main', confirm_required: true, confirm_message: `${body.model} costs about 5× more per token than the default.` };
+      Object.assign(setup, { configured: true, provider: body.provider, model: body.model }); return { ok: true, scope: 'main', provider: body.provider, model: body.model };
+    }
+    return undefined;
   };
   const titleFor = (input: string) => o.titleFor?.(input) ?? input.split(/\s+/).slice(0, 3).join(' ');
 
@@ -336,11 +378,13 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
     return { detail: 'Not Found' };
   }
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const u = new URL(req.url ?? '/', 'http://x');
     if (req.headers['x-hermes-session-token'] !== o.token) { res.writeHead(401); res.end('{}'); return; }
+    let body: unknown;
+    if (req.method !== 'GET') { const c: Buffer[] = []; for await (const x of req) c.push(x as Buffer); try { body = JSON.parse(Buffer.concat(c).toString() || '{}'); } catch { body = {}; } }
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(rest(u)));
+    res.end(JSON.stringify(setupRest(u, req.method ?? 'GET', body) ?? rest(u)));
   });
   const wss = new WebSocketServer({ noServer: true });
   server.on('upgrade', (req, sock, head) => {
@@ -371,7 +415,8 @@ export function fakeHermes(o: { token: string; pick: (prompt: string, s: Session
     now,
     setSlow: (x: number) => { vclock.baseVirt = vms(); vclock.baseReal = Date.now(); vclock.slow = x; },
     clockOffset: () => vms() - Date.now(),
-    listen: () => new Promise<number>(r => server.listen(0, '127.0.0.1', () => r((server.address() as { port: number }).port))),
+    listen: (port = 0) => new Promise<number>(r => server.listen(port, '127.0.0.1', () => r((server.address() as { port: number }).port))),
+    setup,
     close: () => new Promise<void>(r => { for (const s of sockets) s.terminate(); wss.close(); server.close(() => r()); }),
     // Let a held script continue; waitHold resolves once a script reaches that hold.
     release: (name: string) => { const r = holds.get(name); holds.delete(name); r?.(); return !!r; },

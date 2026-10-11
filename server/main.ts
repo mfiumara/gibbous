@@ -6,7 +6,8 @@ import os from 'node:os';
 import { execFileSync, execFile } from 'node:child_process';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import { ensureBackend, upstreamUrl, restGet, HermesClient, type Backend } from './hermes.ts';
+import { ensureBackend, upstreamUrl, restGet, HermesClient, HermesMissing, type Backend } from './hermes.ts';
+import { Installer, detectHermes, hermesVersion, modelState, installerCommand, manualInstallCommand, setupOs, INSTALL_DOCS, type InstallResult, type ModelState } from './setup.ts';
 import { ensureRemoteBackend, closeHost, testHost } from './hosts.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Host } from './store.ts';
@@ -27,7 +28,7 @@ import { foreignOrigins } from './foreignOrigins.ts';
 import { openingMessage } from './titles.ts';
 import { liveBranch, prBadges, refreshPrs } from './prs.ts';
 import { MAX_QUEUE, MAX_TEXT as MAX_QUEUE_TEXT } from './queue.ts';
-import { sys, isInside, badFolderName, downloadsDir, revealCommand, launch, mediaAllowed, serviceInfo, exitSignals } from './platform.ts';
+import { sys, isInside, badFolderName, downloadsDir, revealCommand, launch, mediaAllowed, serviceInfo, exitSignals, hermesHome, knownHermesBins } from './platform.ts';
 
 const PORT = Number(process.env.GIBBOUS_PORT ?? 7878);
 const DIST = path.resolve(import.meta.dirname, '../web/dist');
@@ -35,15 +36,89 @@ const DIST = path.resolve(import.meta.dirname, '../web/dist');
 const webBuild = watchBuild(path.join(DIST, 'index.html'), id => broadcast('build', id));
 
 // ── Hermes ──────────────────────────────────────────────────────────────
+// Hermes health for the banner: version, gateway, update availability (pollHealth below).
+const health: { version?: string; gatewayRunning?: boolean; updateAvailable?: boolean } = {};
 let backend: Backend | undefined;
 // Single-flight: concurrent callers (daemon + reconnecting browsers) must not each spawn a `hermes serve`.
+// Fails fast (HermesMissing → 503) when Hermes isn't installed, so routes answer instead of hanging.
 let pendingBackend: Promise<Backend> | undefined;
-const getBackend = () => pendingBackend ??= ensureBackend().then(b => (backend = b)).finally(() => { pendingBackend = undefined; });
-const hc = new HermesClient(getBackend);
+const getBackend = () => pendingBackend ??= ensureBackend().then(
+  b => { backend = b; setSetup({ installed: true, error: undefined }); return b; },
+  e => { setSetup(e instanceof HermesMissing ? { installed: false, error: undefined } : { error: (e as Error).message }); throw e; },
+).finally(() => { pendingBackend = undefined; });
+
+// First-run setup state (setup.ts): installed? which binary, version, why `hermes serve` won't start, model ready?
+const setupState: { installed: boolean; bin?: string; version?: string; error?: string } & ModelState = { ...detectHermes(), configured: null };
+const setupPublic = () => ({
+  installed: setupState.installed || hc.ready, bin: setupState.bin, version: health.version ?? setupState.version, error: hc.ready ? undefined : setupState.error,
+  configured: setupState.configured, provider: setupState.provider, model: setupState.model, freeTier: setupState.freeTier, reason: setupState.reason,
+});
+function setSetup(patch: Partial<typeof setupState>) {
+  const before = JSON.stringify(setupPublic());
+  Object.assign(setupState, patch);
+  if (JSON.stringify(setupPublic()) !== before) broadcast('setup', setupPublic());
+}
+let versionOf = '';
+function redetectHermes() {
+  const d = detectHermes();
+  setSetup({ installed: d.installed || !!backend, bin: d.bin });
+  if (d.bin && d.bin !== versionOf) { versionOf = d.bin; hermesVersion(d.bin).then(v => setSetup({ version: v })); }
+  return d;
+}
+if (setupState.bin) { versionOf = setupState.bin; hermesVersion(setupState.bin).then(v => setSetup({ version: v })); }
+
+// Gibbous's own client and every browser pipe wait here until Hermes is installed and `serve` answers: missing Hermes
+// is re-checked every 15s (an install from a terminal is picked up on its own), a failing `serve` backs off to 1 min.
+const sleepers = new Set<() => void>();
+const wakeBackend = () => { for (const w of [...sleepers]) w(); };
+const nap = (ms: number) => new Promise<void>(r => { const done = () => { clearTimeout(t); sleepers.delete(done); r(); }; const t = setTimeout(done, ms); sleepers.add(done); });
+let serveFailures = 0;
+async function waitBackend(): Promise<Backend> {
+  for (;;) {
+    try { const b = await getBackend(); serveFailures = 0; return b; }
+    catch (e) {
+      if (e instanceof HermesMissing) { await nap(15_000); redetectHermes(); continue; }
+      console.error('[hermes]', (e as Error).message);
+      await nap(Math.min(60_000, 2000 * 2 ** Math.min(serveFailures++, 5)));
+    }
+  }
+}
+const hc = new HermesClient(waitBackend);
+
+// Is a model/provider usable? Hermes' own readiness RPCs, the ones Hermes Desktop's onboarding uses.
+async function checkModel(reloadEnv = false) {
+  if (!hc.ready) return;
+  if (reloadEnv) await hc.call('reload.env', {}, 10_000).catch(() => {}); // a key saved through /api/env reaches the gateway
+  const status = await hc.call('setup.status', {}, 30_000).catch(() => null);
+  const runtime = await hc.call('setup.runtime_check', {}, 30_000).catch(() => null);
+  const m = modelState(status, runtime);
+  setSetup({ configured: m.configured, provider: m.provider, model: m.model, freeTier: m.freeTier, reason: m.reason });
+}
+
+// The official installer, one run at a time; every line goes to open tabs, the last 500 stay for GET /api/setup/log.
+const installer = new Installer();
+installer.on('line', (line: string, replace: boolean) => broadcast('setupLog', { line, replace }));
+installer.on('done', (r: InstallResult) => {
+  let out: InstallResult = r;
+  if (r.ok) {
+    const d = redetectHermes();
+    if (!d.installed) out = { ok: false, at: r.at, error: `The installer finished, but no hermes command turned up (looked on PATH and in ${knownHermesBins().join(', ')}).` };
+    else wakeBackend();
+  }
+  installer.result = out;
+  broadcast('setupDone', out);
+});
+// ~/.hermes rather than /Users/you/.hermes in setup copy.
+const shortHome = (p: string) => isInside(p, sys().home) ? path.join('~', path.relative(sys().home, p)) : p;
+const setupInfo = () => ({
+  hermes: { ...setupPublic(), ready: hc.ready, home: hermesHome(), homeShown: shortHome(hermesHome()) },
+  configured: setupState.configured, os: setupOs(),
+  install: { running: installer.running, result: installer.result, command: manualInstallCommand(), docs: INSTALL_DOCS },
+  serveLog: !hc.ready && setupState.error ? tail(path.join(GIBBOUS_HOME, 'hermes-serve.log'), 30).split('\n').filter(Boolean) : undefined,
+});
 
 // Hermes health for the banner: version, gateway, update availability. "Update available" comes from Hermes's own
 // update check (the one the Update tab shows), hourly, and again whenever Hermes restarts or the tab checks.
-const health: { version?: string; gatewayRunning?: boolean; updateAvailable?: boolean } = {};
 let updateCheckedAt = 0;
 const setHealth = (patch: Partial<typeof health>) => {
   const before = JSON.stringify(health);
@@ -150,7 +225,7 @@ function publicState() {
   return {
     projects: state.projects, threads: state.threads, settings: state.settings,
     gatewayReplies: gatewayAvailable(), hosts: hostStatus(),
-    requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health },
+    requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health, ...setupPublic() },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
     vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(),
@@ -167,6 +242,22 @@ function route(method: string, pattern: string, h: Handler) {
 }
 
 route('GET', '/api/state', () => publicState());
+
+// First-run setup (setup.ts): install Hermes with the official installer, then the model step (the web talks to
+// Hermes' own provider/OAuth REST through /api/hermes/*; these routes only re-check what Hermes reports).
+route('GET', '/api/setup', () => setupInfo());
+route('GET', '/api/setup/log', () => ({ lines: installer.lines, running: installer.running, result: installer.result }));
+route('POST', '/api/setup/hermes/install', (_, b) => {
+  if (installer.running) throw new HttpError(409, 'Hermes is already being installed');
+  if (redetectHermes().installed && !b.reinstall) throw new HttpError(409, 'Hermes is already installed');
+  installer.start(installerCommand());
+  return setupInfo();
+});
+route('POST', '/api/setup/hermes/cancel', () => ({ cancelled: installer.cancel() }));
+// "Check again" after installing by hand: look again now instead of at the next 15s tick.
+route('POST', '/api/setup/hermes/check', () => { redetectHermes(); serveFailures = 0; wakeBackend(); return setupInfo(); });
+// After a key/sign-in/model change: reload Hermes' env and ask it again whether a model is usable.
+route('POST', '/api/setup/check', async () => { await checkModel(true); return setupInfo(); });
 
 route('POST', '/api/projects', (_, b) => orch.addProject(b.path, b.name));
 // Sidebar order: the given ids first, in that order; anything not listed keeps its place after them.
@@ -606,7 +697,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse) {
     }
     serveStatic(u, res);
   } catch (e: any) {
-    const status = e instanceof HttpError || e instanceof kanban.KanbanError ? e.status : 500;
+    const status = e instanceof HttpError || e instanceof kanban.KanbanError || e instanceof HermesMissing ? e.status : 500;
     if (status === 500) console.error('[http]', req.method, u.pathname, e);
     if (!res.headersSent) res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: e.message ?? String(e) }));
@@ -654,7 +745,7 @@ setTimeout(pollPrs, 3000);
 setInterval(pollPrs, 60_000);
 setInterval(() => orch.reconcileRunning().catch(e => console.error('[reconcile]', e)), 30_000);
 notifications.on('notify', n => broadcast('notify', n));
-hc.on('ready', () => { broadcast('hermes', { ready: true }); pollHealth(true); }); // after `hermes update`, serve restarts
+hc.on('ready', () => { broadcast('hermes', { ready: true }); pollHealth(true); setSetup({ installed: true, error: undefined }); checkModel(); }); // after `hermes update`, serve restarts
 hc.on('down', () => broadcast('hermes', { ready: false }));
 
 function upgrade(req: http.IncomingMessage, socket: import('node:stream').Duplex, head: Buffer) {
@@ -690,7 +781,8 @@ async function pipe(client: WebSocket, host?: string) {
   try {
     const r = host ? remote.get(host) : undefined;
     if (host && !r) { client.close(4404, 'unknown host'); return; }
-    const b = r ? r.backend ?? await ensureRemoteBackend(state.hosts.find(h => h.id === host)!) : backend ?? await getBackend();
+    // No Hermes yet (first run): the socket stays open for Gibbous events (setup log) and connects once Hermes is up.
+    const b = r ? r.backend ?? await ensureRemoteBackend(state.hosts.find(h => h.id === host)!) : backend ?? await waitBackend();
     if (client.readyState !== WebSocket.OPEN) return; // browser left while we waited
     up = new WebSocket(upstreamUrl(b), { maxPayload: 384 * 1024 * 1024 });
   } catch { client.close(1011, 'hermes unavailable'); return; }

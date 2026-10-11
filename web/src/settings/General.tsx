@@ -56,7 +56,8 @@ function About() {
   return (
     <Section title="About">
       <Row title={`Runs on Hermes${version ? ` · ${/^\d/.test(version) ? `v${version}` : version}` : ''}`} description="Hermes by Nous Research runs the agents and keeps every session; Gibbous is the window onto it.">
-        <a href="#/settings/update" className="press text-[13px] text-tide hover:underline whitespace-nowrap">{update ? 'Update available' : 'Check for updates'}</a>
+        <span className="flex gap-4"><a href="#/setup" className="press text-[13px] text-tide hover:underline whitespace-nowrap">Model &amp; setup</a>
+        <a href="#/settings/update" className="press text-[13px] text-tide hover:underline whitespace-nowrap">{update ? 'Update available' : 'Check for updates'}</a></span>
       </Row>
     </Section>
   );
