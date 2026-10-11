@@ -38,6 +38,14 @@
       </intent-filter>
     </activity>
 
+    <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="false" />
+    <!-- Explicit initialization only when a Firebase configuration was compiled in. -->
+    <provider android:name="com.google.firebase.provider.FirebaseInitProvider"
+      android:authorities="${applicationId}.firebaseinitprovider" tools:node="remove" />
+    <service android:name=".GibbousMessagingService" android:exported="false">
+      <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+    </service>
+
     <!-- Files shared from the server (cacheDir/share) go to other apps through this provider. -->
     <provider
       android:name="androidx.core.content.FileProvider"

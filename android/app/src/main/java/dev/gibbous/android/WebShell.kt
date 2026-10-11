@@ -25,7 +25,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -56,7 +55,7 @@ object Shell {
   @Volatile var live: WebShell? = null
 
   /** A signed-in page is live: hand it what arrived while none was. */
-  fun pageReady(s: WebShell) {}
+  fun pageReady(s: WebShell) { Push.deliver(s) }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -192,7 +191,7 @@ class WebShell(private val activity: MainActivity) {
         else Files.shareText(activity, listOf(body.optString("text"), raw).filter { it.isNotBlank() }.joinToString("\n"), body.optString("title"))
       }
       "gibbousHaptic" -> Haptics.perform(web, body.optString("style"))
-      "gibbousPush" -> send(mapOf("type" to "pushError", "message" to "This build has no Firebase configuration (google-services.json)."))
+      "gibbousPush" -> activity.requestPush()
     }
   }
 

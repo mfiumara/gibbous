@@ -26,6 +26,7 @@ android {
     applicationId = "dev.gibbous.android"
     minSdk = 26
     targetSdk = 36
+    buildConfigField("boolean", "FIREBASE_CONFIGURED", file("google-services.json").exists().toString())
     versionCode = 1
     versionName = "1.1.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -78,5 +79,7 @@ dependencies {
   implementation(libs.androidx.splashscreen)
   implementation(libs.material)
   implementation(libs.zxing.embedded)
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.messaging)
   testImplementation(libs.junit)
 }

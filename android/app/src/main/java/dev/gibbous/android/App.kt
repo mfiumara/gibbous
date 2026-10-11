@@ -11,6 +11,7 @@ class App : Application() {
   override fun onCreate() {
     super.onCreate()
     Server.init(this)
+    if (BuildConfig.FIREBASE_CONFIGURED) runCatching { com.google.firebase.FirebaseApp.initializeApp(this) }
     // Foreground = some activity of ours is started. FCM pushes about the thread on screen are skipped then.
     registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
       override fun onActivityStarted(a: Activity) { started++ }

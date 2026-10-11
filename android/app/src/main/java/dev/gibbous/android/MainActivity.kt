@@ -36,6 +36,16 @@ class MainActivity : ComponentActivity() {
   private var started = false
   private var netCallback: ConnectivityManager.NetworkCallback? = null
 
+  private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    if (granted) Push.register(this) else Push.error(Push.DENIED)
+  }
+
+  fun requestPush() {
+    if (android.os.Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+      notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    else Push.register(this)
+  }
+
   private val scanner = registerForActivityResult(ScanContract()) { r -> r.contents?.let { connect?.scanned(it) } }
 
   // <input type=file>: the system picker; every selected document goes back to the page.

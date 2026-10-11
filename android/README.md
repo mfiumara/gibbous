@@ -106,3 +106,40 @@ grants. Redirects are rejected rather than forwarding the sign-in cookie. Share 
 Notification taps use immutable intents; local notifications stop once a push token is registered. The last valid
 page route and badge count persist across process death. Resume events are sent when the activity starts again.
 Android 13+ requires notification permission; haptic output also depends on device settings and hardware.
+
+## Push (Firebase) setup
+
+1. Create a Firebase project in the Firebase console. Add an **Android app** with package name
+   **`dev.gibbous.android`** (the release and debug application IDs are identical).
+2. Download `google-services.json`, put it in **`android/app/`**, and rebuild. The file is gitignored and the Google
+   Services Gradle plugin is applied only when it exists. Never commit the file or a service-account key.
+3. In **Project settings → Cloud Messaging**, verify **Firebase Cloud Messaging API (V1)** is enabled.
+4. In **Project settings → Service accounts → Generate new private key**, save the downloaded JSON on the computer
+   running Gibbous as **`~/.gibbous/fcm.json`** (or `$GIBBOUS_HOME/fcm.json`). Run `chmod 600 ~/.gibbous/fcm.json`.
+   A server with `server/fcm.ts` needs no restart: it re-reads that file when it changes.
+5. Open the rebuilt phone app, sign in, then **Settings → Notifications → Turn on**. Allow notifications in the
+   Android permission dialog (Android 13+), then **Send a test**. Background the app and test delivery/tapping too.
+
+A build without Firebase configuration still connects, shares files, and posts local notifications when allowed;
+Turn on reports `This build has no Firebase configuration (google-services.json).` rather than crashing. Permission
+denial reports `Notifications are turned off for Gibbous in Android Settings → Notifications.` Rotated tokens are
+remembered and delivered to the page at its next ready event. Data-only messages share one notification builder;
+badge-only messages update the remembered count, and a foreground push for the thread on screen is suppressed.
+
+### Debug receive-path check (no Firebase project needed)
+
+Only debug builds contain the exported test receiver; release has neither the class nor its manifest entry.
+It calls exactly the same handler as `FirebaseMessagingService.onMessageReceived`. Grant permission, press Home,
+and substitute a real thread route from your isolated test server:
+
+```sh
+adb shell pm grant dev.gibbous.android android.permission.POST_NOTIFICATIONS
+adb shell input keyevent KEYCODE_HOME
+adb shell am broadcast -n dev.gibbous.android/.DebugPushReceiver -a dev.gibbous.android.DEBUG_PUSH \
+  --es type notify --es title 'Push test' --es body 'Shared FCM receive path' \
+  --es url '#/t/THREAD_ID' --es tag android-test --es badge 2 --es kind reply
+```
+
+Tap it and verify the thread opens. Repeat while that thread is in front: logcat (`GibbousShell`) must report
+`push suppressed: thread on screen`. Use `--es type badge --es badge 0` for badge-only handling. This is not proof
+of Google's network delivery: that requires your real Firebase configuration and a physical device.
