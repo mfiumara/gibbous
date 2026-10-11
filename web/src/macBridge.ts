@@ -18,7 +18,7 @@ function toggleSidebar() {
 // case its document-start script ran before <html> existed.
 function applyShellValues() {
   const s = (window as any).__gibbousShell as { titlebar: number; fullscreen: boolean } | undefined, d = document.documentElement;
-  if (!s || (s as { platform?: string }).platform) return; // the iPhone app's shell values (iosBridge.ts)
+  if (!s || (s as { platform?: string }).platform) return; // a phone or Windows/Linux app's shell values (mobileBridge.ts, desktopBridge.ts)
   d.dataset.shell = 'mac'; d.style.setProperty('--titlebar', `${s.titlebar}px`);
   if (s.fullscreen) d.dataset.fullscreen = ''; else delete d.dataset.fullscreen;
 }

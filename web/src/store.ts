@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { api, ApiError, type PrBadge, type Project, type Thread, type Settings, type OpenRequest, type Host } from './api';
 import { rpc } from './rpc';
 import { showsTarget } from './notify';
-import { inIosApp, iosNotify, iosNativeBanners } from './iosBridge';
+import { inIosApp, inMobileApp, appNotify, nativeBanners } from './mobileBridge';
 import type { Service } from './paths';
 import { desktopNotify, inDesktopApp } from './desktopBridge';
 import { desktopNotification } from './desktopshell';
@@ -124,9 +124,9 @@ rpc.onGibbous = (kind, data) => {
       // Inside the apps every notification is a native banner, foreground too, except for the thread you're looking at
       // (the test always shows). Plain browsers keep the in-app toast.
       const here = !document.hidden && document.hasFocus() && showsTarget(data.url, location.hash) && !data.test;
-      if (inIosApp() && iosNativeBanners()) { if (!here) iosNotify({ title: data.title, body: data.body, url: data.url, tag: data.tag }); break; }
-      if (inIosApp()) { // builds before 2 only show banners in the background
-        if (document.hidden) iosNotify({ title: data.title, body: data.body, url: data.url, tag: data.tag });
+      if (inMobileApp() && nativeBanners()) { if (!here) appNotify({ title: data.title, body: data.body, url: data.url, tag: data.tag }); break; }
+      if (inIosApp()) { // iPhone builds before 2 only show banners in the background
+        if (document.hidden) appNotify({ title: data.title, body: data.body, url: data.url, tag: data.tag });
         else if (!here) s.toast({ title: data.title, body: data.body, url: data.url });
         break;
       }

@@ -9,7 +9,7 @@ import { ModelPicker, ApprovalChip, ContextMeter } from './ModelPicker';
 import type { SessionLiveInfo, Usage } from '../hermes/contract';
 import { toastError, useStore, NONE } from '../store';
 import { api, type Thread } from '../api';
-import { haptic } from '../iosBridge';
+import { haptic } from '../mobileBridge';
 
 type Queued = NonNullable<Thread['queue']>[number];
 

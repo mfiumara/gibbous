@@ -5,7 +5,7 @@ import { useStore, toastError, NONE } from './store';
 import { useAttachments, AttachmentChips, filesFrom, handOff } from './attachments';
 import { useCompletions } from './thread/completions';
 import { Button, IconButton, Modal, Moon, Switch, inputCls, go, ago, sourceLabel, useDraft, NO_PREDICT } from './ui';
-import { haptic } from './iosBridge';
+import { haptic } from './mobileBridge';
 import { useUsage } from './useUsage';
 import { glance } from './usage';
 

@@ -1,6 +1,24 @@
-// Pure helpers for the iPhone app shell (ios/, contract: window.__gibbousShell + webkit.messageHandlers.gibbous*);
-// the DOM side is iosBridge.ts. Importable by node:test.
+// Pure helpers for the phone app shells: the iPhone app (ios/, webkit.messageHandlers.gibbous*) and the Android app
+// (android/, window.gibbousAndroid.postMessage(JSON)). Both set window.__gibbousShell {platform, version, build}; the
+// contract is in each shell's README. The DOM side is mobileBridge.ts. Importable by node:test.
 import { isRoute } from './macshell.ts';
+
+export type MobilePlatform = 'ios' | 'android';
+// Which phone shell this page runs in, from window.__gibbousShell or the data-shell the shell set on <html>. Never from
+// handler presence: Gibbous.app also has webkit.messageHandlers.
+export function shellPlatform(shell: { platform?: unknown } | undefined | null, dataShell?: string): MobilePlatform | undefined {
+  const p = shell?.platform ?? dataShell;
+  return p === 'ios' || p === 'android' ? p : undefined;
+}
+
+// The Android shell's one message channel carries {name, body} as a JSON string (WebMessageListener only takes strings).
+export const androidMessage = (name: string, body: Record<string, unknown>) => JSON.stringify({ name, body });
+
+// Where each shell's push token is registered, and with what body. Android's env is always 'fcm'.
+export function pushRegistration(platform: MobilePlatform, token: string, env?: string): { path: string; body: Record<string, string> } {
+  if (platform === 'android' || env === 'fcm') return { path: '/api/push/fcm', body: { token } };
+  return { path: '/api/push/apns', body: { token, env: env === 'production' ? 'production' : 'sandbox' } };
+}
 
 export type HapticStyle = 'light' | 'medium' | 'heavy' | 'soft' | 'rigid' | 'selection' | 'success' | 'warning' | 'error';
 const STYLES = new Set<string>(['light', 'medium', 'heavy', 'soft', 'rigid', 'selection', 'success', 'warning', 'error']);
@@ -38,7 +56,7 @@ export function openPath(url: unknown, origin: string): string | null {
   return isRoute(hash) ? hash.slice(1) : null;
 }
 
-// Links that leave Gibbous go to Safari (gibbousOpen): another origin's http(s), or a mailto:/tel:/sms: link.
+// Links that leave Gibbous go to Safari / a Custom Tab (gibbousOpen): another origin's http(s), or a mailto:/tel:/sms: link.
 export function isExternal(href: string, origin: string): boolean {
   try {
     const u = new URL(href, origin);
@@ -47,10 +65,11 @@ export function isExternal(href: string, origin: string): boolean {
   } catch { return false; }
 }
 
-// The server's answer to POST /api/push/apns → what Settings shows.
+// The server's answer to POST /api/push/apns (iPhone) or /api/push/fcm (Android) → what Settings shows.
 export type PushStatus = { state: 'off' | 'asking' | 'on' | 'unconfigured' | 'outdated' | 'error'; message?: string };
-export function pushResult(status: number, body: { ok?: boolean; configured?: boolean; error?: string } | undefined): PushStatus {
+export function pushResult(status: number, body: { ok?: boolean; configured?: boolean; error?: string } | undefined, platform: MobilePlatform = 'ios'): PushStatus {
   if (status === 404) return { state: 'outdated', message: 'Update the Gibbous server to enable push' };
   if (status >= 400 || !body?.ok) return { state: 'error', message: body?.error || `The server answered ${status}` };
-  return body.configured === false ? { state: 'unconfigured', message: 'Push needs an APNs key on the server' } : { state: 'on' };
+  if (body.configured !== false) return { state: 'on' };
+  return { state: 'unconfigured', message: platform === 'android' ? 'Push needs a Firebase service account on the server' : 'Push needs an APNs key on the server' };
 }

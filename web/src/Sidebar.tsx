@@ -7,7 +7,7 @@ import { EDGE, axis, progress, settle } from './drawer';
 import { prefetch } from './thread/prefetch';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 import { quiet } from './screenTransition';
-import { haptic, inIosApp } from './iosBridge';
+import { haptic, inMobileApp } from './mobileBridge';
 
 // Navigating from the open drawer: the drawer slides away itself, so the screen change gets no transition on top.
 const close = () => { if (useStore.getState().sidebar) quiet(); useStore.setState({ sidebar: false }); };
@@ -64,7 +64,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
   const toggleArchive = () => { if (archived) api.patch(`/api/threads/${t.id}`, { status: 'idle' }).catch(toastError); else archiveWithUndo(t); };
   const rename = (title: string) => { setRenaming(false); if (title.trim() && title.trim() !== t.title) api.patch(`/api/threads/${t.id}`, { title: title.trim() }).catch(toastError); };
   // Phones have no hover or right-click: a long press opens the same menu.
-  const touchStart = () => { prefetch(t.id); longPressed.current = false; press.current = setTimeout(() => { longPressed.current = true; setMenu(true); if (inIosApp()) haptic('longPress'); else navigator.vibrate?.(8); }, 500); };
+  const touchStart = () => { prefetch(t.id); longPressed.current = false; press.current = setTimeout(() => { longPressed.current = true; setMenu(true); if (inMobileApp()) haptic('longPress'); else navigator.vibrate?.(8); }, 500); };
   const touchEnd = () => clearTimeout(press.current);
   // Warm the timeline cache when the pointer rests on a row (not on a fly-by), so the click paints instantly.
   const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
