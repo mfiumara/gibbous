@@ -11,7 +11,7 @@ if (file("google-services.json").exists()) {
 }
 
 // Release signing: android/keystore.properties (gitignored) with storeFile/storePassword/keyAlias/keyPassword.
-// Without it release builds are unsigned (fine for bundleRelease → Play upload signing later, or CI).
+// Without it release builds are unsigned (CI/artifact inspection only; Play requires an upload-key signature).
 val keystoreProps = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { f ->
   Properties().apply { f.inputStream().use { load(it) } }
 }

@@ -182,7 +182,7 @@ class WebShell(private val activity: MainActivity) {
       "gibbousDebug" -> if (BuildConfig.DEBUG) logi("page $body")
       "gibbousNotify" -> if (Server.pushToken == null) Notifications.notify(activity, body)
       "gibbousBadge" -> Server.badge = body.optInt("count", 0)
-      "gibbousRoute" -> { Server.route = body.optString("route"); if (BuildConfig.DEBUG) logi("route remembered") }
+      "gibbousRoute" -> { Server.route = body.optString("route"); logi("route remembered") }
       "gibbousOpen" -> body.optString("url").takeIf { it.isNotBlank() }?.let { Files.openExternal(activity, it) }
       "gibbousShare" -> {
         val raw = body.optString("url")

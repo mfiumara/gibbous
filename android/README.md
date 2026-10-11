@@ -135,11 +135,80 @@ and substitute a real thread route from your isolated test server:
 ```sh
 adb shell pm grant dev.gibbous.android android.permission.POST_NOTIFICATIONS
 adb shell input keyevent KEYCODE_HOME
-adb shell am broadcast -n dev.gibbous.android/.DebugPushReceiver -a dev.gibbous.android.DEBUG_PUSH \
-  --es type notify --es title 'Push test' --es body 'Shared FCM receive path' \
-  --es url '#/t/THREAD_ID' --es tag android-test --es badge 2 --es kind reply
+adb shell 'am broadcast -n dev.gibbous.android/.DebugPushReceiver -a dev.gibbous.android.DEBUG_PUSH \
+  --es type notify --es title "Push test" --es body "Shared FCM receive path" \
+  --es url "#/t/THREAD_ID" --es tag android-test --es badge 2 --es kind reply'
 ```
 
 Tap it and verify the thread opens. Repeat while that thread is in front: logcat (`GibbousShell`) must report
 `push suppressed: thread on screen`. Use `--es type badge --es badge 0` for badge-only handling. This is not proof
 of Google's network delivery: that requires your real Firebase configuration and a physical device.
+
+## Release builds and signing
+
+Install Android Studio's SDK (Android 36 + platform/build tools) and JDK 17. Set `ANDROID_HOME` to the SDK, or
+put `sdk.dir=/absolute/path/to/Android/sdk` in `android/local.properties` (gitignored), and set `JAVA_HOME`.
+From `android/`:
+
+```sh
+./gradlew assembleDebug testDebugUnitTest
+# app/build/outputs/apk/debug/app-debug.apk
+./gradlew bundleRelease assembleRelease
+# app/build/outputs/bundle/release/app-release.aab
+# app/build/outputs/apk/release/app-release-unsigned.apk (without signing configuration)
+```
+
+Release uses R8 minification and resource shrinking. The AndroidX and Firebase libraries contribute their own
+consumer rules; `app/proguard-rules.pro` documents the app's reflection boundary. No Firebase JSON is required to
+build or run (push then reports that configuration is missing). Unsigned outputs are for CI/artifact inspection;
+a Play upload **must** be signed with your upload key.
+
+Create and securely back up an upload key (do not put it in this repository):
+
+```sh
+keytool -genkeypair -v -keystore ~/gibbous-upload.jks -alias upload -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Let keytool prompt for passwords. Create `android/keystore.properties` (gitignored; `chmod 600`), using an
+absolute `storeFile` path (a literal `~` is not expanded):
+
+```properties
+storeFile=/absolute/path/to/gibbous-upload.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=upload
+keyPassword=YOUR_KEY_PASSWORD
+```
+
+Rebuild with `./gradlew bundleRelease assembleRelease`. With no properties file the release is unsigned.
+For **local emulator testing only**, `./gradlew assembleRelease -Pgibbous.debugSignedRelease=true` signs the
+minified release with the Android debug key. Never upload that build to Play. Switching signing keys requires
+uninstalling the old app, which clears its cookie and server setting. Production has no WebView debugging,
+`GibbousConnect` shortcut or DEBUG_PUSH receiver; test its real `gibbous://connect?link=<encoded login URL>` flow.
+
+### Play Console internal testing
+
+1. Create app **Gibbous**; choose its default language, **App**, **Free**, and complete the initial declarations.
+2. Enable **Play App Signing**. Google holds the distribution/app-signing key; use your separately backed-up
+   upload key to sign the `.aab`. Do not publish either private key or `keystore.properties`.
+3. Complete the store listing, privacy-policy URL, app access instructions (a review/demo server, never your
+   private server), ads declaration, content rating and target audience. Declare notification permission and
+   explain camera access as optional QR sign-in scanning; files are selected through the system picker.
+4. Complete **Data safety** for your actual distribution: Gibbous has no developer-operated collection backend.
+   The sign-in cookie and FCM registration token are sent to the user's own server. Firebase Messaging sends
+   device/installation identifiers to Google to deliver push, so do not blindly declare “no data collected”:
+   include the SDK's processing as required by Play, consult the current Firebase disclosure guidance, and
+   describe purposes, encryption and retention in your privacy policy. User content is served by their server;
+   notification title/body may pass through Google when that server enables FCM.
+5. Go to **Testing → Internal testing → Create new release**, upload the signed
+   `app/build/outputs/bundle/release/app-release.aab`, add release notes, review and roll out.
+6. In **Testers**, create an email list, add testers, save, and share the opt-in link. Testers must opt in with the
+   same Google account used in Play. Install from Play and test connect, notification permission, background
+   push, notification tap, file sharing and keyboard/back on a physical phone.
+7. Increase `versionCode` for **every** upload (including internal testing); `versionName` is the human release
+   version. This app targets API 36 (Android 16), meeting the mobile new-app/update requirement effective
+   August 31, 2026. Recheck [Google's current target API policy](https://support.google.com/googleplay/android-developer/answer/11926878)
+   before future uploads. Internal testing does not itself grant production access; new personal developer
+   accounts may have additional closed-testing requirements in their Console.
+
+Never commit `google-services.json`, service-account JSON, signing keys, `keystore.properties`, sign-in links,
+notification tokens or emulator screenshots of personal content. Share only deliberately sanitized review data.
