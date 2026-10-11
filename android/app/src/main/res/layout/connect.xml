@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The native sign-in screen: scan the QR code from Settings → Devices, or paste the sign-in link. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto"
+  android:id="@+id/connect"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@color/bg"
+  android:fillViewport="true"
+  android:overScrollMode="never"
+  android:contentDescription="connect">
+
+  <FrameLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <dev.gibbous.android.Column
+      android:id="@+id/stack"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center"
+      app:columnMaxWidth="448dp"
+      android:orientation="vertical"
+      android:paddingHorizontal="24dp"
+      android:paddingVertical="24dp">
+
+      <ImageView
+        android:layout_width="112dp"
+        android:layout_height="112dp"
+        android:layout_gravity="center_horizontal"
+        android:importantForAccessibility="no"
+        android:scaleType="fitCenter"
+        android:src="@drawable/logo" />
+
+      <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="center"
+        android:text="@string/app_name"
+        android:textColor="@color/text"
+        android:textSize="30sp"
+        android:textStyle="bold" />
+
+      <TextView
+        android:id="@+id/sub"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:lineSpacingExtra="2dp"
+        android:text="@string/connect_sub"
+        android:textColor="@color/dust"
+        android:textSize="15sp" />
+
+      <TextView
+        android:id="@+id/error"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:textColor="@color/oxide"
+        android:textSize="14sp"
+        android:visibility="gone"
+        android:accessibilityLiveRegion="polite" />
+
+      <com.google.android.material.button.MaterialButton
+        android:id="@+id/scan"
+        style="@style/Gibbous.Button.Primary"
+        android:layout_width="match_parent"
+        android:layout_marginTop="36dp"
+        android:text="@string/scan"
+        app:icon="@drawable/ic_qr" />
+
+      <com.google.android.material.button.MaterialButton
+        android:id="@+id/pasteLink"
+        style="@style/Gibbous.Button.Secondary"
+        android:layout_width="match_parent"
+        android:layout_marginTop="10dp"
+        android:text="@string/paste_link"
+        app:icon="@drawable/ic_link" />
+
+      <LinearLayout
+        android:id="@+id/pastePanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <EditText
+          android:id="@+id/field"
+          android:layout_width="match_parent"
+          android:layout_height="48dp"
+          android:background="@drawable/field_bg"
+          android:fontFamily="monospace"
+          android:hint="@string/link_hint"
+          android:importantForAutofill="no"
+          android:imeOptions="actionGo|flagNoPersonalizedLearning"
+          android:inputType="textPassword|textNoSuggestions"
+          android:paddingHorizontal="14dp"
+          android:singleLine="true"
+          android:textColor="@color/text"
+          android:textColorHint="@color/dust"
+          android:textCursorDrawable="@null"
+          android:textSize="15sp" />
+
+        <LinearLayout
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="10dp"
+          android:orientation="horizontal">
+
+          <com.google.android.material.button.MaterialButton
+            android:id="@+id/paste"
+            style="@style/Gibbous.Button.Secondary"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="5dp"
+            android:text="@string/paste"
+            app:icon="@drawable/ic_paste" />
+
+          <com.google.android.material.button.MaterialButton
+            android:id="@+id/go"
+            style="@style/Gibbous.Button.Primary"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_marginStart="5dp"
+            android:text="@string/connect" />
+        </LinearLayout>
+      </LinearLayout>
+
+      <com.google.android.material.button.MaterialButton
+        android:id="@+id/cancel"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="12dp"
+        android:text="@string/cancel"
+        android:textColor="@color/dust"
+        android:textSize="16sp"
+        android:visibility="gone" />
+    </dev.gibbous.android.Column>
+  </FrameLayout>
+</ScrollView>

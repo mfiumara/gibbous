@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Can't reach your computer": shown over the web view when the server doesn't answer. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/unreachable"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@color/bg"
+  android:clickable="true"
+  android:focusable="true"
+  android:visibility="gone">
+
+  <dev.gibbous.android.Column
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_gravity="center"
+    android:gravity="center_horizontal"
+    app:columnMaxWidth="444dp"
+    android:orientation="vertical"
+    android:paddingHorizontal="32dp">
+
+    <ImageView
+      android:layout_width="88dp"
+      android:layout_height="88dp"
+      android:alpha="0.55"
+      android:importantForAccessibility="no"
+      android:src="@drawable/logo" />
+
+    <TextView
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="28dp"
+      android:gravity="center"
+      android:text="@string/unreachable_title"
+      android:textColor="@color/text"
+      android:textSize="22sp"
+      android:textStyle="bold" />
+
+    <TextView
+      android:id="@+id/detail"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="8dp"
+      android:gravity="center"
+      android:lineSpacingExtra="2dp"
+      android:textColor="@color/dust"
+      android:textSize="15sp" />
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/retry"
+      style="@style/Gibbous.Button.Primary"
+      android:layout_width="match_parent"
+      android:layout_marginTop="28dp"
+      android:text="@string/retry" />
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/change"
+      style="@style/Gibbous.Button.Secondary"
+      android:layout_width="match_parent"
+      android:layout_marginTop="10dp"
+      android:text="@string/change_server" />
+  </dev.gibbous.android.Column>
+</FrameLayout>

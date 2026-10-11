@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Files shared from the server (gibbousShare, /api/media) are downloaded here, then handed out via FileProvider. -->
+<paths>
+  <cache-path name="share" path="share/" />
+</paths>

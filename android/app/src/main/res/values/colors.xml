@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Gibbous night palette (ios/Gibbous/Server.swift Theme). -->
+<resources>
+  <color name="bg">#FF16181D</color>
+  <color name="text">#FFE8E5DC</color>
+  <color name="dust">#99E8E5DC</color>
+  <color name="tide">#FF8FB2E3</color>
+  <color name="well">#0FFFFFFF</color>
+  <color name="oxide">#FFE08A6F</color>
+</resources>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Gibbous</string>
+  <string name="connect_sub">Connect to Gibbous on your computer. On a signed-in device, open Settings → Devices to show your sign-in code.</string>
+  <string name="scan">Scan sign-in code</string>
+  <string name="paste_link">Paste sign-in link</string>
+  <string name="paste">Paste</string>
+  <string name="connect">Connect</string>
+  <string name="cancel">Cancel</string>
+  <string name="link_hint">https://…/login?token=…</string>
+  <string name="unreachable_title">Can\'t reach your computer</string>
+  <string name="retry">Retry</string>
+  <string name="connecting">Connecting…</string>
+  <string name="change_server">Change server</string>
+  <string name="scan_prompt">Point at the sign-in code in Settings → Devices</string>
+  <string name="channel_name">Gibbous</string>
+  <string name="channel_description">Replies and agents waiting for you</string>
+</resources>

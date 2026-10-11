@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Dark everywhere, #16181d behind everything: no white flash at launch or while the page loads. -->
+  <style name="Theme.Gibbous" parent="Theme.Material3.Dark.NoActionBar">
+    <item name="android:windowBackground">@color/bg</item>
+    <item name="colorPrimary">@color/tide</item>
+    <item name="colorOnPrimary">@color/bg</item>
+    <item name="colorSurface">#FF1F2228</item>
+    <item name="colorOnSurface">@color/text</item>
+    <item name="android:colorBackground">@color/bg</item>
+    <item name="android:textColorPrimary">@color/text</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:windowLightNavigationBar">false</item>
+    <item name="android:forceDarkAllowed">false</item>
+  </style>
+
+  <!-- Launch: the moon on the night background until the page has painted (core-splashscreen). -->
+  <style name="Theme.Gibbous.Starting" parent="Theme.SplashScreen">
+    <item name="windowSplashScreenBackground">@color/bg</item>
+    <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    <item name="postSplashScreenTheme">@style/Theme.Gibbous</item>
+    <item name="android:windowBackground">@color/bg</item>
+  </style>
+
+  <!-- The ZXing scanner, portrait, dark. -->
+  <style name="Theme.Gibbous.Scanner" parent="Theme.Gibbous">
+    <item name="android:windowBackground">@android:color/black</item>
+  </style>
+</resources>
