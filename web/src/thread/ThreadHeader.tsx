@@ -5,6 +5,9 @@ import { useStore, toastError, archiveWithUndo, deleteWithUndo } from '../store'
 import { Moon, IconButton, Menu, MenuItem, Elapsed } from '../ui';
 import type { Timeline } from './timeline';
 import { thisMachine } from '../paths';
+import { editHumanTask } from '../HumanTask';
+import { UserCheck as CheckTaskIcon } from 'lucide-react';
+import { openHumanTask } from '../../../server/humanTasks';
 
 export interface PanelDef { id: string; label: string; icon: React.ComponentType<{ size?: number }> }
 
@@ -58,6 +61,7 @@ export function ThreadHeader({ thread, tl, panels, panel, setPanel, onBranch, on
         <div className="relative">
           <IconButton label="More" aria-expanded={menu} onClick={() => setMenu(!menu)}><MoreHorizontal size={17} /></IconButton>
           <Menu open={menu} onClose={() => setMenu(false)}>
+            <MenuItem icon={<CheckTaskIcon />} onClick={() => { setMenu(false); editHumanTask(thread); }}>{openHumanTask(thread) ? 'Edit my task…' : 'Add a task for me…'}</MenuItem>
             <MenuItem icon={<GitFork />} onClick={() => { setMenu(false); onBranch(); }}>Branch conversation</MenuItem>
             <MenuItem icon={<FileDown />} onClick={() => { setMenu(false); onExport('md'); }}>Export as Markdown</MenuItem>
             <MenuItem icon={<FileCode />} onClick={() => { setMenu(false); onExport('html'); }}>Export as HTML</MenuItem>

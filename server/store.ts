@@ -64,6 +64,7 @@ export interface Thread {
   // Imported from another surface (Discord, Telegram, CLI, Paseo, cron…). Another process owns that
   // session, so Gibbous only reads it; "Continue in Gibbous" copies it into a thread Gibbous owns.
   source?: string; readOnly?: boolean;
+  humanTask?: { text: string; at: number; by: 'user' | 'agent'; doneAt?: number };
   pinned?: boolean;                     // shown at the top of the sidebar
   // Prompts typed while a turn runs (queue.ts): the server sends the head when a turn ends. A Stop pauses the line.
   queue?: QueueItem[]; queuePaused?: boolean;

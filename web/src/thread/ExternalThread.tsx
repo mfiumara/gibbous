@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Menu, MessageSquareShare, Trash2, RefreshCw, ArrowUp } from 'lucide-react';
 import { api, type Thread } from '../api';
+import { HumanTaskCard } from '../HumanTask';
 import { useStore, toastError } from '../store';
 import { Button, IconButton, Moon, go, sourceLabel, useDraft, sameJson, NO_PREDICT } from '../ui';
 import { fromStored, type StoredRow, type Item } from './timeline';
@@ -84,6 +85,7 @@ export function ExternalThread({ thread }: { thread: Thread }) {
           <IconButton label="Remove from sidebar" onClick={remove}><Trash2 size={15} /></IconButton>
         </div>
       </header>
+      <HumanTaskCard thread={thread} />
 
       <div ref={scroller} onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}
         className="flex-1 min-h-0 overflow-y-auto">

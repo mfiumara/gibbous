@@ -12,6 +12,8 @@ import { ensureRemoteBackend, closeHost, testHost } from './hosts.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Host } from './store.ts';
 import * as kanban from './kanban.ts';
+import { attentionCount, setHumanTask, completeHumanTask } from './humanTasks.ts';
+import { handleMcp } from './mcp.ts';
 import { gatewayChat, gatewayAvailable } from './gateway.ts';
 import { MESSAGING_SOURCES } from './sources.ts';
 import { attachTerminal } from './pty.ts';
@@ -143,7 +145,7 @@ async function housekeeping() {
   const days = state.settings.autoArchiveDays;
   if (days > 0) {
     const cutoff = Date.now() - days * 86_400_000;
-    for (const t of state.threads.filter(t => t.role === 'chat' && !t.readOnly && !t.pinned && t.status === 'idle' && t.updatedAt < cutoff))
+    for (const t of state.threads.filter(t => t.role === 'chat' && !t.readOnly && !t.pinned && !(t.humanTask && t.humanTask.doneAt == null) && t.status === 'idle' && t.updatedAt < cutoff))
       await orch.archiveThread(t).catch(() => {});
   }
   const budget = state.settings.monthlyBudgetUsd, month = new Date().toISOString().slice(0, 7);
@@ -281,6 +283,26 @@ route('DELETE', '/api/projects/:id', p => {
 route('GET', '/api/projects/:id/branches', async p => g.branches(need(orch.project(p.id), 'project').path));
 
 route('POST', '/api/threads', (_, b) => orch.createThread(b));
+
+function humanTaskChanged(t: import('./store.ts').Thread) {
+  save(); orch.changed('thread', t); return t;
+}
+function agentHumanTask(t: import('./store.ts').Thread, text?: unknown) {
+  if (text === undefined) completeHumanTask(t);
+  else setHumanTask(t, text, 'agent');
+  humanTaskChanged(t);
+  if (text !== undefined) notify({ kind: 'input', title: 'Gibbous needs you', body: t.humanTask!.text, url: `/#/t/${t.id}` });
+  return t;
+}
+route('PUT', '/api/threads/:id/human-task', (p, b) => {
+  const t = need(orch.thread(p.id), 'thread');
+  try { setHumanTask(t, b.text, 'user'); } catch (e) { throw new HttpError(400, (e as Error).message); }
+  return humanTaskChanged(t);
+});
+route('POST', '/api/threads/:id/human-task/done', p => humanTaskChanged(completeHumanTask(need(orch.thread(p.id), 'thread'))));
+route('DELETE', '/api/threads/:id/human-task', p => {
+  const t = need(orch.thread(p.id), 'thread'); delete t.humanTask; return humanTaskChanged(t);
+});
 
 route('PATCH', '/api/threads/:id', (p, b) => {
   const t = need(orch.thread(p.id), 'thread');
@@ -644,6 +666,10 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse) {
   try {
     u = new URL(req.url ?? '/', 'http://x');
     if (!hostOk(req)) throw new HttpError(421, 'host not allowed');
+    if (u.pathname === '/mcp') {
+      if (!sameOrigin(req)) throw new HttpError(403, 'cross-origin request');
+      return await handleMcp(req, res, () => readBody(req), agentHumanTask);
+    }
     if (u.pathname === '/login') {
       const t = u.searchParams.get('token') ?? '';
       if (!eq(t, secret.accessToken)) throw new HttpError(401, 'bad token');
@@ -736,8 +762,8 @@ const broadcast = (kind: string, data: unknown) => {
   for (const c of clients) if (c.readyState === WebSocket.OPEN) c.send(frame);
 };
 orch.on('change', ({ kind, data }) => broadcast(kind, kind === 'requests' ? [...orch.requests.values()] : data));
-setBadgeSource(() => orch.requests.size);
-orch.on('change', ({ kind }) => { if (kind === 'requests') badgeChanged(); });
+setBadgeSource(() => attentionCount(orch.requests.size, state.threads));
+orch.on('change', ({ kind }) => { if (['requests', 'thread', 'reload', 'thread-deleted'].includes(kind)) badgeChanged(); });
 
 // Sidebar PR + CI badges: poll gh every minute, push only when something changed.
 const pollPrs = () => refreshPrs(b => broadcast('prs', b)).catch(e => console.error('[prs]', e));
