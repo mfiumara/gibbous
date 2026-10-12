@@ -1,7 +1,7 @@
 import { GitPullRequest, GitMerge, GitPullRequestClosed, ChevronDown, Check, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Menu, Moon } from './ui';
-import { aggregateCi, overviewCollapsed, overviewMode, overviewSummary, stackRows } from './prOverview';
+import { aggregateCi, overviewCollapsed, overviewMode, stackRows } from './prOverview';
 import { useStore, NONE } from './store';
 import type { PrBadge } from './api';
 import type { CiState } from '../../server/git';
@@ -71,8 +71,7 @@ export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelO
   }, [mode, collapsed, prs.length]);
   useEffect(() => { setOpen(false); }, [mode]);
   if (!prs.length) return <div ref={anchor} hidden />;
-  const summary = overviewSummary(prs);
-  const body = <><PrList prs={prs} compact/><footer className="border-t border-line px-3.5 py-2.5 text-[10px] leading-relaxed text-ash select-text">{summary}</footer></>;
+  const body = <PrList prs={prs} compact/>;
   const heading = <><GitPullRequest size={13}/><span className="flex-1 text-left">Pull requests</span><span className="text-ash tabular-nums">{prs.length}</span><CiDot ci={aggregateCi(prs)}/><ChevronDown size={12} className={collapsed ? '-rotate-90' : ''}/></>;
   return <div ref={anchor} data-pr-overview data-mode={mode} className="flex-none">
     {mode === 'card' ? <section className="absolute right-3 top-[calc(100%+12px)] w-[300px] rounded-xl surface bg-basalt overflow-hidden" aria-label="Pull requests overview">
