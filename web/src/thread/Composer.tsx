@@ -118,6 +118,10 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
         const r = await rpc.call(mode === 'btw' ? 'prompt.btw' : 'prompt.background', { session_id: sid, text: body });
         onSide?.(r.task_id, mode, body);
         setMode('send');
+      } else if (/^\/reload-mcp\b/.test(body) && !files.length && !edit) {
+        // Typed on purpose here, so skip Hermes' prompt-cache confirm round-trip and say what happened.
+        const r = await rpc.call('reload.mcp', { session_id: sid, confirm: true });
+        onNotice(r.status === 'reloaded' ? 'Tools reloaded: this thread now has the latest MCP servers.' : r.message ?? 'Reload needs confirming');
       } else if (body.startsWith('/') && !files.length && !edit) {
         const r = await rpc.call('slash.exec', { session_id: sid, command: body });
         const out = r.output || r.message || r.notice || r.display || r.warning;

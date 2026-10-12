@@ -54,7 +54,12 @@ export function useCompletions(text: string, setText: (v: string) => void, ta: R
     if (!items.length) return false;
     if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => (s + 1) % items.length); return true; }
     if (e.key === 'ArrowUp') { e.preventDefault(); setSel(s => (s - 1 + items.length) % items.length); return true; }
-    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey)) { e.preventDefault(); accept(items[sel]); return true; }
+    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey)) {
+      // Already typed in full (`/reload-mcp`, `/reload-mcp `): Enter sends instead of completing it again.
+      const caret = ta.current?.selectionStart ?? text.length;
+      if (e.key === 'Enter' && text.slice(replaceFrom, caret).trimEnd() === items[sel].text.trimEnd()) { setItems([]); return false; }
+      e.preventDefault(); accept(items[sel]); return true;
+    }
     if (e.key === 'Escape') { setItems([]); return true; }
     return false;
   };
