@@ -1,13 +1,19 @@
 import { GitPullRequest, ChevronDown } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Menu } from './ui';
+import { Menu, MoonLoader } from './ui';
 import { aggregateCi, overviewCollapsed, overviewMode, overviewSummary } from './prOverview';
 import { useStore, NONE } from './store';
 import type { PrBadge } from './api';
 import type { CiState } from '../../server/git';
 const colors = { pass:'bg-sprout', fail:'bg-oxide', pending:'bg-halo' };
+// CI for a PR: a waning moon while checks run, red when one fails, green when all pass, a faint ring when none ran.
+// Fixed-size box so rows stay aligned whatever the state.
 export function CiDot({ci}: {ci:CiState|null}) {
-  return <span className={`size-1.5 rounded-full flex-none ${ci ? colors[ci] : 'bg-ash/40'} ${ci === 'pending' ? 'motion-safe:animate-pulse' : ''}`} aria-label={ci ? `CI ${ci}` : 'No active checks'} data-tip={ci ? `CI ${ci}` : 'No active checks'} />;
+  const tip = ci === 'pending' ? 'CI running' : ci === 'fail' ? 'CI failing' : ci === 'pass' ? 'CI passing' : 'No CI checks';
+  return <span className="size-2.5 grid place-items-center flex-none" aria-label={tip} data-tip={tip}>
+    {ci === 'pending' ? <MoonLoader size={10} label={tip} />
+      : <span className={`size-1.5 rounded-full ${ci ? colors[ci] : 'ring-1 ring-ash/50'}`} />}
+  </span>;
 }
 function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
   return <ul aria-label="Pull requests" onKeyDown={e => {
@@ -23,7 +29,8 @@ function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
       <CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null}/>
       <span className={`font-mono text-[11px] tabular-nums flex-none ${pr.state === 'merged' ? 'text-tide' : pr.state === 'closed' ? 'text-ash line-through' : pr.state === 'draft' ? 'text-ash' : 'text-sprout'}`}>#{pr.number}</span>
       <span className="truncate min-w-0 flex-1 text-moon/90">{pr.title}</span>
-      <span className="flex-none font-mono text-[10.5px] tabular-nums"><span className="text-sprout/80">+{pr.additions}</span> <span className="text-oxide/80">−{pr.deletions}</span></span>
+      <span className="flex-none w-[5.5ch] text-right font-mono text-[10.5px] tabular-nums text-sprout/80">+{pr.additions}</span>
+      <span className="flex-none w-[4.5ch] text-right font-mono text-[10.5px] tabular-nums text-oxide/80">−{pr.deletions}</span>
     </a></li> : <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`${pr.title} · ${pr.headRefName}`} className="press block rounded-lg px-2.5 py-2 hover:bg-ridge min-w-0 select-text">
       <div className="flex items-start gap-2"><CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null}/><span className={`text-[13px] text-moon flex-1 min-w-0 ${compact ? 'truncate' : 'break-words'}`}>#{pr.number} {pr.title}</span><span className={`rounded-md px-1.5 py-0.5 text-[10px] flex-none ${pr.state === 'open' ? 'text-sprout bg-sprout/10' : pr.state === 'merged' ? 'text-tide bg-tide/10' : 'text-ash bg-ridge'}`}>{pr.state}</span></div>
       <div className="flex gap-2 mt-1 pl-3.5 text-[11px] font-mono text-ash min-w-0"><span className="truncate flex-1" title={pr.headRefName}>{compact ? null : pr.headRefName}</span><span className="text-sprout flex-none">+{pr.additions}</span><span className="text-oxide flex-none">−{pr.deletions}</span></div>
