@@ -21,11 +21,10 @@ export function addHumanTasks(t: Thread, texts: unknown, by: 'user' | 'agent', a
   writable(t).push(...created); t.updatedAt = at; return created;
 }
 export function patchHumanTask(t: Thread, id: string, patch: { text?: unknown; done?: unknown }, at = Date.now()) {
-  const task = humanTasks(t).find(task => task.id === id);
-  if (!task) throw new Error('Task not found');
+  if (!humanTasks(t).some(task => task.id === id)) throw new Error('Task not found');
   const text = patch.text === undefined ? undefined : taskText(patch.text);
   if (patch.done !== undefined && typeof patch.done !== 'boolean') throw new Error('done must be boolean');
-  writable(t);
+  const task = writable(t).find(task => task.id === id)!;
   if (text !== undefined) task.text = text;
   if (patch.done === true) task.doneAt ??= at;
   if (patch.done === false) delete task.doneAt;

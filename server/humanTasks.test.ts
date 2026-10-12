@@ -15,6 +15,9 @@ test('legacy migration, stable ids, multi-task CRUD and badge count', () => {
   const legacy = { ...make(), humanTask: { text: 'Plug in.', at: 10, by: 'user' as const } };
   const t = migrate({ threads: [legacy] }).threads[0];
   assert.equal(humanTasks(t)[0].id, 'legacy-10');
+  const direct = { ...legacy }; patchHumanTask(direct, 'legacy-10', { done: true }, 15);
+  assert.equal(humanTasks(direct)[0].doneAt, 15); assert.equal(direct.humanTask, undefined);
+  assert.deepEqual(humanTasks({ ...legacy, humanTasks: [] }), []);
   assert.equal(humanTasks(migrate({ threads: [t] }).threads[0]).length, 1);
   const [a, b] = addHumanTasks(t, ['Approve.', 'Decide.'], 'agent', 20);
   assert.equal(attentionCount(2, [t, make('other')]), 5);

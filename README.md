@@ -4,7 +4,7 @@ A cockpit for the Hermes agent running on your computer (macOS, Linux, Windows):
 
 ## Tasks for you
 
-Mark a thread with one **For me** task from its ⋯ menu or sidebar context menu. Open tasks appear above Pinned and count toward the app badge; tick the round checkbox when finished. Agents can file these too after explicit opt-in: [setup and caller identity](docs/human-tasks.md).
+Mark a thread with a **For me** checklist from its ⋯ menu, sidebar context menu or ⌘K. Each open task appears above Pinned and counts toward the app badge; tick its round checkbox when finished. Turn an assistant paragraph or list item into a task with **+ For me** on hover (long-press → **Add to For me** on phones). Agents can batch-file human-only steps after explicit opt-in: [setup and caller identity](docs/human-tasks.md).
 
 ## Install
 

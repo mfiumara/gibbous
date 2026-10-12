@@ -6,7 +6,11 @@ import { Modal, NO_PREDICT } from './ui';
 import { humanTasks, type HumanTask } from '../../server/humanTasks';
 
 export const editHumanTask = (t: Thread) => dispatchEvent(new CustomEvent('gibbous:humanTask', { detail: t.id }));
-export const replyTaskText = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140);
+export const replyTaskText = (text: string) => {
+  const plain = text.replace(/\s+/g, ' ').trim();
+  if (plain.length <= 140) return plain;
+  const cut = plain.slice(0, 139); return cut.slice(0, cut.lastIndexOf(' ') > 100 ? cut.lastIndexOf(' ') : 139) + '…';
+};
 export const addReplyTask = (thread: string, text: string) => api.post(`/api/threads/${thread}/human-tasks`, { text: replyTaskText(text) }).catch(toastError);
 export function focusHumanTask(id: string) {
   let tries = 0;
@@ -42,7 +46,7 @@ export function HumanTaskCard({ thread }: { thread: Thread }) {
   const tasks = humanTasks(thread); const [expanded, setExpanded] = useState(false); const [adding, setAdding] = useState(false); const [text, setText] = useState('');
   const done = tasks.filter(task => task.doneAt != null);
   if (!tasks.length) return null;
-  return <section aria-label="For me tasks" className="mx-auto w-full max-w-3xl px-4 pt-3 flex-none animate-fade"><div className="rounded-xl border border-tide/20 bg-crater/75 px-3 py-2.5">
+  return <section aria-label="For me tasks" className="mx-auto w-full max-w-3xl px-4 pt-3 flex-none animate-fade"><div className="rounded-xl border border-tide/20 bg-crater/75 px-3 py-2.5 max-h-[40dvh] overflow-y-auto">
     <p className="flex items-center gap-2 label text-tide mb-1"><UserCheck size={13} />For me</p>
     {tasks.filter(task => task.doneAt == null).map(task => <TaskRow key={task.id} task={task} thread={thread} />)}
     {done.length > 0 && <><button onClick={() => setExpanded(!expanded)} aria-expanded={expanded} className="press text-xs text-ash hover:text-dust py-2 px-1">{done.length} done {expanded ? '⌃' : '⌄'}</button>{expanded && done.map(task => <TaskRow key={task.id} task={task} thread={thread} />)}</>}

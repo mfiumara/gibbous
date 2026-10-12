@@ -4,12 +4,13 @@
 @import "@xterm/xterm/css/xterm.css";
 
 /* Reply → personal task: no layout shift, no actions in tables/code. */
-.reply-task-line { position: relative; }
+.reply-task-line { position: relative; padding-right: 3.5rem; }
+li p.reply-task-line, table .reply-task-line { padding-right: 0; }
 .reply-task-action { position: absolute; right: 0; top: 0; border-radius: 6px; padding: 2px 7px; background: var(--color-crater); color: var(--color-dust); font-size: 11px; opacity: 0; pointer-events: none; transition: opacity 120ms; }
 .reply-task-line:hover > .reply-task-action, .reply-task-line:focus-within > .reply-task-action { opacity: 1; pointer-events: auto; }
 .reply-task-line:has(.reply-task-line:hover) > .reply-task-action { opacity: 0; pointer-events: none; }
 li p > .reply-task-action, table .reply-task-action, pre .reply-task-action { display: none; }
-@media (pointer: coarse) { .reply-task-action { display: none; } }
+@media (pointer: coarse) { .reply-task-action { display: none; } .reply-task-line { padding-right: 0; } }
 
 /* ── Tokens ─────────────────────────────────────────────────────────────
    Night (default): basalt surfaces, moonlight text, one warm halo reserved for "needs you".
