@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileLines, safeJoin, slug, listFiles, currentBranch, changes, addWorktree, ciState, prBadge } from './git.ts';
+import { fileLines, safeJoin, slug, listFiles, currentBranch, changes, addWorktree, ciState, ciChecks, prBadge } from './git.ts';
 import { liveBranch, prTargets } from './prs.ts';
 import { execFileSync } from 'node:child_process';
 
@@ -84,4 +84,9 @@ test('liveBranch follows a renamed worktree branch, falls back when detached or 
   assert.equal(await liveBranch(dir, 'gibbous/orig'), 'gibbous/orig');
   assert.equal(await liveBranch(path.join(dir, 'missing'), 'gibbous/orig'), 'gibbous/orig');
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('ciChecks counts passed out of all checks, like GitHub', () => {
+  assert.equal(ciChecks([]), undefined);
+  assert.deepEqual(ciChecks([{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { status: 'COMPLETED', conclusion: 'SKIPPED' }, { status: 'COMPLETED', conclusion: 'FAILURE' }, { status: 'IN_PROGRESS' }, { state: 'SUCCESS' }]), { passed: 3, total: 5 });
 });

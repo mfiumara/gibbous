@@ -213,7 +213,7 @@ export async function prStatus(dir: string, branch: string): Promise<PrStatus | 
 
 // The sidebar's one-line PR summary: number, state, CI rollup and diff size.
 export type CiState = 'pass' | 'fail' | 'pending';
-export interface PrBadge { title?: string; headRefName?: string; author?: string; mergeable?: string; reviewDecision?: string; number: number; url: string; state: 'open' | 'draft' | 'merged' | 'closed'; ci: CiState | null; additions: number; deletions: number }
+export interface PrBadge { title?: string; headRefName?: string; author?: string; mergeable?: string; reviewDecision?: string; number: number; url: string; state: 'open' | 'draft' | 'merged' | 'closed'; ci: CiState | null; checks?: { passed: number; total: number }; additions: number; deletions: number }
 
 const CI_FAIL = /^(failure|error|timed_out|cancelled|action_required|startup_failure)$/;
 export function ciState(rollup: any[] | undefined): CiState | null {
@@ -224,9 +224,18 @@ export function ciState(rollup: any[] | undefined): CiState | null {
   return 'pass';
 }
 
+// GitHub's '12/14': checks that passed (success, skipped, neutral) out of all of them.
+export function ciChecks(rollup: any[] | undefined): { passed: number; total: number } | undefined {
+  if (!rollup?.length) return undefined;
+  const passed = rollup.filter(c => /^(success|skipped|neutral)$/i.test(String(c.conclusion || c.state || ''))).length;
+  return { passed, total: rollup.length };
+}
+
 export function prBadge(j: any): PrBadge {
   const st = String(j.state).toUpperCase();
+  const checks = ciChecks(j.statusCheckRollup?.contexts ? j.statusCheckRollup.contexts.nodes : j.statusCheckRollup);
   return {
+    ...(checks ? { checks } : {}),
     number: j.number, url: j.url, ...(j.title != null ? { title: j.title } : {}), ...(j.headRefName != null ? { headRefName: j.headRefName } : {}), ...(j.author?.login ? { author: j.author.login } : {}), additions: j.additions ?? 0, deletions: j.deletions ?? 0, ci: ciState(j.statusCheckRollup?.contexts ? [...(j.statusCheckRollup.state ? [{ state: j.statusCheckRollup.state }] : []), ...j.statusCheckRollup.contexts.nodes] : j.statusCheckRollup),
     state: st === 'MERGED' ? 'merged' : st === 'CLOSED' ? 'closed' : j.isDraft ? 'draft' : 'open',
   };

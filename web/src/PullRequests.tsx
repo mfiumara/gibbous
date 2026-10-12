@@ -1,18 +1,20 @@
-import { GitPullRequest, ChevronDown } from 'lucide-react';
+import { GitPullRequest, ChevronDown, Check, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Menu, Moon } from './ui';
 import { aggregateCi, overviewCollapsed, overviewMode, overviewSummary } from './prOverview';
 import { useStore, NONE } from './store';
 import type { PrBadge } from './api';
 import type { CiState } from '../../server/git';
-const colors = { pass:'bg-sprout', fail:'bg-oxide', pending:'bg-halo' };
-// CI for a PR: the sidebar's running moon while checks run, red when one fails, green when all pass, a faint ring when none ran.
-// Fixed-size box so rows stay aligned whatever the state.
-export function CiDot({ci}: {ci:CiState|null}) {
-  const tip = ci === 'pending' ? 'CI running' : ci === 'fail' ? 'CI failing' : ci === 'pass' ? 'CI passing' : 'No CI checks';
-  return <span className="size-2.5 grid place-items-center flex-none" aria-label={tip} data-tip={tip}>
-    {ci === 'pending' ? <Moon thread="running" size={9} />
-      : <span className={`size-1.5 rounded-full ${ci ? colors[ci] : 'ring-1 ring-ash/50'}`} />}
+// CI for a PR, drawn like GitHub's: ✓ green when every check passes, ✗ red when one fails, and while checks run the
+// sidebar's running moon (GitHub's amber dot). Fixed-size box so rows stay aligned; a faint ring when no CI ran.
+export function CiDot({ci, checks}: {ci:CiState|null; checks?: { passed: number; total: number }}) {
+  const count = checks ? ` · ${checks.passed}/${checks.total} checks passed` : '';
+  const tip = (ci === 'pending' ? 'CI running' : ci === 'fail' ? 'CI failing' : ci === 'pass' ? 'CI passing' : 'No CI checks') + (ci ? count : '');
+  return <span className="size-3 grid place-items-center flex-none" aria-label={tip} data-tip={tip}>
+    {ci === 'pending' ? <Moon thread="running" size={8} />
+      : ci === 'pass' ? <Check size={12} strokeWidth={2.6} className="text-sprout" />
+      : ci === 'fail' ? <X size={12} strokeWidth={2.6} className="text-oxide" />
+      : <span className="size-1.5 rounded-full ring-1 ring-ash/50" />}
   </span>;
 }
 function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
@@ -26,13 +28,13 @@ function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
   }} className="space-y-1 p-2 max-h-[56dvh] sm:max-h-[26rem] overflow-y-auto">
     {prs.map(pr => compact ? <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`#${pr.number} ${pr.title} · ${pr.headRefName} · ${pr.state}`}
       className="press flex items-center gap-2 h-7 pointer-coarse:h-10 rounded-md px-2 hover:bg-ridge min-w-0 text-[12.5px]">
-      <CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null}/>
+      <CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null} checks={pr.checks}/>
       <span className={`font-mono text-[11px] tabular-nums flex-none ${pr.state === 'merged' ? 'text-tide' : pr.state === 'closed' ? 'text-ash line-through' : pr.state === 'draft' ? 'text-ash' : 'text-sprout'}`}>#{pr.number}</span>
       <span className="truncate min-w-0 flex-1 text-moon/90">{pr.title}</span>
       <span className="flex-none w-[5.5ch] text-right font-mono text-[10.5px] tabular-nums text-sprout/80">+{pr.additions}</span>
       <span className="flex-none w-[4.5ch] text-right font-mono text-[10.5px] tabular-nums text-oxide/80">−{pr.deletions}</span>
     </a></li> : <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`${pr.title} · ${pr.headRefName}`} className="press block rounded-lg px-2.5 py-2 hover:bg-ridge min-w-0 select-text">
-      <div className="flex items-start gap-2"><CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null}/><span className={`text-[13px] text-moon flex-1 min-w-0 ${compact ? 'truncate' : 'break-words'}`}>#{pr.number} {pr.title}</span><span className={`rounded-md px-1.5 py-0.5 text-[10px] flex-none ${pr.state === 'open' ? 'text-sprout bg-sprout/10' : pr.state === 'merged' ? 'text-tide bg-tide/10' : 'text-ash bg-ridge'}`}>{pr.state}</span></div>
+      <div className="flex items-start gap-2"><CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null} checks={pr.checks}/><span className={`text-[13px] text-moon flex-1 min-w-0 ${compact ? 'truncate' : 'break-words'}`}>#{pr.number} {pr.title}</span><span className={`rounded-md px-1.5 py-0.5 text-[10px] flex-none ${pr.state === 'open' ? 'text-sprout bg-sprout/10' : pr.state === 'merged' ? 'text-tide bg-tide/10' : 'text-ash bg-ridge'}`}>{pr.state}</span></div>
       <div className="flex gap-2 mt-1 pl-3.5 text-[11px] font-mono text-ash min-w-0"><span className="truncate flex-1" title={pr.headRefName}>{compact ? null : pr.headRefName}</span><span className="text-sprout flex-none">+{pr.additions}</span><span className="text-oxide flex-none">−{pr.deletions}</span></div>
     </a></li>)}
   </ul>;
