@@ -56,7 +56,7 @@ export function refreshPrs(onChange: (b: Record<string, PrBadge>, lists: Record<
     const next: Record<string, PrBadge> = {};
     for (const [id, ps] of Object.entries(nextLists)) {
       ps.sort((a,b) => Number(!['open','draft'].includes(a.state)) - Number(!['open','draft'].includes(b.state)) || b.number - a.number || a.url.localeCompare(b.url));
-      next[id] = ps[0];
+      next[id] = ps.find(p => p.state === 'open') ?? ps[0];
     }
     if (JSON.stringify(nextLists) !== JSON.stringify(lists) || JSON.stringify(next) !== JSON.stringify(current)) {
       lists = nextLists; current = next; onChange(next, lists);
