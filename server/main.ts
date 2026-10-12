@@ -167,6 +167,7 @@ setTimeout(() => housekeeping().catch(() => {}), 60_000);
 setTimeout(pollHealth, 5000);
 const orch = new Orchestrator(hc, getBackend);
 hc.start();
+try { const n = orch.fileImported(); if (n) console.log(`[import] filed ${n} imported thread(s) under their project`); } catch (e) { console.error('[import]', e); }
 
 // Remote Hermes hosts: one client each, backends reached through SSH tunnels.
 const remote = new Map<string, { client: HermesClient; backend?: Backend }>();
@@ -281,7 +282,7 @@ function checkedSpaceName(name: unknown, except?: string) {
   try { return spaceName(name, state.settings.spaces, except); } catch (e) { throw new HttpError(400, (e as Error).message); }
 }
 
-route('POST', '/api/projects', (_, b) => orch.addProject(b.path, b.name));
+route('POST', '/api/projects', (_, b) => { const p = orch.addProject(b.path, b.name); orch.fileImported(); return p; });
 // Sidebar order: the given ids first, in that order; anything not listed keeps its place after them.
 route('POST', '/api/projects/order', (_, b) => {
   const ids: string[] = Array.isArray(b.ids) ? b.ids.map(String) : [];

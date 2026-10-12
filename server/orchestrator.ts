@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import { HermesClient, restGet, isStaleSession, type Backend } from './hermes.ts';
 import { state, save, newId, type Thread, type Project } from './store.ts';
 import * as g from './git.ts';
+import { projectForSession } from './importProject.ts';
 import { notify } from './push.ts';
 import * as Q from './queue.ts';
 import { historyPage } from './history.ts';
@@ -335,12 +336,29 @@ export class Orchestrator extends EventEmitter {
     } finally { this.titling.delete(t.id); }
   }
 
+  // Imported threads that landed loose (before imports were filed by folder, or before their project was added)
+  // move into the project they ran in. Only threads that came from another tool; never ones you started here.
+  fileImported() {
+    let moved = 0;
+    for (const t of state.threads) {
+      if (!t.source || t.projectId || t.host) continue;
+      const p = projectForSession(t.sessionId, state.projects, sys().home, state.settings.profile || undefined);
+      if (!p) continue;
+      t.projectId = p.id; if (!t.cwd || t.cwd === sys().home) t.cwd = p.path; moved++;
+      this.changed('thread', t);
+    }
+    if (moved) save();
+    return moved;
+  }
+
   importSession(sessionId: string, title: string, o: { projectId?: string; source?: string; startedAt?: number; readOnly?: boolean; host?: string } = {}): Thread {
     const existing = state.threads.find(t => t.sessionId === sessionId && t.host === o.host);
     if (existing) return existing;
     const at = o.startedAt ?? Date.now();
+    // No project picked: file it under the project it ran in (a Paseo/Claude Code worktree counts as its repo).
+    const projectId = o.projectId ?? (o.host ? undefined : projectForSession(sessionId, state.projects, sys().home, state.settings.profile || undefined)?.id);
     const t: Thread = {
-      id: newId('th'), projectId: o.projectId, title: title || 'Imported session', sessionId, cwd: this.project(o.projectId)?.path ?? sys().home,
+      id: newId('th'), projectId, title: title || 'Imported session', sessionId, cwd: this.project(projectId)?.path ?? sys().home,
       role: 'chat', status: 'idle', source: o.source, readOnly: o.readOnly ?? true, host: o.host, createdAt: at, updatedAt: at,
     };
     state.threads.unshift(t);
