@@ -52,7 +52,7 @@ function Clarify({ r }: { r: OpenRequest }) {
   const qs: { qid: string; question: string; choices?: string[]; multi_select?: boolean }[] = r.params?.questions ?? [];
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const set = (qid: string, v: string) => setAnswers(a => ({ ...a, [qid]: v }));
-  return <>
+  return <div data-clarify className="space-y-2.5">
     {qs.map(q => (
       <div key={q.qid} className="space-y-1.5">
         <p className="text-sm font-bold">{q.question}</p>
@@ -73,14 +73,22 @@ function Clarify({ r }: { r: OpenRequest }) {
           </div>
         ) : null}
         <input className={inputCls} placeholder={q.choices?.length ? 'Or type your own answer' : 'Your answer'}
-          value={q.choices?.includes(answers[q.qid]) ? '' : (answers[q.qid] ?? '')} onChange={e => set(q.qid, e.target.value)} />
+          value={q.choices?.includes(answers[q.qid]) ? '' : (answers[q.qid] ?? '')} onChange={e => set(q.qid, e.target.value)}
+          // Enter sends (or moves on to the next question's field when there are several).
+          onKeyDown={e => {
+            if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            const fields = [...(e.currentTarget.closest('[data-clarify]')?.querySelectorAll('input') ?? [])];
+            const next = fields[fields.indexOf(e.currentTarget) + 1];
+            if (next) next.focus(); else answer(r, { answers });
+          }} />
       </div>
     ))}
     <div className="flex gap-2">
       <Button size="sm" tone="halo" onClick={() => answer(r, { answers })}>Send answer</Button>
       <Button size="sm" onClick={() => answer(r, {})}>Skip</Button>
     </div>
-  </>;
+  </div>;
 }
 
 function SecretInput({ r }: { r: OpenRequest }) {
