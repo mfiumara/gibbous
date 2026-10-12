@@ -373,6 +373,12 @@ route('POST', '/api/threads/:id/queue', (p, b) => {
   if ((t.queue?.length ?? 0) >= MAX_QUEUE) throw new HttpError(409, `the queue holds at most ${MAX_QUEUE} messages`);
   return orch.enqueue(t, queueText(b.text), b.shown == null ? undefined : queueText(b.shown, 'shown'));
 });
+route('POST', '/api/threads/:id/held', (p, b) => {
+  const { t } = queued(p);
+  if ((t.held?.length ?? 0) >= MAX_QUEUE) throw new HttpError(409, 'too many held messages');
+  const h = { id: newId('h'), shown: queueText(b.shown, 'shown'), at: Date.now() };
+  orch.touch(t, { held: [...(t.held ?? []), h] }); return h;
+});
 route('POST', '/api/threads/:id/queue/resume', async p => { await orch.resumeQueue(queued(p).t); return { ok: true }; });
 route('POST', '/api/threads/:id/queue/reorder', (p, b) => {
   if (!Array.isArray(b.ids)) throw new HttpError(400, 'ids must be a list');

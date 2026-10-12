@@ -198,6 +198,7 @@ export class Orchestrator extends EventEmitter {
     } else if (ev.type === 'message.complete') {
       const ok = (ev.payload?.status ?? 'complete') === 'complete';
       this.touch(t, {
+        held: undefined,
         status: ok ? 'idle' : (ev.payload?.status === 'interrupted' ? 'idle' : 'error'),
         lastText: String(ev.payload?.text ?? '').slice(-4000),
         error: ok ? undefined : String(ev.payload?.error ?? ev.payload?.status ?? 'failed'),

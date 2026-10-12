@@ -80,6 +80,8 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
   const tid = draftKey;
   const queued = useStore(s => s.threads.find(t => t.id === tid)?.queue) ?? NONE as Queued[];
   const paused = useStore(s => !!s.threads.find(t => t.id === tid)?.queuePaused);
+  // Hermes-held messages (with images) come from the server so the phone sees what the desktop sent, and back.
+  const held = useStore(s => s.threads.find(t => t.id === tid)?.held) ?? NONE as { id: string; shown: string }[];
   const [withAgent, setWithAgent] = useState<{ id: number; shown: string }[]>([]);
   const [qEdit, setQEdit] = useState<{ id: string; text: string } | null>(null);
   useEffect(() => {
@@ -159,7 +161,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
         for (let i = 0; ; i++) {
           try {
             const r = await rpc.call('prompt.submit', params);
-            if (r.status === 'queued') setWithAgent(w => [...w, { id: Date.now(), shown }]);
+            if (r.status === 'queued') { setWithAgent(w => [...w, { id: Date.now(), shown }]); if (tid) api.post(`/api/threads/${tid}/held`, { shown }).catch(() => {}); }
             else if (!edit) onSent?.(shown);
             if (r.status === 'steered' || r.status === 'redirected') toast({ title: r.status === 'steered' ? 'Sent as guidance to the running turn' : 'Redirected the running turn' });
             if (mode === 'steer') setMode('send');
@@ -214,7 +216,7 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
   return (
     <div className="relative">
       {completions.list()}
-      {(queued.length > 0 || withAgent.length > 0) && (
+      {(queued.length > 0 || held.length > 0 || withAgent.length > 0) && (
         <div role="status" className={`mb-2 mx-1 rounded-xl border px-3 py-2 animate-rise ${paused ? 'border-line bg-crater/70' : 'border-tide/50 bg-tide/10'}`}>
           {queued.length > 0 && <>
             <p className={`flex items-center gap-2 text-[12.5px] font-medium ${paused ? 'text-dust' : 'text-tide'}`}>
@@ -250,9 +252,9 @@ export function Composer({ sid, running, autoFocus, edit, onCancelEdit, onNotice
               </li>
             ))}</ol>
           </>}
-          {withAgent.length > 0 && <>
+          {(held.length > 0 || withAgent.length > 0) && <>
             <p className={`flex items-center gap-2 text-[12.5px] font-medium text-tide ${queued.length ? 'mt-2' : ''}`}><Clock size={13} className="animate-pulse" />With the agent · runs after this turn</p>
-            <ol className="mt-1.5 space-y-1">{withAgent.map(m => (
+            <ol className="mt-1.5 space-y-1">{(held.length ? held : withAgent).map(m => (
               <li key={m.id} className="flex items-start gap-2 rounded-lg bg-basalt/50 border border-tide/20 px-2 py-1 animate-rise" data-tip="Has images, so it already went to the agent and can't be edited">
                 <Paperclip size={12} className="mt-[4px] flex-none text-tide" /><p className="flex-1 min-w-0 text-[13px] line-clamp-2 whitespace-pre-wrap select-text text-moon">{m.shown}</p>
               </li>
