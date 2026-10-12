@@ -44,6 +44,7 @@ export type Actions = {
   find(): void;
   palette(): void;
   help(): void;
+  pullRequests(): void;
   remove(): void;                  // delete the focused or open thread (asks first)
 };
 
@@ -76,6 +77,7 @@ export const BINDINGS: Binding<Actions>[] = [
   { keys: 'd', group: DO, help: 'Delete the selected thread (asks first; Undo in the toast)', run: a => a.remove() },
   { keys: '/', group: DO, help: 'Find in this thread, or search this page', run: a => a.find() },
   { keys: ':', group: DO, help: 'Search or jump anywhere', run: a => a.palette() },
+  { keys: 'g p', group: DO, help: 'Toggle this session’s pull requests', run: a => a.pullRequests() },
   { keys: '?', group: DO, help: 'Show these shortcuts', run: a => a.help() },
 ];
 

@@ -264,6 +264,7 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
       ...SETTINGS.map(([id, label, keywords]) => ({ label: `${label} settings`, hint: 'settings', href: `/settings/${id}`, keywords })),
       ...(here ? [
         { label: 'Add a task for me…', hint: 'action', run: () => editHumanTask(here) },
+        { label: 'Toggle pull requests', hint: 'action', keywords: 'github prs ci overview', run: () => dispatchEvent(new Event('gibbous:pullRequests')) },
         { label: here.pinned ? 'Unpin this thread' : 'Pin this thread', hint: 'action', run: () => { api.patch(`/api/threads/${here.id}`, { pinned: !here.pinned }).catch(toastError); } },
         ...(here.status !== 'archived' ? [{ label: 'Archive this thread', hint: 'action', run: () => archiveWithUndo(here) }] : []),
       ] : []),
