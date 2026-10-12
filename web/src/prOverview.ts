@@ -13,8 +13,8 @@ export function overviewSummary(prs: PrBadge[]): string {
   return [...states, ...(ci.length ? [`CI ${ci.join(', ')}`] : [])].join(' · ');
 }
 // Transcript is centred at max-w-3xl (768px). Keep 12px at the outer edge
-// and a full 12px gap between the 260px card and the transcript box.
+// and a full 12px gap between the 300px card and the transcript box.
 export function overviewMode(width: number, panelOpen: boolean): 'card' | 'pill' {
-  return !panelOpen && (width - 768) / 2 >= 284 ? 'card' : 'pill';
+  return !panelOpen && (width - 768) / 2 >= 324 ? 'card' : 'pill';
 }
 export const overviewCollapsed = (stored: string | null) => stored === '1';

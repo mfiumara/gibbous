@@ -13,8 +13,8 @@ test('overview aggregates active CI, never stale merged or closed checks', () =>
   assert.equal(overviewSummary([]),'');
 });
 test('card needs a safe gutter, any panel forces the pill', () => {
-  assert.equal(overviewMode(1336,false),'card');
-  assert.equal(overviewMode(1335,false),'pill');
+  assert.equal(overviewMode(1416,false),'card');
+  assert.equal(overviewMode(1415,false),'pill');
   assert.equal(overviewMode(1920,true),'pill');
   assert.equal(overviewMode(1100,false),'pill');
   assert.equal(overviewMode(390,false),'pill');

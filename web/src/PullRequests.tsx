@@ -18,7 +18,13 @@ function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
     const next = e.key === 'Home' ? 0 : e.key === 'End' ? links.length-1 : i + (e.key === 'j' || e.key === 'ArrowDown' ? 1 : -1);
     links[Math.max(0, Math.min(links.length-1, next))]?.focus();
   }} className="space-y-1 p-2 max-h-[56dvh] sm:max-h-[26rem] overflow-y-auto">
-    {prs.map(pr => <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`${pr.title} · ${pr.headRefName}`} className="press block rounded-lg px-2.5 py-2 hover:bg-ridge min-w-0 select-text">
+    {prs.map(pr => compact ? <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`#${pr.number} ${pr.title} · ${pr.headRefName} · ${pr.state}`}
+      className="press flex items-center gap-2 h-7 pointer-coarse:h-10 rounded-md px-2 hover:bg-ridge min-w-0 text-[12.5px]">
+      <CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null}/>
+      <span className={`font-mono text-[11px] tabular-nums flex-none ${pr.state === 'merged' ? 'text-tide' : pr.state === 'closed' ? 'text-ash line-through' : pr.state === 'draft' ? 'text-ash' : 'text-sprout'}`}>#{pr.number}</span>
+      <span className="truncate min-w-0 flex-1 text-moon/90">{pr.title}</span>
+      <span className="flex-none font-mono text-[10.5px] tabular-nums"><span className="text-sprout/80">+{pr.additions}</span> <span className="text-oxide/80">−{pr.deletions}</span></span>
+    </a></li> : <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`${pr.title} · ${pr.headRefName}`} className="press block rounded-lg px-2.5 py-2 hover:bg-ridge min-w-0 select-text">
       <div className="flex items-start gap-2"><CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null}/><span className={`text-[13px] text-moon flex-1 min-w-0 ${compact ? 'truncate' : 'break-words'}`}>#{pr.number} {pr.title}</span><span className={`rounded-md px-1.5 py-0.5 text-[10px] flex-none ${pr.state === 'open' ? 'text-sprout bg-sprout/10' : pr.state === 'merged' ? 'text-tide bg-tide/10' : 'text-ash bg-ridge'}`}>{pr.state}</span></div>
       <div className="flex gap-2 mt-1 pl-3.5 text-[11px] font-mono text-ash min-w-0"><span className="truncate flex-1" title={pr.headRefName}>{compact ? null : pr.headRefName}</span><span className="text-sprout flex-none">+{pr.additions}</span><span className="text-oxide flex-none">−{pr.deletions}</span></div>
     </a></li>)}
@@ -55,12 +61,12 @@ export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelO
   const body = <><PrList prs={prs} compact/><footer className="border-t border-line px-3.5 py-2.5 text-[10px] leading-relaxed text-ash select-text">{summary}</footer></>;
   const heading = <><GitPullRequest size={13}/><span className="flex-1 text-left">Pull requests</span><span className="text-ash tabular-nums">{prs.length}</span><CiDot ci={aggregateCi(prs)}/><ChevronDown size={12} className={collapsed ? '-rotate-90' : ''}/></>;
   return <div ref={anchor} data-pr-overview data-mode={mode} className="flex-none">
-    {mode === 'card' ? <section className="absolute right-3 top-[calc(100%+12px)] w-[260px] rounded-xl surface bg-basalt overflow-hidden" aria-label="Pull requests overview">
+    {mode === 'card' ? <section className="absolute right-3 top-[calc(100%+12px)] w-[300px] rounded-xl surface bg-basalt overflow-hidden" aria-label="Pull requests overview">
       <button aria-label={collapsed ? 'Expand pull requests' : 'Collapse pull requests'} aria-expanded={!collapsed} onClick={toggleCollapse} className="press w-full flex items-center gap-2 px-3.5 py-3 text-[12px] text-dust hover:text-moon">{heading}</button>
       {!collapsed && body}
     </section> : <div className="relative">
       <button aria-label="Show pull requests" aria-expanded={open} data-tip="Show this session’s pull requests" data-kbd="gp" onClick={() => setOpen(!open)} className="press flex items-center gap-1.5 h-7 pointer-coarse:h-9 px-2 rounded-full border border-line bg-crater text-[11px] text-dust hover:text-moon whitespace-nowrap">PR ×{prs.length}<CiDot ci={aggregateCi(prs)}/></button>
-      <Menu open={open} onClose={() => setOpen(false)} className="w-[300px]">
+      <Menu open={open} onClose={() => setOpen(false)} className="w-[340px]">
         <h3 className="flex items-center gap-2 px-3.5 pt-3 pb-1 text-[12px] text-dust">Pull requests<span className="text-ash">{prs.length}</span><CiDot ci={aggregateCi(prs)}/></h3>{body}
       </Menu>
     </div>}
