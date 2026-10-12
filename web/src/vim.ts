@@ -199,6 +199,7 @@ function actions(help: () => void): Actions {
       if (box) { box.focus(); box.select(); } else useStore.setState({ palette: true });
     },
     palette: () => useStore.setState({ palette: true }),
+    pullRequests: () => dispatchEvent(new Event('gibbous:pullRequests')),
     help,
     remove() {
       // The thread row with focus in the sidebar, else the open thread.

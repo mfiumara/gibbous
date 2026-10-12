@@ -15,6 +15,15 @@ test('space switching lives in the key registry and does not capture overlay key
   }
 });
 
+test('pull request shortcut is registered and leaves overlays alone', () => {
+  let called = false;
+  const r = match(['g'], 'p', BINDINGS, 'normal');
+  assert.equal(r.kind, 'run');
+  if (r.kind === 'run') r.binding.run({ pullRequests: () => { called = true; } } as Actions);
+  assert.equal(called,true);
+  assert.equal(match(['g'], 'p', BINDINGS, 'overlay').kind,'none');
+});
+
 test('token: letters keep their case, ctrl letters become C- tokens', () => {
   assert.equal(token({ key: 'j' }), 'j');
   assert.equal(token({ key: 'G', shiftKey: true }), 'G');
