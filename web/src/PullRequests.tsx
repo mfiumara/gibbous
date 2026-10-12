@@ -1,17 +1,17 @@
 import { GitPullRequest, ChevronDown } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Menu, MoonLoader } from './ui';
+import { Menu, Moon } from './ui';
 import { aggregateCi, overviewCollapsed, overviewMode, overviewSummary } from './prOverview';
 import { useStore, NONE } from './store';
 import type { PrBadge } from './api';
 import type { CiState } from '../../server/git';
 const colors = { pass:'bg-sprout', fail:'bg-oxide', pending:'bg-halo' };
-// CI for a PR: a waning moon while checks run, red when one fails, green when all pass, a faint ring when none ran.
+// CI for a PR: the sidebar's running moon while checks run, red when one fails, green when all pass, a faint ring when none ran.
 // Fixed-size box so rows stay aligned whatever the state.
 export function CiDot({ci}: {ci:CiState|null}) {
   const tip = ci === 'pending' ? 'CI running' : ci === 'fail' ? 'CI failing' : ci === 'pass' ? 'CI passing' : 'No CI checks';
   return <span className="size-2.5 grid place-items-center flex-none" aria-label={tip} data-tip={tip}>
-    {ci === 'pending' ? <MoonLoader size={10} label={tip} />
+    {ci === 'pending' ? <Moon thread="running" size={9} />
       : <span className={`size-1.5 rounded-full ${ci ? colors[ci] : 'ring-1 ring-ash/50'}`} />}
   </span>;
 }
