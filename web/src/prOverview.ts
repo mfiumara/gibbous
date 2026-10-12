@@ -19,8 +19,8 @@ export function overviewMode(width: number, panelOpen: boolean): 'card' | 'pill'
 }
 export const overviewCollapsed = (stored: string | null) => stored === '1';
 
-// Stacked PRs (a PR whose base is another PR's branch in the same repo) nest under their parent, GitHub-stack style.
-// Order: each root keeps its place; children follow their parent.
+// Stacked PRs (a PR whose base is another PR's branch in the same repo) follow right below the PR they're based on.
+// Order: each root keeps its place; children follow their parent. depth > 0 = stacked on the row above's chain.
 export interface StackRow { pr: PrBadge; depth: number; last: boolean }
 const repoOf = (url: string) => url.replace(/\/pull\/\d+.*$/, '');
 export function stackRows(prs: PrBadge[]): StackRow[] {
