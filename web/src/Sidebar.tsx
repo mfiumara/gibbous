@@ -11,8 +11,8 @@ import { EDGE, axis, progress, settle } from './drawer';
 import { prefetch } from './thread/prefetch';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 import { quiet } from './screenTransition';
-import { TaskCheck, editHumanTask } from './HumanTask';
-import { openHumanTask } from '../../server/humanTasks';
+import { TaskCheck, editHumanTask, focusHumanTask } from './HumanTask';
+import { openHumanTask, humanTasks, attentionCount } from '../../server/humanTasks';
 import { haptic, inIosApp } from './iosBridge';
 
 // Navigating from the open drawer: the drawer slides away itself, so the screen change gets no transition on top.
@@ -107,7 +107,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
         {archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
       </button>
       <Menu open={menu} onClose={() => setMenu(false)} align="left">
-        <MenuItem icon={<Check />} onClick={() => { setMenu(false); editHumanTask(t); }}>{openHumanTask(t) ? 'Edit my task…' : 'Add a task for me…'}</MenuItem>
+        <MenuItem icon={<Check />} onClick={() => { setMenu(false); editHumanTask(t); }}>Add a task for me…</MenuItem>
         <MenuItem icon={<Pencil />} onClick={() => { setMenu(false); setRenaming(true); }}>Rename</MenuItem>
         <MenuItem icon={t.pinned ? <PinOff /> : <Pin />} onClick={() => { setMenu(false); api.patch(`/api/threads/${t.id}`, { pinned: !t.pinned }).catch(toastError); }}>{t.pinned ? 'Unpin' : 'Pin to top'}</MenuItem>
         <MenuItem icon={archived ? <ArchiveRestore /> : <Archive />} onClick={() => { setMenu(false); toggleArchive(); }}>{archived ? 'Unarchive' : 'Archive'}</MenuItem>
@@ -368,13 +368,16 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
       </div>}
       <SelectCtx.Provider value={selCtx}>
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pt-3 pb-3 space-y-3.5">
-        {threads.some(openHumanTask) && <Section id="for-me" title="For me" count={threads.filter(openHumanTask).length} collapsed={!!collapsed['for-me']} toggle={toggle} icon={<Check size={12} className="text-tide" />}>
-          {threads.filter(openHumanTask).sort((a, b) => b.humanTask!.at - a.humanTask!.at).map(t => <div key={t.id} className={`flex gap-1 pl-2 pr-1 py-1 rounded-lg ${t.id === activeId ? 'bg-ridge' : 'hover:bg-ridge/55'}`}>
-            <TaskCheck thread={t} />
-            <a href={`#/t/${t.id}`} onClick={close} className="flex-1 min-w-0 py-1 rounded-md" aria-current={t.id === activeId ? 'page' : undefined}>
-              <p className="truncate text-[13px] text-moon">{t.title}</p>{space && !belongs(t) && <p className="text-[10.5px] text-ash">{spaces.find(s => s.id === projects.find(p => p.id === t.projectId)?.space)?.name ?? 'All'}</p>}<p className="truncate text-[11.5px] text-dust mt-0.5" title={t.humanTask!.text}>{t.humanTask!.text}</p>
-            </a>
-          </div>)}
+        {threads.some(openHumanTask) && <Section id="for-me" title="For me" count={attentionCount(0, threads)} collapsed={!!collapsed['for-me']} toggle={toggle} icon={<Check size={12} className="text-tide" />}>
+          {threads.filter(openHumanTask).sort((a, b) => Math.max(...humanTasks(b).map(t => t.at)) - Math.max(...humanTasks(a).map(t => t.at))).map(t => {
+            const tasks = humanTasks(t).filter(task => task.doneAt == null), grouped = tasks.length > 2;
+            return <div key={t.id}>{grouped && <p className="px-3 pt-2 pb-1 text-[10.5px] text-ash truncate">{t.title}</p>}{tasks.map(task => <div key={task.id} className={`flex gap-1 pl-2 pr-1 py-1 rounded-lg ${t.id === activeId ? 'bg-ridge/60' : 'hover:bg-ridge/55'}`}>
+              <TaskCheck thread={t} task={task} />
+              <a href={`#/t/${t.id}`} onClick={() => { close(); focusHumanTask(task.id); }} className="flex-1 min-w-0 py-1 rounded-md" aria-current={t.id === activeId ? 'page' : undefined}>
+                <p className="text-[12.5px] text-moon line-clamp-2 break-words" title={task.text}>{task.text}</p>{!grouped && <p className="truncate text-[10.5px] text-ash mt-0.5">{t.title}</p>}
+              </a>
+            </div>)}</div>;
+          })}
         </Section>}
         {space && !shown.length && <div className="px-3 py-2 space-y-2 text-[13px] text-ash">
           <p>{projects.some(p => inSpace(p, space)) ? 'This space’s projects are hidden.' : 'No projects here yet. Move one here from All.'}</p>

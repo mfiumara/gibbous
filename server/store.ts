@@ -66,7 +66,8 @@ export interface Thread {
   // Imported from another surface (Discord, Telegram, CLI, Paseo, cron…). Another process owns that
   // session, so Gibbous only reads it; "Continue in Gibbous" copies it into a thread Gibbous owns.
   source?: string; readOnly?: boolean;
-  humanTask?: { text: string; at: number; by: 'user' | 'agent'; doneAt?: number };
+  humanTasks?: import('./humanTasks.ts').HumanTask[];
+  humanTask?: { text: string; at: number; by: 'user' | 'agent'; doneAt?: number }; // legacy backups
   pinned?: boolean;                     // shown at the top of the sidebar
   // Prompts typed while a turn runs (queue.ts): the server sends the head when a turn ends. A Stop pauses the line.
   queue?: QueueItem[]; queuePaused?: boolean;
@@ -113,6 +114,7 @@ export function migrate(raw: any): State {
     projects: (rest.projects ?? []).map(({ playbookId: _, space, ...p }: any) => ({ ...p, ...(spaces.some(s => s.id === space) ? { space } : {}) })),
     threads: (rest.threads ?? []).map(({ taskId: _a, planId: _b, planned: _c, parentId: _d, queue, ...t }: any) => ({
       ...t, role: 'chat',
+      ...(t.humanTasks ? {} : t.humanTask ? { humanTasks: [{ ...t.humanTask, id: `legacy-${t.humanTask.at}` }] } : {}),
       ...(Array.isArray(queue) && queue.length ? { queue: queue.filter((m: any) => typeof m?.id === 'string' && typeof m?.text === 'string').map((m: any) => ({ id: m.id, text: m.text, shown: typeof m.shown === 'string' ? m.shown : m.text, at: Number(m.at) || 0 })) } : {}),
     })),
     hosts: rest.hosts ?? [],

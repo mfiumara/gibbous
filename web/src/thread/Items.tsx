@@ -1,4 +1,4 @@
-import { Children, memo, useDeferredValue, useState, type ReactNode } from 'react';
+import { Children, memo, useDeferredValue, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -6,7 +6,8 @@ import { ChevronRight, FileText, FilePen, Terminal, Search, Globe, Bot, Wrench, 
 import { canSpeak, speak } from '../voice';
 import { parseUserText, type Item } from './timeline';
 import { DiffView } from '../panels/DiffView';
-import { Moon, viewMedia, saveMedia } from '../ui';
+import { Moon, viewMedia, saveMedia, routeNow, Menu, MenuItem } from '../ui';
+import { addReplyTask } from '../HumanTask';
 import { baseName } from '../paths';
 
 // Local file paths (attachments, generated images) load through the authenticated image route.
@@ -33,10 +34,13 @@ function withBreaks(children: ReactNode): ReactNode {
     : c.split(/<br\s*\/?>/gi).flatMap((part, i) => i ? [<br key={i} />, part] : [part]));
 }
 
-export const Markdown = memo(function Markdown({ text: live }: { text: string }) {
+export const Markdown = memo(function Markdown({ text: live, taskThread }: { text: string; taskThread?: string }) {
   const text = useDeferredValue(live);
+  const action = (children: ReactNode) => taskThread ? <button type="button" aria-label="Add to For me" className="reply-task-action press" onClick={e => { e.stopPropagation(); addReplyTask(taskThread, nodeText(children)); }}>+ For me</button> : null;
   return <div className="prose-moon"><ReactMarkdown remarkPlugins={MD_PLUGINS.remark} rehypePlugins={MD_PLUGINS.rehype}
     components={{
+      p: ({ node: _n, children, ...p }) => <p {...p} className={taskThread ? 'reply-task-line' : undefined}>{children}{action(children)}</p>,
+      li: ({ node: _n, children, ...p }) => <li {...p} className={taskThread ? 'reply-task-line' : undefined}>{children}{action(children)}</li>,
       // Links into Gibbous's own file routes open in the viewer: a new window would be a browser without the session.
       a: ({ node: _n, ...p }) => /^\/api\/(media|image)\?/.test(String(p.href ?? ''))
         ? <a {...p} onClick={e => { e.preventDefault(); viewMedia(String(p.href), baseName(new URLSearchParams(String(p.href).split('?')[1]).get('path') ?? '')); }} />
@@ -87,9 +91,21 @@ const splitMedia = (text: string) => {
 // right under it); they appear once the turn ends.
 export const AssistantMessage = memo(function AssistantMessage({ item, endOfTurn = true, tail = false }: { item: Extract<Item, { kind: 'assistant' }>; endOfTurn?: boolean; tail?: boolean }) {
   const { media, rest } = item.streaming ? { media: [], rest: item.text } : splitMedia(item.text);
+  const route = routeNow(), taskThread = route.name === 'thread' ? route.id : undefined;
+  const [taskMenu, setTaskMenu] = useState<string>(); const press = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const cancelPress = () => clearTimeout(press.current);
+  const lineText = (target: EventTarget) => {
+    const el = (target as HTMLElement).closest('.reply-task-line');
+    if (!el || el.closest('pre, code, table') || (target as HTMLElement).closest('button,a')) return undefined;
+    const selected = window.getSelection()?.toString().trim();
+    const copy = el.cloneNode(true) as HTMLElement; copy.querySelectorAll('.reply-task-action').forEach(b => b.remove());
+    return selected || copy.textContent?.trim();
+  };
   return (
-    <div className={`group/msg relative ${item.streaming ? 'caret' : ''}`}>
-      <Markdown text={rest} />
+    <div className={`group/msg relative ${item.streaming ? 'caret' : ''}`} onContextMenu={e => { const text = lineText(e.target); if (text && taskThread) { e.preventDefault(); setTaskMenu(text); } }}
+      onTouchStart={e => { const text = lineText(e.target); if (text && taskThread) press.current = setTimeout(() => setTaskMenu(text), 500); }} onTouchMove={cancelPress} onTouchEnd={cancelPress} onTouchCancel={cancelPress}>
+      <Markdown text={rest} taskThread={taskThread} />
+      <Menu open={!!taskMenu} onClose={() => setTaskMenu(undefined)}><MenuItem icon={<ListTodo />} onClick={() => { if (taskThread && taskMenu) addReplyTask(taskThread, taskMenu); setTaskMenu(undefined); }}>Add to For me</MenuItem></Menu>
       {media.length > 0 && <div className="mt-3 space-y-2">{media.map(m => <MediaCard key={m} path={m} />)}</div>}
       {!item.streaming && !tail && <div className={`absolute -bottom-1 -left-1 translate-y-full flex opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 ${endOfTurn ? '' : 'pointer-coarse:hidden rounded-lg bg-crater border border-line shadow-sm'}`}><CopyButton text={item.text} />
         {canSpeak && <button aria-label="Read aloud" data-tip="Read aloud" onClick={() => speak(item.text)} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Volume2 size={13} /></button>}</div>}

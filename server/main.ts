@@ -13,7 +13,7 @@ import { ensureRemoteBackend, closeHost, testHost } from './hosts.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Host } from './store.ts';
 import * as kanban from './kanban.ts';
-import { attentionCount, setHumanTask, completeHumanTask } from './humanTasks.ts';
+import { attentionCount, openHumanTask, humanTasks, addHumanTasks, patchHumanTask, removeHumanTask, completeHumanTask, taskNotifier } from './humanTasks.ts';
 import { handleMcp } from './mcp.ts';
 import { gatewayChat, gatewayAvailable } from './gateway.ts';
 import { MESSAGING_SOURCES } from './sources.ts';
@@ -147,7 +147,7 @@ async function housekeeping() {
   const days = state.settings.autoArchiveDays;
   if (days > 0) {
     const cutoff = Date.now() - days * 86_400_000;
-    for (const t of state.threads.filter(t => t.role === 'chat' && !t.readOnly && !t.pinned && !(t.humanTask && t.humanTask.doneAt == null) && t.status === 'idle' && t.updatedAt < cutoff))
+    for (const t of state.threads.filter(t => t.role === 'chat' && !t.readOnly && !t.pinned && !openHumanTask(t) && t.status === 'idle' && t.updatedAt < cutoff))
       await orch.archiveThread(t).catch(() => {});
   }
   const budget = state.settings.monthlyBudgetUsd, month = new Date().toISOString().slice(0, 7);
@@ -310,22 +310,33 @@ route('POST', '/api/threads', (_, b) => orch.createThread(b));
 function humanTaskChanged(t: import('./store.ts').Thread) {
   save(); orch.changed('thread', t); return t;
 }
-function agentHumanTask(t: import('./store.ts').Thread, text?: unknown) {
-  if (text === undefined) completeHumanTask(t);
-  else setHumanTask(t, text, 'agent');
-  humanTaskChanged(t);
-  if (text !== undefined) notify({ kind: 'input', title: 'Gibbous needs you', body: t.humanTask!.text, url: `/#/t/${t.id}` });
-  return t;
+const notifyTasks = taskNotifier((t, tasks) => notify({ kind: 'input', title: tasks.length > 1 ? `Gibbous needs you · ${tasks.length} things` : 'Gibbous needs you', body: tasks.length === 1 ? tasks[0].text : tasks.map(task => task.text).join('\n'), url: `/#/t/${t.id}` }));
+function agentHumanTask(t: import('./store.ts').Thread, action: import('./mcp.ts').TaskAction) {
+  if ('tasks' in action) {
+    const created = addHumanTasks(t, action.tasks, 'agent'); humanTaskChanged(t); notifyTasks(t, created); return created.map(task => task.id);
+  }
+  completeHumanTask(t, action); humanTaskChanged(t);
 }
-route('PUT', '/api/threads/:id/human-task', (p, b) => {
-  const t = need(orch.thread(p.id), 'thread');
-  try { setHumanTask(t, b.text, 'user'); } catch (e) { throw new HttpError(400, (e as Error).message); }
+function taskMutation(id: string, mutate: (t: import('./store.ts').Thread) => unknown) {
+  const t = need(orch.thread(id), 'thread');
+  try { mutate(t); } catch (e) { throw new HttpError((e as Error).message === 'Task not found' ? 404 : 400, (e as Error).message); }
   return humanTaskChanged(t);
-});
-route('POST', '/api/threads/:id/human-task/done', p => humanTaskChanged(completeHumanTask(need(orch.thread(p.id), 'thread'))));
-route('DELETE', '/api/threads/:id/human-task', p => {
-  const t = need(orch.thread(p.id), 'thread'); delete t.humanTask; return humanTaskChanged(t);
-});
+}
+route('POST', '/api/threads/:id/human-tasks', (p, b) => taskMutation(p.id, t => addHumanTasks(t, [b.text], 'user')));
+route('PATCH', '/api/threads/:id/human-tasks/:taskId', (p, b) => taskMutation(p.id, t => patchHumanTask(t, p.taskId, b)));
+route('DELETE', '/api/threads/:id/human-tasks/:taskId', p => taskMutation(p.id, t => removeHumanTask(t, p.taskId)));
+// Legacy clients edit/finish/remove only a single unambiguous open task, never the whole list.
+route('PUT', '/api/threads/:id/human-task', (p, b) => taskMutation(p.id, t => {
+  const open = humanTasks(t).filter(task => task.doneAt == null);
+  if (open.length > 1) throw new Error('Use the task-list routes to identify a task');
+  if (open.length) patchHumanTask(t, open[0].id, { text: b.text }); else addHumanTasks(t, [b.text], 'user');
+}));
+route('POST', '/api/threads/:id/human-task/done', p => taskMutation(p.id, t => completeHumanTask(t)));
+route('DELETE', '/api/threads/:id/human-task', p => taskMutation(p.id, t => {
+  const open = humanTasks(t).filter(task => task.doneAt == null);
+  if (open.length !== 1) throw new Error('Use the task-list routes to identify a task');
+  removeHumanTask(t, open[0].id);
+}));
 
 route('PATCH', '/api/threads/:id', (p, b) => {
   const t = need(orch.thread(p.id), 'thread');

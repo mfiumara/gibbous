@@ -10,7 +10,7 @@ import { BINDINGS, helpRows } from './keys';
 import { vimKey, vimEscape } from './vim';
 import { Sidebar } from './Sidebar';
 import { HumanTaskEditor, editHumanTask } from './HumanTask';
-import { attentionCount, openHumanTask } from '../../server/humanTasks';
+import { attentionCount } from '../../server/humanTasks';
 import { editSpace, moveToSpace, deleteSpace } from './Spaces';
 import { ProjectFilter } from './ProjectFilter';
 import { Home, AddProjectDialog } from './Home';
@@ -263,8 +263,7 @@ function Palette({ onClose, start }: { onClose(): void; start?: 'projects' }) {
       { label: 'Kanban boards', hint: 'go', href: '/kanban', keywords: 'board tasks' }, { label: 'Inbox', hint: 'go', href: '/inbox' }, { label: 'Rooms', hint: 'go', href: '/rooms' }, { label: 'Automations', hint: 'go', href: '/automations', keywords: 'cron schedules jobs scheduled recurring' }, { label: 'Sessions', hint: 'go', href: '/sessions', keywords: 'history past conversations cli desktop paseo acp discord telegram claude code codex t3' }, ...TOOLS.filter(t => t.id !== 'opencode').map(t => ({ label: `${t.label} sessions`, hint: 'sessions', href: `/sessions/${t.id}`, keywords: `history ${t.tip}` })), { label: 'Import sessions…', hint: 'go', href: '/import', keywords: 'bring claude code codex history welcome first run' }, { label: 'Set up the agent…', hint: 'go', href: '/setup', keywords: 'install hermes model provider api key sign in chatgpt claude onboarding first run' }, { label: 'Settings', hint: 'go', href: '/settings' },
       ...SETTINGS.map(([id, label, keywords]) => ({ label: `${label} settings`, hint: 'settings', href: `/settings/${id}`, keywords })),
       ...(here ? [
-        { label: openHumanTask(here) ? 'Edit my task…' : 'Add a task for me…', hint: 'action', run: () => editHumanTask(here) },
-        ...(openHumanTask(here) ? [{ label: 'Complete my task', hint: 'action', run: () => { api.post(`/api/threads/${here.id}/human-task/done`).catch(toastError); } }] : []),
+        { label: 'Add a task for me…', hint: 'action', run: () => editHumanTask(here) },
         { label: here.pinned ? 'Unpin this thread' : 'Pin this thread', hint: 'action', run: () => { api.patch(`/api/threads/${here.id}`, { pinned: !here.pinned }).catch(toastError); } },
         ...(here.status !== 'archived' ? [{ label: 'Archive this thread', hint: 'action', run: () => archiveWithUndo(here) }] : []),
       ] : []),
