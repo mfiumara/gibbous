@@ -1,8 +1,8 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft } from 'lucide-react';
+import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Trash2 } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread, NONE } from './store';
 import { useShallow } from 'zustand/react/shallow';
-import { api, type Thread, type PrBadge } from './api';
+import { api, type Thread, type Project, type PrBadge } from './api';
 import { CiDot } from './PullRequests';
 import { aggregateCi } from '../../server/prSummary';
 import { SpaceSwitcher, SpaceItems } from './Spaces';
@@ -175,6 +175,15 @@ function useSidebarWidth() {
     onKeyDown(e: React.KeyboardEvent) { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); save(clampW(w + (e.key === 'ArrowLeft' ? -16 : 16))); } },
   };
   return { w, dragging, handle };
+}
+
+// Removing a project takes it out of Gibbous only: files, worktrees and its board stay. Its threads go to Archived
+// (one Undo brings them back as chats) rather than spilling into the sidebar as loose chats.
+async function removeProject(p: Project, active: Thread[]) {
+  const n = active.length;
+  if (!confirm(`Remove ${p.name} from Gibbous?${n ? ` Its ${n === 1 ? 'thread is' : `${n} threads are`} archived.` : ''} Files, worktrees and its board stay on disk.`)) return;
+  if (n) archiveWithUndo(active);
+  await api.del(`/api/projects/${p.id}`).catch(toastError);
 }
 
 export function Sidebar({ route, onAddProject }: { route: Route; onAddProject(): void }) {
@@ -418,6 +427,8 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
                     <MenuItem icon={<ArrowUp />} onClick={() => { move(p.id, -1); setProjMenu(null); }}>Move up</MenuItem>
                     <MenuItem icon={<ArrowDown />} onClick={() => { move(p.id, 1); setProjMenu(null); }}>Move down</MenuItem>
                     <MenuItem icon={<EyeOff />} onClick={() => { setHidden([...hidden, p.id]); setProjMenu(null); }}>Hide from sidebar</MenuItem>
+                    {list.length > 0 && <MenuItem icon={<Archive />} onClick={() => { archiveWithUndo(list); setProjMenu(null); }}>Archive {list.length === 1 ? 'its thread' : `its ${list.length} threads`}</MenuItem>}
+                    <MenuItem icon={<Trash2 />} tone="danger" onClick={() => { setProjMenu(null); removeProject(p, list); }}>Remove project…</MenuItem>
                     </>}
                   </Menu>
                 </span>
