@@ -1,4 +1,4 @@
-import { GitPullRequest, ChevronDown, Check, X } from 'lucide-react';
+import { GitPullRequest, GitMerge, GitPullRequestClosed, ChevronDown, Check, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Menu, Moon } from './ui';
 import { aggregateCi, overviewCollapsed, overviewMode, overviewSummary, stackRows } from './prOverview';
@@ -30,9 +30,12 @@ function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
       className="press relative flex items-center gap-2 h-7 pointer-coarse:h-10 rounded-md px-2 hover:bg-ridge min-w-0 text-[12.5px]">
       {/* Stacked on the PR right above: a short line joining the two CI icons. */}
       {depth > 0 && rows[i - 1]?.pr.headRefName === pr.baseRefName && <span aria-hidden className="absolute left-[13.5px] -top-2.5 h-4 w-px bg-ash/50" />}
-      <CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null} checks={pr.checks}/>
-      <span className={`font-mono text-[11px] tabular-nums flex-none ${pr.state === 'merged' ? 'text-tide' : pr.state === 'closed' ? 'text-ash line-through' : pr.state === 'draft' ? 'text-ash' : 'text-sprout'}`}>#{pr.number}</span>
-      <span className="truncate min-w-0 flex-1 text-moon/90">{pr.title}</span>
+      {/* Merged / closed PRs show GitHub's icon instead of CI, which no longer matters for them. */}
+      {pr.state === 'merged' ? <span className="size-3 grid place-items-center flex-none" data-tip="Merged" aria-label="Merged"><GitMerge size={12} strokeWidth={2.2} className="text-[#b8a6e0]" /></span>
+        : pr.state === 'closed' ? <span className="size-3 grid place-items-center flex-none" data-tip="Closed without merging" aria-label="Closed"><GitPullRequestClosed size={12} strokeWidth={2.2} className="text-ash" /></span>
+        : <CiDot ci={pr.ci} checks={pr.checks}/>}
+      <span className={`font-mono text-[11px] tabular-nums flex-none ${pr.state === 'merged' ? 'text-[#b8a6e0]' : pr.state === 'closed' ? 'text-ash line-through' : pr.state === 'draft' ? 'text-ash' : 'text-sprout'}`}>#{pr.number}</span>
+      <span className={`truncate min-w-0 flex-1 ${pr.state === 'merged' || pr.state === 'closed' ? 'text-dust' : 'text-moon/90'}`}>{pr.title}</span>
       <span className="flex-none w-[5.5ch] text-right font-mono text-[10.5px] tabular-nums text-sprout/80">+{pr.additions}</span>
       <span className="flex-none w-[4.5ch] text-right font-mono text-[10.5px] tabular-nums text-oxide/80">−{pr.deletions}</span>
     </a></li> : <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`${pr.title} · ${pr.headRefName}`} className="press block rounded-lg px-2.5 py-2 hover:bg-ridge min-w-0 select-text">
