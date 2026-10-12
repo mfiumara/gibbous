@@ -3,6 +3,7 @@ import { RotateCcw, RefreshCw, GitCommitHorizontal, GitPullRequest, GitBranch, C
 import { api, type FileChange, type Thread } from '../api';
 import { useStore, toastError } from '../store';
 import { Button, IconButton, Menu, MenuItem, inputCls } from '../ui';
+import { PullRequests } from '../PullRequests';
 import { DiffView, type LineComment } from './DiffView';
 import type { GitInfo, PrStatus } from '../../../server/git.ts';
 
@@ -124,6 +125,7 @@ export function ChangesPanel({ thread, refreshKey }: { thread: Thread; refreshKe
           </div>
         </div>
       )}
+      <PullRequests threadId={thread.id} />
       {pr && <PrCard thread={thread} pr={pr} reload={load} />}
       {data.files.length === 0 ? <p className="p-4 text-sm text-dust">No changes yet.</p> : <>
         <ul className="max-h-[34%] overflow-y-auto border-b border-line p-1">

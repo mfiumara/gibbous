@@ -29,7 +29,7 @@ import { usage, parseDays } from './usage.ts';
 import { sessionDirs } from './sessionDirs.ts';
 import { foreignOrigins } from './foreignOrigins.ts';
 import { openingMessage } from './titles.ts';
-import { liveBranch, prBadges, refreshPrs } from './prs.ts';
+import { liveBranch, prBadges, threadPrs, refreshPrs } from './prs.ts';
 import { MAX_QUEUE, MAX_TEXT as MAX_QUEUE_TEXT } from './queue.ts';
 import { sys, isInside, badFolderName, downloadsDir, revealCommand, launch, mediaAllowed, serviceInfo, exitSignals, hermesHome, knownHermesBins } from './platform.ts';
 
@@ -231,7 +231,7 @@ function publicState() {
     requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health, ...setupPublic() },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
-    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(),
+    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(), threadPrs: threadPrs(),
     platform: process.platform, service: serviceInfo(), // per-OS copy in the web app ("this Mac", restart command)
   };
 }
@@ -788,7 +788,7 @@ setBadgeSource(() => attentionCount(orch.requests.size, state.threads));
 orch.on('change', ({ kind }) => { if (['requests', 'thread', 'reload', 'thread-deleted'].includes(kind)) badgeChanged(); });
 
 // Sidebar PR + CI badges: poll gh every minute, push only when something changed.
-const pollPrs = () => refreshPrs(b => broadcast('prs', b)).catch(e => console.error('[prs]', e));
+const pollPrs = () => refreshPrs((b, lists) => { broadcast('prs', b); broadcast('threadPrs', lists); }).catch(e => console.error('[prs]', e));
 setTimeout(pollPrs, 3000);
 setInterval(pollPrs, 60_000);
 setInterval(() => orch.reconcileRunning().catch(e => console.error('[reconcile]', e)), 30_000);

@@ -3,6 +3,8 @@ import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, Arch
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread, NONE } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type PrBadge } from './api';
+import { CiDot } from './PullRequests';
+import { aggregateCi } from '../../server/prSummary';
 import { SpaceSwitcher, SpaceItems } from './Spaces';
 import { activeSpace, inSpace } from '../../server/spaces';
 import { EDGE, axis, progress, settle } from './drawer';
@@ -60,6 +62,8 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
   const sel = useContext(SelectCtx);
   const unread = useStore(s => !active && isUnread(t, s.seen));
   const pr = useStore(s => s.prs[t.id]);
+  const prs = useStore(s => s.threadPrs[t.id] ?? NONE);
+  const ci = aggregateCi(prs);
   const archived = t.status === 'archived';
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -96,7 +100,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
         {unread && <span className="size-1.5 rounded-full bg-tide flex-none"><span className="sr-only">unread</span></span>}
         {t.pinned && <Pin size={11} className="text-ash flex-none" aria-label="pinned" />}
         <span className="text-[11px] text-ash group-hover:opacity-0 transition-opacity">{ago(t.updatedAt)}</span>
-        {pr && <PrLine pr={pr} />}
+        {prs.length > 1 ? <span className="basis-full pl-[19px] h-4 text-[11px] text-ash flex items-center gap-1.5" data-tip="Pull requests created by this thread · open the thread to see all"><GitPullRequest size={10} />PR ×{prs.length}<CiDot ci={ci} /></span> : pr && <PrLine pr={pr} />}
       </a>
       <button onClick={toggleArchive} aria-label={archived ? `Unarchive ${t.title}` : `Archive ${t.title}`} data-tip={archived ? 'Unarchive' : 'Archive'}
         className="absolute right-1.5 top-1/2 -translate-y-1/2 size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-line/60 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity pointer-coarse:hidden">

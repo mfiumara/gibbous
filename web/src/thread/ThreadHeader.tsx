@@ -4,6 +4,7 @@ import { api, type Thread } from '../api';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo } from '../store';
 import { Moon, IconButton, Menu, MenuItem, Elapsed } from '../ui';
 import type { Timeline } from './timeline';
+import { PullRequests } from '../PullRequests';
 import { thisMachine } from '../paths';
 import { editHumanTask } from '../HumanTask';
 import { UserCheck as CheckTaskIcon } from 'lucide-react';
@@ -75,6 +76,7 @@ export function ThreadHeader({ thread, tl, panels, panel, setPanel, onBranch, on
         </div>
       </div>
     </header>
+    <PullRequests threadId={thread.id} collapsible />
   </>
   );
 }
