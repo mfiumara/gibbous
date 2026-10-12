@@ -216,8 +216,18 @@ export type CiState = 'pass' | 'fail' | 'pending';
 export interface PrBadge { title?: string; headRefName?: string; baseRefName?: string; author?: string; mergeable?: string; reviewDecision?: string; number: number; url: string; state: 'open' | 'draft' | 'merged' | 'closed'; ci: CiState | null; checks?: { passed: number; total: number }; additions: number; deletions: number }
 
 const CI_FAIL = /^(failure|error|timed_out|cancelled|action_required|startup_failure)$/;
-export function ciState(rollup: any[] | undefined): CiState | null {
-  if (!rollup?.length) return null;
+// A run cancelled because a newer run of the same check replaced it (a re-push, a re-run) isn't a failure: GitHub
+// hides it too. Only a cancelled check with no other run of that name still counts.
+export function liveChecks(rollup: any[] | undefined): any[] {
+  if (!rollup?.length) return [];
+  const key = (c: any) => c.name ?? c.context;
+  const cancelled = (c: any) => String(c.conclusion || '').toUpperCase() === 'CANCELLED';
+  return rollup.filter(c => !(cancelled(c) && key(c) && rollup.some(o => o !== c && key(o) === key(c) && !cancelled(o))));
+}
+
+export function ciState(all: any[] | undefined): CiState | null {
+  const rollup = liveChecks(all);
+  if (!rollup.length) return null;
   const s = rollup.map(c => ({ done: !c.status || String(c.status).toUpperCase() === 'COMPLETED', result: String(c.conclusion || c.state || '').toLowerCase() }));
   if (s.some(c => CI_FAIL.test(c.result))) return 'fail';
   if (s.some(c => !c.done || /^(pending|expected|queued|in_progress)$/.test(c.result))) return 'pending';
@@ -225,8 +235,9 @@ export function ciState(rollup: any[] | undefined): CiState | null {
 }
 
 // GitHub's '12/14': checks that passed (success, skipped, neutral) out of all of them.
-export function ciChecks(rollup: any[] | undefined): { passed: number; total: number } | undefined {
-  if (!rollup?.length) return undefined;
+export function ciChecks(all: any[] | undefined): { passed: number; total: number } | undefined {
+  const rollup = liveChecks(all);
+  if (!rollup.length) return undefined;
   const passed = rollup.filter(c => /^(success|skipped|neutral)$/i.test(String(c.conclusion || c.state || ''))).length;
   return { passed, total: rollup.length };
 }
@@ -236,7 +247,7 @@ export function prBadge(j: any): PrBadge {
   const checks = ciChecks(j.statusCheckRollup?.contexts ? j.statusCheckRollup.contexts.nodes : j.statusCheckRollup);
   return {
     ...(checks ? { checks } : {}),
-    number: j.number, url: j.url, ...(j.title != null ? { title: j.title } : {}), ...(j.headRefName != null ? { headRefName: j.headRefName } : {}), ...(j.baseRefName != null ? { baseRefName: j.baseRefName } : {}), ...(j.author?.login ? { author: j.author.login } : {}), additions: j.additions ?? 0, deletions: j.deletions ?? 0, ci: ciState(j.statusCheckRollup?.contexts ? [...(j.statusCheckRollup.state ? [{ state: j.statusCheckRollup.state }] : []), ...j.statusCheckRollup.contexts.nodes] : j.statusCheckRollup),
+    number: j.number, url: j.url, ...(j.title != null ? { title: j.title } : {}), ...(j.headRefName != null ? { headRefName: j.headRefName } : {}), ...(j.baseRefName != null ? { baseRefName: j.baseRefName } : {}), ...(j.author?.login ? { author: j.author.login } : {}), additions: j.additions ?? 0, deletions: j.deletions ?? 0, ci: ciState(j.statusCheckRollup?.contexts ? j.statusCheckRollup.contexts.nodes : j.statusCheckRollup),
     state: st === 'MERGED' ? 'merged' : st === 'CLOSED' ? 'closed' : j.isDraft ? 'draft' : 'open',
   };
 }

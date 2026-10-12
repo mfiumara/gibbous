@@ -90,3 +90,11 @@ test('ciChecks counts passed out of all checks, like GitHub', () => {
   assert.equal(ciChecks([]), undefined);
   assert.deepEqual(ciChecks([{ status: 'COMPLETED', conclusion: 'SUCCESS' }, { status: 'COMPLETED', conclusion: 'SKIPPED' }, { status: 'COMPLETED', conclusion: 'FAILURE' }, { status: 'IN_PROGRESS' }, { state: 'SUCCESS' }]), { passed: 3, total: 5 });
 });
+
+test('a run cancelled by a newer run of the same check is not a failure', () => {
+  const r = (name: string, status: string, conclusion?: string) => ({ name, status, conclusion });
+  assert.equal(ciState([r('pr-meta', 'COMPLETED', 'CANCELLED'), r('pr-meta', 'COMPLETED', 'SUCCESS'), r('test', 'COMPLETED', 'SUCCESS')]), 'pass');
+  assert.equal(ciState([r('pr-meta', 'COMPLETED', 'CANCELLED'), r('pr-meta', 'IN_PROGRESS')]), 'pending');
+  assert.equal(ciState([r('deploy', 'COMPLETED', 'CANCELLED'), r('test', 'COMPLETED', 'SUCCESS')]), 'fail');   // nothing replaced it
+  assert.deepEqual(ciChecks([r('pr-meta', 'COMPLETED', 'CANCELLED'), r('pr-meta', 'COMPLETED', 'SUCCESS')]), { passed: 1, total: 1 });
+});

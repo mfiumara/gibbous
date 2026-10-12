@@ -18,7 +18,7 @@ export async function fetchPrs(refs: PrRef[], cwd: string, request = graphql): P
   await Promise.all([...groups.values()].map(async rs => {
     for (let i = 0; i < rs.length; i += 40) {
       const batch = rs.slice(i, i + 40);
-      const fields = batch.map((r, n) => `p${n}:pullRequest(number:${r.number}){number url title state isDraft headRefName baseRefName additions deletions author{login} commits(last:1){nodes{commit{statusCheckRollup{state contexts(first:100){nodes{... on CheckRun{status conclusion} ... on StatusContext{state}}}}}}}}`).join(' ');
+      const fields = batch.map((r, n) => `p${n}:pullRequest(number:${r.number}){number url title state isDraft headRefName baseRefName additions deletions author{login} commits(last:1){nodes{commit{statusCheckRollup{state contexts(first:100){nodes{... on CheckRun{name status conclusion} ... on StatusContext{context state}}}}}}}}`).join(' ');
       const query = `query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){${fields}}}`;
       const out = await request(cwd, {query, variables:{owner:rs[0].owner, repo:rs[0].repo}}).catch(() => null);
       if (!out) continue;
