@@ -4,7 +4,8 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { GIBBOUS_HOME, readJson, writeJsonAtomic, state, type Thread } from './store.ts';
 import { openStateDb } from './subagents.ts';
-import { threadForSession } from './humanTasks.ts';
+import { threadForSession, humanTasks, taskText } from './humanTasks.ts';
+export type TaskAction = { tasks: string[] } | { task_id?: unknown; text?: unknown };
 
 const file = path.join(GIBBOUS_HOME, 'human-task-mcp-secret.json');
 export const mcpSecret: { token: string } = readJson(file, null as any) ?? (() => {
@@ -36,13 +37,14 @@ export function resolveThread(ref: unknown, session?: string): Thread {
   }
   throw new Error('Unknown thread or session; supply the Gibbous thread id explicitly (required for remote sessions).');
 }
-const description = 'Use when the user must do something by hand that you cannot (physical hardware, approvals in third-party UIs, purchases, signing in). Write one short imperative sentence. Pass thread = your Gibbous thread id; if unknown, read HERMES_SESSION_ID using your terminal and pass that value. Never guess another thread.';
+const description = 'EVERY time your reply asks the user to do or decide something you cannot do yourself (hardware tests, judgement calls, approvals, purchases, sign-ins), file ALL those steps with gibbous_request_human_task BEFORE ending the turn. One short imperative line per item; batch up to 10 tasks. Do not file work you can do yourself or duplicate existing open tasks: list first. Complete each task once the user confirms it is done. Pass thread = your Gibbous thread id; if unknown, read HERMES_SESSION_ID using your terminal and pass that value. Never guess another thread.';
 const properties = { thread: { type: 'string', description: 'Your Gibbous thread id or your Hermes HERMES_SESSION_ID (including compression continuations). Required unless the transport supplies X-Hermes-Session-Id.' } };
 export const tools = [
-  { name: 'gibbous_request_human_task', description, inputSchema: { type: 'object', properties: { ...properties, text: { type: 'string', minLength: 1, maxLength: 1000, description: 'One short imperative sentence for the human.' } }, required: ['text'], additionalProperties: false } },
-  { name: 'gibbous_complete_human_task', description: 'Mark your thread’s human task done only after the user confirms it was performed. Identify your thread as for gibbous_request_human_task.', inputSchema: { type: 'object', properties, additionalProperties: false } },
+  { name: 'gibbous_request_human_task', description, inputSchema: { type: 'object', properties: { ...properties, tasks: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 1000 } }, text: { type: 'string', minLength: 1, maxLength: 1000, description: 'Compatibility: one task, instead of tasks.' } }, anyOf: [{ required: ['tasks'] }, { required: ['text'] }], additionalProperties: false } },
+  { name: 'gibbous_complete_human_task', description: 'Complete one specific task only after the user confirms it was performed. Pass task_id from list/request, or its exact text. Never complete other outstanding tasks. Identify your thread as for gibbous_request_human_task.', inputSchema: { type: 'object', properties: { ...properties, task_id: { type: 'string' }, text: { type: 'string' } }, additionalProperties: false } },
+  { name: 'gibbous_list_human_tasks', description: 'List your thread’s human tasks (including completed ones and ids). Check before filing to avoid duplicates, and before completing to identify the exact task.', inputSchema: { type: 'object', properties, additionalProperties: false } },
 ];
-export async function rpc(body: any, mutate: (t: Thread, text?: unknown) => unknown, session?: string) {
+export async function rpc(body: any, mutate: (t: Thread, action: TaskAction) => unknown, session?: string) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || body.jsonrpc !== '2.0' || typeof body.method !== 'string') return { jsonrpc: '2.0', id: body?.id ?? null, error: { code: -32600, message: 'Invalid Request' } };
   if (body.id == null) return undefined;
   const reply = (result: unknown) => ({ jsonrpc: '2.0', id: body.id, result });
@@ -54,12 +56,20 @@ export async function rpc(body: any, mutate: (t: Thread, text?: unknown) => unkn
   try {
     const a = body.params.arguments ?? {};
     const t = resolveThread(a.thread, session);
-    if (body.params.name === 'gibbous_request_human_task' && typeof a.text !== 'string') throw new Error('text is required');
-    await mutate(t, body.params.name === 'gibbous_request_human_task' ? a.text : undefined);
-    return reply({ content: [{ type: 'text', text: JSON.stringify({ thread: t.id, humanTask: t.humanTask }) }] });
+    let created: unknown;
+    if (body.params.name === 'gibbous_request_human_task') {
+      if (a.tasks !== undefined && a.text !== undefined) throw new Error('Use tasks or text, not both');
+      const tasks = a.tasks ?? (a.text !== undefined ? [a.text] : undefined);
+      if (!Array.isArray(tasks) || !tasks.length || tasks.length > 10) throw new Error('tasks must contain 1–10 items');
+      created = await mutate(t, { tasks: tasks.map(taskText) });
+    } else if (body.params.name === 'gibbous_complete_human_task') {
+      if (a.task_id !== undefined && a.text !== undefined) throw new Error('Use task_id or text, not both');
+      await mutate(t, { task_id: a.task_id, text: a.text });
+    }
+    return reply({ content: [{ type: 'text', text: JSON.stringify({ thread: t.id, tasks: humanTasks(t), ...(created ? { created } : {}) }) }] });
   } catch (e) { return reply({ isError: true, content: [{ type: 'text', text: (e as Error).message }] }); }
 }
-export async function handleMcp(req: IncomingMessage, res: ServerResponse, read: () => Promise<unknown>, mutate: (t: Thread, text?: unknown) => unknown) {
+export async function handleMcp(req: IncomingMessage, res: ServerResponse, read: () => Promise<unknown>, mutate: (t: Thread, action: TaskAction) => unknown) {
   if (!authorized(req.headers.authorization)) { res.writeHead(401).end(); return; }
   if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }).end(); return; }
   if (String(req.headers['content-type']).split(';')[0].trim() !== 'application/json') { res.writeHead(415).end(); return; }
