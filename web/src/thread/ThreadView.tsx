@@ -341,7 +341,7 @@ export function ThreadView({ id }: { id: string }) {
   return (
     <RpcContext.Provider value={rpc}>
     <div className="flex h-full min-w-0">
-      <div className="relative flex flex-col flex-1 min-w-0"
+      <div data-thread-root className="relative flex flex-col flex-1 min-w-0"
         onDragEnter={e => { if (!thread.readOnly && [...e.dataTransfer.types].includes('Files')) { dragDepth.current++; setDragOver(true); } }}
         onDragLeave={() => { if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragOver(false); } }}
         onDragOver={e => { if (dragOver) e.preventDefault(); }}

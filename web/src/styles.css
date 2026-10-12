@@ -511,3 +511,6 @@ li p > .reply-task-action, table .reply-task-action, pre .reply-task-action { di
 [data-theme="light"] .graph-edge.resolved { stroke-opacity: .35; }
 [data-theme="light"] .graph-node { background: var(--color-crater); }
 [data-theme="light"] .graph-node.is-done { background: color-mix(in srgb, var(--color-crater) 60%, var(--color-basalt)); }
+
+/* "For me" tasks sit in the right gutter under the PR card when there's room; the slim strip above the chat hides. */
+[data-thread-root]:has([data-pr-overview][data-mode="card"]) [data-inline-tasks] { display: none; }

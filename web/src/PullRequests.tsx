@@ -3,6 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Menu, Moon } from './ui';
 import { aggregateCi, overviewCollapsed, overviewMode, stackRows } from './prOverview';
 import { useStore, NONE } from './store';
+import { HumanTaskCard } from './HumanTask';
+import { humanTasks } from '../../server/humanTasks';
 import type { PrBadge } from './api';
 import type { CiState } from '../../server/git';
 // CI for a PR, drawn like GitHub's: ✓ green when every check passes, ✗ red when one fails, and while checks run the
@@ -47,6 +49,7 @@ function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
 const COLLAPSE_KEY = 'gibbous.prOverview.collapsed';
 export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelOpen:boolean}) {
   const prs = useStore(s => s.threadPrs[threadId] ?? NONE);
+  const thread = useStore(s => s.threads.find(t => t.id === threadId));
   const anchor = useRef<HTMLDivElement>(null);
   const [width,setWidth] = useState(0);
   const [collapsed,setCollapsed] = useState(() => overviewCollapsed(localStorage.getItem(COLLAPSE_KEY)));
@@ -70,14 +73,21 @@ export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelO
     return () => removeEventListener('gibbous:pullRequests',toggle);
   }, [mode, collapsed, prs.length]);
   useEffect(() => { setOpen(false); }, [mode]);
-  if (!prs.length) return <div ref={anchor} hidden />;
+  const hasTasks = !!thread && humanTasks(thread).some(t => t.doneAt == null);
+  // Wide screens: the right gutter holds the PR card and, under it, the thread's "For me" tasks.
+  if (!prs.length) return <div ref={anchor} data-pr-overview data-mode={mode} className="flex-none">
+    {mode === 'card' && hasTasks && <div data-rail className="absolute right-3 top-[calc(100%+12px)] w-[300px]"><HumanTaskCard thread={thread!} rail /></div>}
+  </div>;
   const body = <PrList prs={prs} compact/>;
   const heading = <><GitPullRequest size={13}/><span className="flex-1 text-left">Pull requests</span><span className="text-ash tabular-nums">{prs.length}</span><CiDot ci={aggregateCi(prs)}/><ChevronDown size={12} className={collapsed ? '-rotate-90' : ''}/></>;
   return <div ref={anchor} data-pr-overview data-mode={mode} className="flex-none">
-    {mode === 'card' ? <section className="absolute right-3 top-[calc(100%+12px)] w-[300px] rounded-xl surface bg-basalt overflow-hidden" aria-label="Pull requests overview">
-      <button aria-label={collapsed ? 'Expand pull requests' : 'Collapse pull requests'} aria-expanded={!collapsed} onClick={toggleCollapse} className="press w-full flex items-center gap-2 px-3.5 py-3 text-[12px] text-dust hover:text-moon">{heading}</button>
-      {!collapsed && body}
-    </section> : <div className="relative">
+    {mode === 'card' ? <div data-rail className="absolute right-3 top-[calc(100%+12px)] w-[300px] flex flex-col gap-3">
+      <section className="rounded-xl surface bg-basalt overflow-hidden" aria-label="Pull requests overview">
+        <button aria-label={collapsed ? 'Expand pull requests' : 'Collapse pull requests'} aria-expanded={!collapsed} onClick={toggleCollapse} className="press w-full flex items-center gap-2 px-3.5 py-3 text-[12px] text-dust hover:text-moon">{heading}</button>
+        {!collapsed && body}
+      </section>
+      {hasTasks && <HumanTaskCard thread={thread!} rail />}
+    </div> : <div className="relative">
       <button aria-label="Show pull requests" aria-expanded={open} data-tip="Show this session’s pull requests" data-kbd="gp" onClick={() => setOpen(!open)} className="press flex items-center gap-1.5 h-7 pointer-coarse:h-9 px-2 rounded-full border border-line bg-crater text-[11px] text-dust hover:text-moon whitespace-nowrap">PR ×{prs.length}<CiDot ci={aggregateCi(prs)}/></button>
       <Menu open={open} onClose={() => setOpen(false)} className="w-[340px]">
         <h3 className="flex items-center gap-2 px-3.5 pt-3 pb-1 text-[12px] text-dust">Pull requests<span className="text-ash">{prs.length}</span><CiDot ci={aggregateCi(prs)}/></h3>{body}
