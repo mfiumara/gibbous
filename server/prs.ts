@@ -39,7 +39,7 @@ export function refreshPrs(onChange: (b: Record<string, PrBadge>, lists: Record<
     const nextLists: Record<string, PrBadge[]> = {};
     for (const t of local) {
       const found = new Map<string, PrBadge>();
-      if (!fetched) for (const p of lists[t.id] ?? []) found.set(p.url, p);
+      for (const p of lists[t.id] ?? []) if (!fetched?.has(p.url)) found.set(p.url, p);
       for (const ref of scans.get(t.id)?.refs ?? []) {
         const p = fetched?.get(ref.url);
         if (p && ownsPr(ref, p.author, login)) found.set(p.url, p);

@@ -226,7 +226,7 @@ async function readBody(req: http.IncomingMessage): Promise<any> {
 
 function publicState() {
   return {
-    projects: state.projects, threads: state.threads, settings: state.settings,
+    projects: state.projects, threads: state.threads.map(t => ({ ...t, prs: threadPrs()[t.id] ?? [], pr: prBadges()[t.id] ?? null })), settings: state.settings,
     gatewayReplies: gatewayAvailable(), hosts: hostStatus(),
     requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health, ...setupPublic() },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
@@ -481,7 +481,7 @@ route('POST', '/api/threads/:id/git', async (p, b) => {
   try { await act[b.action](); } catch (e: any) { return { ok: false, error: e.message, info: await g.info(t.cwd, t.worktree?.base) }; }
   return { ok: true, info: await g.info(t.cwd, t.worktree?.base) };
 });
-route('GET', '/api/threads/:id/pr', async p => { const t = thr(p.id); return { pr: await g.prStatus(t.cwd, await g.currentBranch(t.cwd)).catch(() => null) }; });
+route('GET', '/api/threads/:id/pr', async p => { const t = thr(p.id); return { prs: threadPrs()[t.id] ?? [], pr: await g.prStatus(t.cwd, await g.currentBranch(t.cwd)).catch(() => null) }; });
 route('POST', '/api/threads/:id/fix-ci', async p => {
   const t = thr(p.id);
   const logs = await g.failingCiLogs(t.cwd, await g.currentBranch(t.cwd));

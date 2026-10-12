@@ -67,6 +67,7 @@ function PrCard({ thread, pr, reload }: { thread: Thread; pr: PrStatus; reload()
 
 export function ChangesPanel({ thread, refreshKey }: { thread: Thread; refreshKey: number }) {
   const [data, setData] = useState<Changes>();
+  const linkedPrs = useStore(s => s.threadPrs[thread.id]);
   const [info, setInfo] = useState<GitInfo>();
   const [pr, setPr] = useState<PrStatus | null>(null);
   const [file, setFile] = useState<string | null>(null);
@@ -126,7 +127,7 @@ export function ChangesPanel({ thread, refreshKey }: { thread: Thread; refreshKe
         </div>
       )}
       <PullRequests threadId={thread.id} />
-      {pr && <PrCard thread={thread} pr={pr} reload={load} />}
+      {pr && !linkedPrs?.length && <PrCard thread={thread} pr={pr} reload={load} />}
       {data.files.length === 0 ? <p className="p-4 text-sm text-dust">No changes yet.</p> : <>
         <ul className="max-h-[34%] overflow-y-auto border-b border-line p-1">
           <li><button onClick={() => setFile(null)} className={`press w-full flex items-center gap-2 text-left px-2.5 py-1 rounded-md text-[13px] ${file === null ? 'bg-ridge text-moon' : 'text-dust hover:text-moon'}`}>

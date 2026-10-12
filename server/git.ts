@@ -227,7 +227,7 @@ export function ciState(rollup: any[] | undefined): CiState | null {
 export function prBadge(j: any): PrBadge {
   const st = String(j.state).toUpperCase();
   return {
-    number: j.number, url: j.url, ...(j.title != null ? { title: j.title } : {}), ...(j.headRefName != null ? { headRefName: j.headRefName } : {}), ...(j.author?.login ? { author: j.author.login } : {}), additions: j.additions ?? 0, deletions: j.deletions ?? 0, ci: ciState(j.statusCheckRollup?.contexts?.nodes ?? j.statusCheckRollup),
+    number: j.number, url: j.url, ...(j.title != null ? { title: j.title } : {}), ...(j.headRefName != null ? { headRefName: j.headRefName } : {}), ...(j.author?.login ? { author: j.author.login } : {}), additions: j.additions ?? 0, deletions: j.deletions ?? 0, ci: ciState(j.statusCheckRollup?.contexts ? [...(j.statusCheckRollup.state ? [{ state: j.statusCheckRollup.state }] : []), ...j.statusCheckRollup.contexts.nodes] : j.statusCheckRollup),
     state: st === 'MERGED' ? 'merged' : st === 'CLOSED' ? 'closed' : j.isDraft ? 'draft' : 'open',
   };
 }
