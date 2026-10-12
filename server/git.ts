@@ -213,7 +213,7 @@ export async function prStatus(dir: string, branch: string): Promise<PrStatus | 
 
 // The sidebar's one-line PR summary: number, state, CI rollup and diff size.
 export type CiState = 'pass' | 'fail' | 'pending';
-export interface PrBadge { title?: string; headRefName?: string; author?: string; mergeable?: string; reviewDecision?: string; number: number; url: string; state: 'open' | 'draft' | 'merged' | 'closed'; ci: CiState | null; checks?: { passed: number; total: number }; additions: number; deletions: number }
+export interface PrBadge { title?: string; headRefName?: string; baseRefName?: string; author?: string; mergeable?: string; reviewDecision?: string; number: number; url: string; state: 'open' | 'draft' | 'merged' | 'closed'; ci: CiState | null; checks?: { passed: number; total: number }; additions: number; deletions: number }
 
 const CI_FAIL = /^(failure|error|timed_out|cancelled|action_required|startup_failure)$/;
 export function ciState(rollup: any[] | undefined): CiState | null {
@@ -236,14 +236,14 @@ export function prBadge(j: any): PrBadge {
   const checks = ciChecks(j.statusCheckRollup?.contexts ? j.statusCheckRollup.contexts.nodes : j.statusCheckRollup);
   return {
     ...(checks ? { checks } : {}),
-    number: j.number, url: j.url, ...(j.title != null ? { title: j.title } : {}), ...(j.headRefName != null ? { headRefName: j.headRefName } : {}), ...(j.author?.login ? { author: j.author.login } : {}), additions: j.additions ?? 0, deletions: j.deletions ?? 0, ci: ciState(j.statusCheckRollup?.contexts ? [...(j.statusCheckRollup.state ? [{ state: j.statusCheckRollup.state }] : []), ...j.statusCheckRollup.contexts.nodes] : j.statusCheckRollup),
+    number: j.number, url: j.url, ...(j.title != null ? { title: j.title } : {}), ...(j.headRefName != null ? { headRefName: j.headRefName } : {}), ...(j.baseRefName != null ? { baseRefName: j.baseRefName } : {}), ...(j.author?.login ? { author: j.author.login } : {}), additions: j.additions ?? 0, deletions: j.deletions ?? 0, ci: ciState(j.statusCheckRollup?.contexts ? [...(j.statusCheckRollup.state ? [{ state: j.statusCheckRollup.state }] : []), ...j.statusCheckRollup.contexts.nodes] : j.statusCheckRollup),
     state: st === 'MERGED' ? 'merged' : st === 'CLOSED' ? 'closed' : j.isDraft ? 'draft' : 'open',
   };
 }
 
 // Recent PRs of a repo by head branch (newest wins). One gh call covers every worktree thread of a project.
 export async function prsByBranch(dir: string): Promise<Map<string, PrBadge>> {
-  const out = await run('gh', ['pr', 'list', '--state', 'all', '--limit', '60', '--json', 'number,url,title,state,isDraft,headRefName,additions,deletions,statusCheckRollup'], dir);
+  const out = await run('gh', ['pr', 'list', '--state', 'all', '--limit', '60', '--json', 'number,url,title,state,isDraft,headRefName,baseRefName,additions,deletions,statusCheckRollup'], dir);
   const m = new Map<string, PrBadge>();
   for (const j of JSON.parse(out || '[]')) if (!m.has(j.headRefName)) m.set(j.headRefName, prBadge(j));
   return m;

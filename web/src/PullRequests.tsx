@@ -1,7 +1,7 @@
 import { GitPullRequest, ChevronDown, Check, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Menu, Moon } from './ui';
-import { aggregateCi, overviewCollapsed, overviewMode, overviewSummary } from './prOverview';
+import { aggregateCi, overviewCollapsed, overviewMode, overviewSummary, stackRows } from './prOverview';
 import { useStore, NONE } from './store';
 import type { PrBadge } from './api';
 import type { CiState } from '../../server/git';
@@ -26,8 +26,12 @@ function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
     const next = e.key === 'Home' ? 0 : e.key === 'End' ? links.length-1 : i + (e.key === 'j' || e.key === 'ArrowDown' ? 1 : -1);
     links[Math.max(0, Math.min(links.length-1, next))]?.focus();
   }} className="space-y-1 p-2 max-h-[56dvh] sm:max-h-[26rem] overflow-y-auto">
-    {prs.map(pr => compact ? <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`#${pr.number} ${pr.title} · ${pr.headRefName} · ${pr.state}`}
+    {(compact ? stackRows(prs) : prs.map(pr => ({ pr, depth: 0, last: true }))).map(({ pr, depth, last }) => compact ? <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`#${pr.number} ${pr.title} · ${pr.headRefName}${depth ? ` · stacked on ${pr.baseRefName}` : ''} · ${pr.state}`}
       className="press flex items-center gap-2 h-7 pointer-coarse:h-10 rounded-md px-2 hover:bg-ridge min-w-0 text-[12.5px]">
+      {depth > 0 && <span aria-hidden className="relative self-stretch flex-none -mr-1" style={{ width: depth * 12 }}>
+        {/* Stack elbow: a line down from the parent, turning into this row. */}
+        <span className={`absolute right-0 top-[-4px] w-[8px] border-l border-b border-ash/45 rounded-bl-[5px] ${last ? 'h-[calc(50%+4px)]' : 'h-[calc(50%+4px)] after:absolute after:-left-px after:top-full after:h-[calc(50%+4px)] after:border-l after:border-ash/45'}`} />
+      </span>}
       <CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null} checks={pr.checks}/>
       <span className={`font-mono text-[11px] tabular-nums flex-none ${pr.state === 'merged' ? 'text-tide' : pr.state === 'closed' ? 'text-ash line-through' : pr.state === 'draft' ? 'text-ash' : 'text-sprout'}`}>#{pr.number}</span>
       <span className="truncate min-w-0 flex-1 text-moon/90">{pr.title}</span>
