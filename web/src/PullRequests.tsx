@@ -7,7 +7,14 @@ export function CiDot({ci}: {ci:CiState|null}) {
   return <span className={`size-1.5 rounded-full flex-none ${ci ? colors[ci] : 'bg-ash/40'} ${ci === 'pending' ? 'animate-pulse' : ''}`} aria-label={ci ? `CI ${ci}` : 'No active checks'} data-tip={ci ? `CI ${ci}` : 'No active checks'} />;
 }
 function PrList({prs}:{prs:PrBadge[]}) {
-  return <ul aria-label="Pull requests" className="space-y-1 p-2 max-h-72 overflow-y-auto">
+  return <ul aria-label="Pull requests" onKeyDown={e => {
+    if (!['j','k','ArrowDown','ArrowUp','Home','End'].includes(e.key) || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault(); e.stopPropagation();
+    const links = [...e.currentTarget.querySelectorAll<HTMLAnchorElement>('a')];
+    const i = links.indexOf(document.activeElement as HTMLAnchorElement);
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? links.length-1 : i + (e.key === 'j' || e.key === 'ArrowDown' ? 1 : -1);
+    links[Math.max(0, Math.min(links.length-1, next))]?.focus();
+  }} className="space-y-1 p-2 max-h-[56dvh] sm:max-h-[26rem] overflow-y-auto">
     {prs.map(pr => <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" className="press block rounded-lg px-2.5 py-2 hover:bg-ridge min-w-0 select-text">
       <div className="flex items-start gap-2"><CiDot ci={pr.state === 'open' || pr.state === 'draft' ? pr.ci : null}/><span className="text-[13px] text-moon flex-1 min-w-0 break-words">#{pr.number} {pr.title}</span><span className={`rounded-md px-1.5 py-0.5 text-[10px] flex-none ${pr.state === 'open' ? 'text-sprout bg-sprout/10' : pr.state === 'merged' ? 'text-tide bg-tide/10' : 'text-ash bg-ridge'}`}>{pr.state}</span></div>
       <div className="flex gap-2 mt-1 pl-3.5 text-[11px] font-mono text-ash min-w-0"><span className="truncate flex-1" title={pr.headRefName}>{pr.headRefName}</span><span className="text-sprout flex-none">+{pr.additions}</span><span className="text-oxide flex-none">−{pr.deletions}</span></div>

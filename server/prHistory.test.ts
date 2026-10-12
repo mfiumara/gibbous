@@ -39,6 +39,7 @@ test('incremental scan correlates tool calls across ticks; prose and failed call
     msg('worker','tool',url.replace('/12','/15'),null,'view');
     msg('worker','assistant','',[{id:'inspect',function:{name:'terminal',arguments:'sqlite3 state.db select gh pr create'}}]);
     msg('worker','tool',url.replace('/12','/16'),null,'inspect');
+    msg('worker','tool',url.replace('/12','/17')+'#issuecomment-123',null,'post');
     s=h.scan(db,'root'); assert.equal(s.refs.length,2); const mentioned=s.refs.find(r=>r.number===13)!;
     assert.equal(mentioned.created,false); assert.equal(ownsPr(mentioned,'someone','me'),false); assert.equal(ownsPr(mentioned,'me','me'),true);
     assert.equal(ownsPr(s.refs.find(r=>r.number===12)!,undefined,undefined),true); assert.equal(h.scan(db,'root').scanned,0);

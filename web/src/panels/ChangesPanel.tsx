@@ -41,19 +41,19 @@ function GitBar({ thread, info, reload }: { thread: Thread; info: GitInfo; reloa
   );
 }
 
-function PrCard({ thread, pr, reload }: { thread: Thread; pr: PrStatus; reload(): void }) {
+function PrCard({ thread, pr, reload, compact = false }: { thread: Thread; pr: PrStatus; reload(): void; compact?: boolean }) {
   const toast = useStore(s => s.toast);
   const failing = pr.checks.filter(c => /fail|error|cancel|timed/.test(c.state));
   const pending = pr.checks.filter(c => /pending|queue|progress|waiting|expected/.test(c.state));
   const Icon = failing.length ? XCircle : pending.length ? CircleDashed : CheckCircle2;
   return (
     <div className="m-2.5 rounded-xl surface p-3 space-y-2 animate-rise">
-      <div className="flex items-center gap-2">
+      {!compact && <div className="flex items-center gap-2">
         <GitPullRequest size={14} className={pr.state === 'MERGED' ? 'text-[#b8a6e0]' : pr.state === 'CLOSED' ? 'text-oxide' : 'text-sprout'} />
         <a href={pr.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 truncate text-[13px] font-bold hover:underline">#{pr.number} {pr.title}</a>
         <span className="label">{pr.isDraft ? 'draft' : pr.state.toLowerCase()}</span>
         <IconButton label="Open on GitHub" onClick={() => window.open(pr.url, '_blank')}><ExternalLink size={13} /></IconButton>
-      </div>
+      </div>}
       <div className="flex items-center gap-2 text-[12.5px]">
         {pr.checks.length > 0 && <Icon size={14} className={failing.length ? 'text-oxide' : pending.length ? 'text-halo animate-spin [animation-duration:3s]' : 'text-sprout'} />}
         <span className="text-dust flex-1">{!pr.checks.length ? 'No CI checks' : failing.length ? `${failing.length} check${failing.length > 1 ? 's' : ''} failing` : pending.length ? `${pending.length} running` : 'All checks passed'}{pr.reviewDecision ? ` · ${pr.reviewDecision.toLowerCase().replace('_', ' ')}` : ''}</span>
@@ -127,7 +127,7 @@ export function ChangesPanel({ thread, refreshKey }: { thread: Thread; refreshKe
         </div>
       )}
       <PullRequests threadId={thread.id} />
-      {pr && !linkedPrs?.length && <PrCard thread={thread} pr={pr} reload={load} />}
+      {pr && <PrCard thread={thread} pr={pr} reload={load} compact={!!linkedPrs?.length} />}
       {data.files.length === 0 ? <p className="p-4 text-sm text-dust">No changes yet.</p> : <>
         <ul className="max-h-[34%] overflow-y-auto border-b border-line p-1">
           <li><button onClick={() => setFile(null)} className={`press w-full flex items-center gap-2 text-left px-2.5 py-1 rounded-md text-[13px] ${file === null ? 'bg-ridge text-moon' : 'text-dust hover:text-moon'}`}>

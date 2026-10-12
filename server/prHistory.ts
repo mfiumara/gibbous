@@ -17,7 +17,7 @@ export function readsPr(command: string) {
     || /\bgh\s+pr\s+(view|list|diff|checks|review|edit|comment)\b/.test(words) && !createsPr(command)
     || /(?:read_file|web_search|web_extract|browser_|search_files)/.test(command)
     || (/\bgh\s+api\b/.test(words) && !createsPr(command))
-    || /\b(?:head|cat|grep)\s|\bgit\s+log\b/.test(words) && !createsPr(command);
+    || /\b(?:head|cat|grep)\s|\bgit\s+(?:log|show|diff)\b/.test(words) && !createsPr(command);
 }
 export function createsPr(command: string) {
   command = commandWords(command);
@@ -57,6 +57,8 @@ export class PrHistory {
         let output = r.content ?? '', ok = true;
         try { const j = JSON.parse(output); ok = j.exit_code == null || j.exit_code === 0; if (j.error) ok = false; } catch { /* raw output */ }
         if (!ok) continue;
+        // Posting a review/comment yields an anchored PR URL, not a newly created PR.
+        output = output.replace(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+#(?:issuecomment|pullrequestreview|discussion_r)[\w-]*/g, '');
         for (const ref of prUrls(output)) {
           const created = createsPr(cmd) || s.refs.get(ref.url)?.created || false;
           s.refs.set(ref.url, { ...ref, created });
