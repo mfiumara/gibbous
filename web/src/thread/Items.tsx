@@ -59,7 +59,7 @@ const mediaUrl = (p: string, download = false) => `/api/media?path=${encodeURICo
 export function MediaCard({ path: p }: { path: string }) {
   const name = baseName(p), ext = name.split('.').pop()?.toLowerCase() ?? '';
   const download = <button onClick={() => saveMedia(p)} aria-label={`Download ${name}`} data-tip="Download" className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Download size={15} /></button>;
-  if (/^(png|jpe?g|gif|webp|svg)$/.test(ext)) return <button onClick={() => viewMedia(mediaUrl(p), name)} aria-label={`View ${name}`} className="block w-fit cursor-zoom-in"><img src={mediaUrl(p)} alt={name} loading="lazy" className="max-h-80 rounded-xl border border-line object-contain" /></button>;
+  if (/^(png|jpe?g|gif|webp|svg|heic|heif)$/.test(ext)) return <button onClick={() => viewMedia(mediaUrl(p), name)} aria-label={`View ${name}`} className="block w-fit cursor-zoom-in"><img src={mediaUrl(p)} alt={name} loading="lazy" className="max-h-80 rounded-xl border border-line object-contain" /></button>;
   if (/^(mp4|mov|m4v|webm)$/.test(ext)) return <div className="space-y-1 max-w-xl"><video src={mediaUrl(p)} controls playsInline preload="metadata" className="max-h-96 w-full rounded-xl border border-line bg-well" />
     <p className="flex items-center gap-1 text-[12px] text-ash font-mono"><span className="truncate flex-1">{name}</span>
       <button onClick={() => viewMedia(mediaUrl(p), name)} aria-label={`Full screen ${name}`} data-tip="Full screen" className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Maximize2 size={14} /></button>{download}</p></div>;
@@ -123,7 +123,7 @@ function fmtResult(r: unknown): string {
 function resultImages(r: unknown): string[] {
   const found = new Set<string>();
   const walk = (v: unknown) => {
-    if (typeof v === 'string') { for (const m of v.matchAll(/(?:^|[\s"'(])((?:\/|https?:\/\/)[^\s"')]+\.(?:png|jpe?g|webp|gif))/gi)) found.add(m[1]); }
+    if (typeof v === 'string') { for (const m of v.matchAll(/(?:^|[\s"'(])((?:\/|https?:\/\/)[^\s"')]+\.(?:png|jpe?g|webp|gif|heic|heif))/gi)) found.add(m[1]); }
     else if (Array.isArray(v)) v.forEach(walk);
     else if (v && typeof v === 'object') Object.values(v).forEach(walk);
   };

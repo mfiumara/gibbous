@@ -25,6 +25,7 @@ import { smoke } from './smoke.ts';
 import { redact, tail } from './diagnostics.ts';
 import { watchBuild } from './build.ts';
 import { listSubagents } from './subagents.ts';
+import { isHeic, heicToJpeg, cachedJpeg } from './heic.ts';
 import { usage, parseDays } from './usage.ts';
 import { sessionDirs } from './sessionDirs.ts';
 import { foreignOrigins } from './foreignOrigins.ts';
@@ -613,6 +614,14 @@ route('GET', '/api/fs/ls', (_, __, u) => {
 });
 
 // New folder from the Add project picker: one plain name inside an existing folder under $HOME.
+// A HEIC photo picked or pasted in a composer becomes a JPEG before it reaches the agent (models can't read HEIC).
+route('POST', '/api/images/jpeg', async (_, b) => {
+  const bytes = Buffer.from(String(b?.base64 ?? ''), 'base64');
+  if (!bytes.length) throw new HttpError(400, 'no image');
+  const jpeg = await heicToJpeg(bytes).catch(() => { throw new HttpError(415, 'HEIC conversion is not available on this machine'); });
+  return { base64: jpeg.toString('base64') };
+});
+
 route('POST', '/api/fs/mkdir', (_, b) => {
   const parent = path.resolve(String(b?.path ?? '')), name = String(b?.name ?? '').trim();
   if (badFolderName(name)) throw new HttpError(400, 'Use a plain folder name');
@@ -625,10 +634,11 @@ route('POST', '/api/fs/mkdir', (_, b) => {
 
 // Images referenced by conversations (attachments, generated images, screenshots): image files under $HOME only.
 const IMAGE_MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
-function serveImage(u: URL, res: http.ServerResponse) {
-  const p = path.resolve(u.searchParams.get('path') ?? '');
+async function serveImage(u: URL, res: http.ServerResponse) {
+  let p = path.resolve(u.searchParams.get('path') ?? '');
+  if (isHeic(p) && isInside(p, sys().home) && fs.existsSync(p)) p = await heicJpeg(p);
   const type = IMAGE_MIME[path.extname(p).toLowerCase()];
-  if (!type || !isInside(p, sys().home) || !fs.existsSync(p)) throw new HttpError(404, 'image not found');
+  if (!type || !(isInside(p, sys().home) || isInside(p, HEIC_CACHE)) || !fs.existsSync(p)) throw new HttpError(404, 'image not found');
   // SVG can carry script: serve it sandboxed.
   res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'private, max-age=86400', ...(type === 'image/svg+xml' ? { 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" } : {}) });
   fs.createReadStream(p).pipe(res);
@@ -636,7 +646,7 @@ function serveImage(u: URL, res: http.ServerResponse) {
 
 // Files agents hand you (MEDIA:/path lines) and attachments: anything under your home folder except hidden folders
 // (~/.ssh…), ~/.hermes excepted since that's where attachments live. Range requests so Safari can play and seek video.
-const MEDIA_MIME: Record<string, string> = { ...IMAGE_MIME, '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.m4v': 'video/mp4',
+const MEDIA_MIME: Record<string, string> = { ...IMAGE_MIME, '.heic': 'image/heic', '.heif': 'image/heif', '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.m4v': 'video/mp4',
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
   '.csv': 'text/csv; charset=utf-8', '.json': 'application/json', '.zip': 'application/zip' };
 // A file the agent handed over (MEDIA:): inside your home folder, not in a hidden folder other than ~/.hermes.
@@ -645,8 +655,12 @@ function mediaPath(raw: string) {
   if (!mediaAllowed(p) || !fs.existsSync(p) || !fs.statSync(p).isFile()) throw new HttpError(404, 'file not found');
   return p;
 }
-function serveMedia(u: URL, req: http.IncomingMessage, res: http.ServerResponse) {
-  const p = mediaPath(u.searchParams.get('path') ?? '');
+// HEIC (iPhone photos) shows as a cached JPEG twin: only Safari can draw HEIC itself. Downloads keep the original.
+const HEIC_CACHE = path.join(GIBBOUS_HOME, 'cache', 'heic');
+const heicJpeg = (p: string) => cachedJpeg(p, HEIC_CACHE).catch(() => { throw new HttpError(415, 'HEIC conversion is not available on this machine'); });
+async function serveMedia(u: URL, req: http.IncomingMessage, res: http.ServerResponse) {
+  let p = mediaPath(u.searchParams.get('path') ?? '');
+  if (isHeic(p) && !u.searchParams.has('download')) p = await heicJpeg(p);
   const size = fs.statSync(p).size, type = MEDIA_MIME[path.extname(p).toLowerCase()] ?? 'application/octet-stream';
   const disposition = `${u.searchParams.has('download') ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(path.basename(p))}`;
   // Only media renders inline; anything else (HTML, SVG-as-file…) downloads, so nothing from disk runs in the app's origin.
@@ -716,11 +730,11 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse) {
     }
     if (u.pathname === '/api/image') {
       if (!authed(req)) throw new HttpError(401, 'login required');
-      return serveImage(u, res);
+      return await serveImage(u, res);
     }
     if (u.pathname === '/api/media') {
       if (!authed(req)) throw new HttpError(401, 'login required');
-      return serveMedia(u, req, res);
+      return await serveMedia(u, req, res);
     }
     if (u.pathname.startsWith('/api/')) {
       if (!authed(req)) throw new HttpError(401, 'login required');

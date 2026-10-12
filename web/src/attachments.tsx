@@ -2,10 +2,20 @@
 import { useState } from 'react';
 import { Paperclip, X, FileText } from 'lucide-react';
 import { useStore } from './store';
+import { api } from './api';
 
 export interface Attachment { name: string; kind: 'image' | 'file'; dataUrl: string; size: number }
 
 const MAX = 50 * 1024 * 1024;
+const HEIC = /\.(heic|heif)$/i;
+const HEIC_MAX = 7 * 1024 * 1024;   // the server takes 10 MB request bodies; base64 adds a third
+
+async function heicToJpeg(f: File): Promise<Attachment> {
+  if (f.size > HEIC_MAX) throw new Error('HEIC photos over 7 MB: export it as JPEG first');
+  const base64 = (await readDataUrl(f)).split(',')[1];
+  const r = await api.post<{ base64: string }>('/api/images/jpeg', { base64 });
+  return { name: (f.name || 'photo.heic').replace(HEIC, '') + '.jpg', kind: 'image', dataUrl: `data:image/jpeg;base64,${r.base64}`, size: Math.round(r.base64.length * 3 / 4) };
+}
 const readDataUrl = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f); });
 
 // Safari and the macOS app hand pasted screenshots over as clipboard *items*, often with an empty `files` list.
@@ -20,6 +30,12 @@ export function useAttachments() {
   const add = async (list: FileList | File[]) => {
     for (const f of Array.from(list)) {
       if (f.size > MAX) { useStore.getState().toast({ title: `${f.name} is over 50 MB`, tone: 'error' }); continue; }
+      // iPhone photos are HEIC, which models can't read and only Safari can show: the server turns them into JPEG.
+      if (HEIC.test(f.name) || /^image\/hei[cf]/.test(f.type)) {
+        try { const a = await heicToJpeg(f); setFiles(fs => [...fs, a]); }
+        catch (e) { useStore.getState().toast({ title: `Couldn't convert ${f.name}`, body: e instanceof Error ? e.message : undefined, tone: 'error' }); }
+        continue;
+      }
       const kind = f.type.startsWith('image/') ? 'image' : 'file';
       // Pasted screenshots arrive as "image.png" (or nameless); give them a name you can tell apart.
       const name = !f.name || /^image\.(png|jpe?g)$/i.test(f.name) ? `screenshot-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.${(f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}` : f.name;
