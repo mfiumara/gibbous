@@ -6,12 +6,12 @@ import { useStore, NONE } from './store';
 import type { PrBadge } from './api';
 import type { CiState } from '../../server/git';
 // CI for a PR, drawn like GitHub's: ✓ green when every check passes, ✗ red when one fails, and while checks run the
-// sidebar's running moon (GitHub's amber dot). Fixed-size box so rows stay aligned; a faint ring when no CI ran.
+// sidebar's running moon in GitHub's amber. Fixed-size box so rows stay aligned; a faint ring when no CI ran.
 export function CiDot({ci, checks}: {ci:CiState|null; checks?: { passed: number; total: number }}) {
   const count = checks ? ` · ${checks.passed}/${checks.total} checks passed` : '';
   const tip = (ci === 'pending' ? 'CI running' : ci === 'fail' ? 'CI failing' : ci === 'pass' ? 'CI passing' : 'No CI checks') + (ci ? count : '');
   return <span className="size-3 grid place-items-center flex-none" aria-label={tip} data-tip={tip}>
-    {ci === 'pending' ? <Moon thread="running" size={8} />
+    {ci === 'pending' ? <span className="grid place-items-center [--color-tide:#d29922]"><Moon thread="running" size={8} /></span>
       : ci === 'pass' ? <Check size={12} strokeWidth={2.6} className="text-sprout" />
       : ci === 'fail' ? <X size={12} strokeWidth={2.6} className="text-oxide" />
       : <span className="size-1.5 rounded-full ring-1 ring-ash/50" />}
