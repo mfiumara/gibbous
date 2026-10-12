@@ -4,7 +4,7 @@ import { api, type Thread } from '../api';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo } from '../store';
 import { Moon, IconButton, Menu, MenuItem, Elapsed } from '../ui';
 import type { Timeline } from './timeline';
-import { PullRequests } from '../PullRequests';
+import { PullRequestOverview } from '../PullRequests';
 import { thisMachine } from '../paths';
 import { editHumanTask } from '../HumanTask';
 import { UserCheck as CheckTaskIcon } from 'lucide-react';
@@ -51,6 +51,7 @@ export function ThreadHeader({ thread, tl, panels, panel, setPanel, onBranch, on
       {thread.host && <HostChip id={thread.host} />}
       {thread.worktree && <span className={`hidden ${panel ? '2xl:inline-flex' : 'lg:inline-flex'} items-center gap-1 font-mono text-[12px] text-ash px-1.5 truncate min-w-0 whitespace-nowrap`} data-tip={`Worktree off ${thread.worktree.base}`}><GitBranch size={12} />{thread.worktree.branch.replace(/^gibbous\//, '')}</span>}
       <div className="ml-auto flex items-center gap-0.5 flex-none">
+        <PullRequestOverview key={thread.id} threadId={thread.id} panelOpen={!!panel} />
         {/* Everyday panels as icons; the rest (preview, processes, screen) behind one menu. Phones: all of them in the menu. */}
         <span className="hidden sm:contents">{panels.filter(p => !EXTRA.has(p.id) || p.id === panel).map(p => (
           <IconButton key={p.id} label={p.label} kbd={p.id === 'changes' ? '⌘\\' : undefined} aria-pressed={panel === p.id} onClick={() => setPanel(panel === p.id ? null : p.id)}><p.icon size={16} /></IconButton>
@@ -76,7 +77,7 @@ export function ThreadHeader({ thread, tl, panels, panel, setPanel, onBranch, on
         </div>
       </div>
     </header>
-    <PullRequests threadId={thread.id} collapsible />
+
   </>
   );
 }
