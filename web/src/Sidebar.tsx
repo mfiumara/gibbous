@@ -1,5 +1,5 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Trash2 } from 'lucide-react';
+import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Trash2, UserCheck } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread, NONE } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type Project, type PrBadge } from './api';
@@ -11,8 +11,8 @@ import { EDGE, axis, progress, settle } from './drawer';
 import { prefetch } from './thread/prefetch';
 import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 import { quiet } from './screenTransition';
-import { TaskCheck, editHumanTask, focusHumanTask } from './HumanTask';
-import { openHumanTask, humanTasks, attentionCount } from '../../server/humanTasks';
+import { editHumanTask } from './HumanTask';
+import { humanTasks } from '../../server/humanTasks';
 import { haptic, inIosApp } from './iosBridge';
 
 // Navigating from the open drawer: the drawer slides away itself, so the screen change gets no transition on top.
@@ -65,6 +65,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
   const prs = useStore(s => s.threadPrs[t.id] ?? NONE);
   const ci = aggregateCi(prs);
   const archived = t.status === 'archived';
+  const openTasks = humanTasks(t).filter(x => x.doneAt == null).length;
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const press = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -97,6 +98,8 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
         className={`${rowCls(active)} pl-3 pr-2 py-[5px] pointer-coarse:py-2 select-none [-webkit-touch-callout:none] ${pr ? 'flex-wrap gap-y-[3px]' : ''}`}>
         <Moon thread={t.status} size={9} />
         <span className={`truncate flex-1 ${unread ? 'font-bold text-moon' : ''}`}>{t.title}</span>
+        {/* Tasks stay in their thread; the row only says how many wait on you. */}
+        {openTasks > 0 && <span className="flex-none inline-flex items-center gap-0.5 text-[11px] text-tide tabular-nums" data-tip={`${openTasks} for you to do`} aria-label={`${openTasks} tasks for you`}><UserCheck size={11} />{openTasks}</span>}
         {unread && <span className="size-1.5 rounded-full bg-tide flex-none"><span className="sr-only">unread</span></span>}
         {t.pinned && <Pin size={11} className="text-ash flex-none" aria-label="pinned" />}
         <span className="text-[11px] text-ash group-hover:opacity-0 transition-opacity">{ago(t.updatedAt)}</span>
@@ -377,17 +380,6 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
       </div>}
       <SelectCtx.Provider value={selCtx}>
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pt-3 pb-3 space-y-3.5">
-        {threads.some(openHumanTask) && <Section id="for-me" title="For me" count={attentionCount(0, threads)} collapsed={!!collapsed['for-me']} toggle={toggle} icon={<Check size={12} className="text-tide" />}>
-          {threads.filter(openHumanTask).sort((a, b) => Math.max(...humanTasks(b).map(t => t.at)) - Math.max(...humanTasks(a).map(t => t.at))).map(t => {
-            const tasks = humanTasks(t).filter(task => task.doneAt == null), grouped = tasks.length > 2;
-            return <div key={t.id}>{grouped && <p className="px-3 pt-2 pb-1 text-[10.5px] text-ash truncate">{t.title}</p>}{tasks.map(task => <div key={task.id} className={`flex gap-1 pl-2 pr-1 py-1 rounded-lg ${t.id === activeId ? 'bg-ridge/60' : 'hover:bg-ridge/55'}`}>
-              <TaskCheck thread={t} task={task} />
-              <a href={`#/t/${t.id}`} onClick={() => { close(); focusHumanTask(task.id); }} className="flex-1 min-w-0 py-1 rounded-md" aria-current={t.id === activeId ? 'page' : undefined}>
-                <p className="text-[12.5px] text-moon line-clamp-2 break-words" title={task.text}>{task.text}</p>{!grouped && <p className="truncate text-[10.5px] text-ash mt-0.5">{t.title}</p>}
-              </a>
-            </div>)}</div>;
-          })}
-        </Section>}
         {space && !shown.length && <div className="px-3 py-2 space-y-2 text-[13px] text-ash">
           <p>{projects.some(p => inSpace(p, space)) ? 'This space’s projects are hidden.' : 'No projects here yet. Move one here from All.'}</p>
           <button onClick={() => projects.some(p => inSpace(p, space)) ? setHidden(hidden.filter(id => !projects.some(p => p.id === id && inSpace(p, space)))) : useStore.getState().setActiveSpace('')}
