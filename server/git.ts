@@ -6,9 +6,10 @@ import { isInside } from './platform.ts';
 
 export function run(cmd: string, args: string[], cwd: string, input?: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const p = execFile(cmd, args, { cwd, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } },
+    // gh talks to the network: a stalled request must not hang a caller forever (the PR poll waits on it).
+    const p = execFile(cmd, args, { cwd, maxBuffer: 64 * 1024 * 1024, timeout: cmd === 'gh' ? 60_000 : 0, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1' } },
       (err, stdout, stderr) => err ? reject(new Error((stderr || err.message).trim())) : resolve(stdout));
-    if (input != null) { p.stdin?.end(input); }
+    if (input != null) { p.stdin?.end(input); } else p.stdin?.end();
   });
 }
 export const git = (cwd: string, ...args: string[]) => run('git', args, cwd);

@@ -25,7 +25,11 @@ export async function liveBranch(dir: string, stored: string) {
   const b = await currentBranch(dir).catch(() => '');
   return b && b !== 'HEAD' ? b : stored;
 }
+let inflightAt = 0;
 export function refreshPrs(onChange: (b: Record<string, PrBadge>, lists: Record<string, PrBadge[]>) => void) {
+  // A pass that never settles (a hung gh/git call) used to freeze every PR badge for good: after 3 minutes, start over.
+  if (inflight && Date.now() - inflightAt > 180_000) { console.error('[prs] previous refresh stuck; starting a new one'); inflight = undefined; }
+  if (!inflight) inflightAt = Date.now();
   return inflight ??= (async () => {
     if (Date.now() - loginAt > 300_000) {
       login = await run('gh', ['api', 'user', '-q', '.login'], homedir()).then(s => s.trim()).catch(() => undefined);

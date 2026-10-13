@@ -4,7 +4,7 @@ import { prBadge, type PrBadge } from './git.ts';
 // gh exits nonzero for a missing alias, even when the other aliases succeeded. Keep partial data.
 function graphql(cwd: string, payload: object): Promise<any> {
   return new Promise((resolve, reject) => {
-    const p = execFile('gh', ['api', 'graphql', '--input', '-'], {cwd, maxBuffer: 16 * 1024 * 1024}, (err, stdout) => {
+    const p = execFile('gh', ['api', 'graphql', '--input', '-'], {cwd, maxBuffer: 16 * 1024 * 1024, timeout: 60_000, env: { ...process.env, GH_PROMPT_DISABLED: '1' }}, (err, stdout) => {
       try { const j = JSON.parse(stdout); if (j.data) resolve(j); else reject(err ?? new Error('No GraphQL data')); }
       catch { reject(err ?? new Error('Invalid GraphQL response')); }
     });
