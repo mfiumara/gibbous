@@ -430,7 +430,10 @@ export function ThreadView({ id }: { id: string }) {
           <div className="flex items-center gap-1 px-2 h-12 border-b border-line flex-none">
             {/* Phones: the panel covers the chat, so "back" is always the first thing. */}
             <button onClick={() => setPanel(null)} aria-label="Back to the conversation" className="lg:hidden press inline-grid place-items-center size-8 flex-none rounded-lg text-tide"><ChevronLeft size={20} /></button>
-            <div className="flex-1 min-w-0 flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+            {/* Desktop: the thread header's icons already switch panels, so this bar only names the open one.
+                Phones: the panel covers the header, so the tabs stay here. */}
+            {(() => { const cur = panels.find(p => p.id === panel); return cur && <p className="hidden lg:flex flex-1 min-w-0 items-center gap-2 pl-2 text-[13px] text-moon"><cur.icon size={14} className="text-dust" />{cur.label}</p>; })()}
+            <div className="lg:hidden flex-1 min-w-0 flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
               {panels.map(p => (
                 <button key={p.id} onClick={() => setPanel(p.id)} aria-pressed={panel === p.id}
                   className={`press h-8 px-2.5 rounded-lg text-[13px] inline-flex items-center gap-1.5 whitespace-nowrap flex-none ${panel === p.id ? 'bg-ridge text-moon shadow-[inset_0_1px_0_var(--surface-hi)]' : 'text-dust hover:text-moon'}`}>

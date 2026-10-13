@@ -8,7 +8,7 @@ import { toastError } from '../store';
 import { IconButton, MoonLoader, Skeleton, inputCls, fmtTokens, fmtDuration, sameJson } from '../ui';
 import { fromStored, type Item, type StoredRow } from './timeline';
 import { AssistantMessage, ToolRow, ReasoningBlock, Markdown } from './Items';
-import { mergeAgents, agentCounts, agentName, firstLine, isLive, type Agent, type AgentState, type StoredSub, type LiveSub } from './agents';
+import { mergeAgents, agentName, firstLine, isLive, type Agent, type AgentState, type StoredSub, type LiveSub } from './agents';
 
 // ── data ──────────────────────────────────────────────────────────────
 export function useSubagents(threadId: string, items: Item[], running: boolean): Agent[] {
@@ -38,11 +38,6 @@ export function AgentDot({ a, size = 10 }: { a: Agent; size?: number }) {
   const frame = a.state === 'queued' || a.state === 'quiet' ? 0 : 18;
   const tint = a.state === 'failed' ? 'sepia(1) saturate(4) hue-rotate(-30deg) brightness(.85)' : a.state === 'stopped' ? 'sepia(.8) saturate(2) brightness(.9)' : a.state === 'queued' || a.state === 'quiet' ? 'brightness(.7)' : undefined;
   return <span role="img" aria-label={label[a.state]} className="moon-loader moon-still" style={{ '--s': `${size}px`, '--tonight': frame, filter: tint } as React.CSSProperties} />;
-}
-
-function summaryLine(agents: Agent[]) {
-  const c = agentCounts(agents);
-  return [c.running && `${c.running} working`, c.queued && `${c.queued} queued`, c.done && `${c.done} done`, c.failed && `${c.failed} failed`, c.other && `${c.other} idle`].filter(Boolean).join(' · ');
 }
 
 // One card for a group of subagents: collapsed, the moon + "2/9 subagents working" + what one of them is doing;
@@ -136,16 +131,9 @@ export function SubagentsPanel({ agents, sid, focus, onFocus }: { agents: Agent[
   const order = agents.map((a, i) => ({ a, i })).sort((x, y) => rank(x.a) - rank(y.a) || x.i - y.i);
   const at = order.findIndex(o => o.a.key === focus);
   if (at >= 0) return <AgentDetail order={order} at={at} sid={sid} onFocus={onFocus} />;
-  const c = agentCounts(agents);
   return (
     <div className="h-full overflow-y-auto" data-vim-list>
-      <div className="px-4 pt-4 pb-3">
-        {/* One moon per subagent: waxing while it works, full when done, red when it failed. */}
-        <div className="flex flex-wrap gap-1.5 mb-3">{agents.map((a, i) => <button key={a.key} onClick={() => onFocus(a.key)} data-tip={`${agentName(a, i)} · ${label[a.state]}`} className="press rounded-full"><AgentDot a={a} size={12} /></button>)}</div>
-        <p className="text-[15px] font-medium text-moon">{c.running + c.queued ? `${c.running + c.queued} of ${agents.length} working` : `All ${agents.length} finished`}</p>
-        <p className="mt-0.5 text-[12px] text-ash">{summaryLine(agents)}</p>
-      </div>
-      <ul className="px-2 pb-3 space-y-1.5">
+      <ul className="px-2 py-3 space-y-1.5">
         {order.map(({ a, i }) => {
           const ms = elapsedOf(a), live = isLive(a);
           const line = live ? a.activity : a.state === 'failed' ? a.status : firstLine(a.summary ?? a.lastText);
