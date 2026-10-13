@@ -21,7 +21,7 @@ const close = () => { if (useStore.getState().sidebar) quiet(); useStore.setStat
 const rowCls = (active: boolean) =>
   `press group relative flex items-center gap-2.5 rounded-lg text-[13.5px] ${active ? 'bg-ridge text-moon shadow-[inset_0_1px_0_var(--surface-hi)]' : 'text-dust hover:text-moon hover:bg-ridge/55'}`;
 
-// A worktree thread's PR under its title: state glyph + number, CI result, diff size. Clicking it opens GitHub.
+// A thread's PR under its title: state glyph + number, CI result, diff size.
 const prLook: Record<PrBadge['state'], { Icon: typeof GitPullRequest; cls: string; word?: string }> = {
   open: { Icon: GitPullRequest, cls: 'text-sprout' }, draft: { Icon: GitPullRequestDraft, cls: 'text-ash', word: 'draft' },
   merged: { Icon: GitMerge, cls: 'text-[#b8a6e0]', word: 'merged' }, closed: { Icon: GitPullRequestClosed, cls: 'text-ash', word: 'closed' },
@@ -33,12 +33,12 @@ function PrLine({ pr }: { pr: PrBadge }) {
   const { Icon, cls, word } = prLook[pr.state];
   const live = pr.state === 'open' || pr.state === 'draft';
   const ci = live && pr.ci ? ciLook[pr.ci] : null;
-  const open = (e: React.MouseEvent | React.KeyboardEvent) => { e.preventDefault(); e.stopPropagation(); window.open(pr.url, '_blank', 'noopener'); };
+  // Not a link: a click anywhere on the row opens the thread; GitHub is one click away in its PR card.
   return (
-    <span role="link" tabIndex={-1} onClick={open} data-tip={`Pull request #${pr.number} · ${word ?? 'open'}${ci ? ` · checks ${ci.word}` : ''}\nOpens on GitHub`}
-      className="basis-full flex items-center gap-1.5 pl-[19px] h-4 text-[11px] leading-none text-ash tabular-nums hover:[&_.pr-n]:text-dust">
+    <span data-tip={`Pull request #${pr.number} · ${word ?? 'open'}${ci ? ` · checks ${ci.word}` : ''}`}
+      className="basis-full flex items-center gap-1.5 pl-[19px] h-4 text-[11px] leading-none text-ash tabular-nums">
       <Icon size={10} strokeWidth={2.4} className={`flex-none ${cls}`} aria-hidden />
-      <span className="pr-n transition-colors">{pr.number}</span>
+      <span>{pr.number}</span>
       {word && <><span aria-hidden className="opacity-50">·</span><span className={cls}>{word}</span></>}
       {ci && <><span aria-hidden className="opacity-50">·</span>
         <span className={`inline-flex items-center gap-1 ${ci.cls}`}>
