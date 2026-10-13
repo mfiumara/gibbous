@@ -62,6 +62,13 @@ export const useStore = create<S>((set, get) => ({
     const seen = { ...get().seen, [id]: Date.now() };
     localStorage.setItem('gibbous.seen', JSON.stringify(seen));
     set({ seen });
+    // Read state is shared: tell the server so the phone, the Mac app and the icon badge agree. A busy thread updates
+    // often while you watch it, so at most one call per thread per few seconds.
+    const t = get().threads.find(x => x.id === id);
+    if (t && t.updatedAt > (t.seenAt ?? 0) && !seenPosts.has(id)) {
+      seenPosts.add(id);
+      setTimeout(() => { seenPosts.delete(id); api.post(`/api/threads/${id}/seen`).catch(() => {}); }, 1500);
+    }
   },
   async load() {
     try {
@@ -165,8 +172,10 @@ rpc.onStatus = connected => {
 };
 
 // A thread changed (finished, replied, asked) since you last looked at it.
+// Read on any device (server `seenAt`) or just now on this one (local, until the server catches up).
 export const isUnread = (t: Thread, seen: Record<string, number>) =>
-  t.status !== 'archived' && t.status !== 'running' && t.updatedAt > (seen[t.id] ?? seen['*'] ?? 0);
+  t.status !== 'archived' && t.status !== 'running' && t.updatedAt > Math.max(t.seenAt ?? t.createdAt, seen[t.id] ?? 0);
+const seenPosts = new Set<string>();
 
 // Stable empty list for selectors: `?? []` inside a selector is a new array every render (React #185 in zustand v5).
 export const NONE: never[] = [];

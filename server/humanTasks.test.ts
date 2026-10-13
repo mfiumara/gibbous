@@ -8,7 +8,8 @@ import type { Thread } from './store.ts';
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gibbous-human-'));
 process.env.GIBBOUS_HOME = home; process.env.HERMES_HOME = home;
 const { state, migrate, saveNow } = await import('./store.ts');
-const { attentionCount, openHumanTask, humanTasks, addHumanTasks, patchHumanTask, removeHumanTask, completeHumanTask, taskNotifier, threadForSession } = await import('./humanTasks.ts');
+const openCount = (ts: any[]) => ts.reduce((n, x) => n + humanTasks(x).filter((y: any) => y.doneAt == null).length, 0);
+const { unreadCount, openHumanTask, humanTasks, addHumanTasks, patchHumanTask, removeHumanTask, completeHumanTask, taskNotifier, threadForSession } = await import('./humanTasks.ts');
 const { authorized, rpc, resolveThread, handleMcp } = await import('./mcp.ts');
 const make = (id = 'thread', sessionId = 'session'): Thread => ({ id, sessionId, title: 'Device check', cwd: home, role: 'chat', status: 'idle', createdAt: 1, updatedAt: 1 });
 test('legacy migration, stable ids, multi-task CRUD and badge count', () => {
@@ -20,10 +21,10 @@ test('legacy migration, stable ids, multi-task CRUD and badge count', () => {
   assert.deepEqual(humanTasks({ ...legacy, humanTasks: [] }), []);
   assert.equal(humanTasks(migrate({ threads: [t] }).threads[0]).length, 1);
   const [a, b] = addHumanTasks(t, ['Approve.', 'Decide.'], 'agent', 20);
-  assert.equal(attentionCount(2, [t, make('other')]), 5);
+  assert.equal(openCount([t, make('other')]), 3);
   patchHumanTask(t, a.id, { text: 'Approve purchase.', done: true }, 30);
   patchHumanTask(t, a.id, { done: true }, 40); assert.equal(a.doneAt, 30);
-  assert.equal(attentionCount(2, [t]), 4);
+  assert.equal(openCount([t]), 2);
   patchHumanTask(t, a.id, { done: false }); assert.equal(a.doneAt, undefined);
   completeHumanTask(t, { text: b.text }); removeHumanTask(t, a.id);
   assert.equal(openHumanTask(t), true); assert.equal(humanTasks(t).length, 2);
@@ -65,7 +66,7 @@ test('MCP JSON-RPC tools/list, call, done, invalid text, unknown tool/thread', a
   assert.equal(created.length, 2); assert.equal(state.threads[0].humanTasks?.[0].by, 'agent');
   assert.equal((await call('tools/call', { name: 'gibbous_complete_human_task', arguments: { thread: 'thread' } })).result.isError, true);
   await call('tools/call', { name: 'gibbous_complete_human_task', arguments: { thread: 'thread', task_id: created[0] } });
-  assert.equal(attentionCount(0, state.threads), 1);
+  assert.equal(openCount(state.threads), 1);
   const list = await call('tools/call', { name: 'gibbous_list_human_tasks', arguments: { thread: 'thread' } });
   assert.equal(JSON.parse(list.result.content[0].text).tasks.length, 2);
   await call('tools/call', { name: 'gibbous_complete_human_task', arguments: { thread: 'thread', text: 'Approve the purchase.' } });
@@ -81,4 +82,9 @@ test('MCP rejects bad auth before reading body or mutating', async () => {
   const res = { writeHead(n: number) { status = n; return this; }, end() {} };
   await handleMcp({ method: 'POST', headers: { authorization: 'Bearer wrong' } } as any, res as any, async () => { read = true; }, () => assert.fail());
   assert.equal(status, 401); assert.equal(read, false);
+});
+
+test('the badge counts unread threads only: newer activity than seenAt, not archived or running', () => {
+  const t = (o: any) => ({ status: 'idle', createdAt: 1, updatedAt: 10, ...o });
+  assert.equal(unreadCount([t({ seenAt: 5 }), t({ seenAt: 10 }), t({ seenAt: 5, status: 'archived' }), t({ seenAt: 5, status: 'running' }), t({})]), 2);
 });

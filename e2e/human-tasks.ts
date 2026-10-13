@@ -56,18 +56,20 @@ try {
   const clickText = async (text: string) => page.evaluate(text => { const el = [...document.querySelectorAll<HTMLElement>('button')].find(x => x.innerText.trim() === text); if (!el) throw new Error(`missing ${text}`); el.click(); }, text);
   await page.waitForSelector('.prose-moon li');
   await page.hover('.prose-moon li'); await page.click('.prose-moon li > .reply-task-action');
-  await page.waitForSelector('[aria-label="For me tasks"]'); await page.waitForFunction(() => document.title === '(1) Gibbous');
+  // The badge counts unread threads now, not tasks: follow the open task count on the server instead.
+  const openTasks = (n: number) => until(async () => ((await api('/api/state')).threads[0]?.humanTasks ?? []).filter((x: any) => x.doneAt == null).length === n);
+  await page.waitForSelector('[aria-label="For me tasks"]'); await openTasks(1);
   let tasks = (await api('/api/state')).threads[0].humanTasks;
   assert.equal(tasks[0].text, 'Hardware: Plug in the device.'); assert.equal(tasks[0].by, 'user');
   assert.equal(await page.$('pre .reply-task-action'), null);
   await page.click('button[aria-label="More"]'); await clickText('Add a task for me…');
   await page.type('textarea[aria-label="Task for me"]', 'Choose a profile.'); await clickText('Save task');
-  await page.waitForFunction(() => document.title === '(2) Gibbous');
+  await openTasks(2);
   await page.click('[aria-label="For me tasks"] button[aria-label^="Edit task:"]');
   await page.focus('[aria-label="Edit task"]'); await page.evaluate(() => document.querySelector<HTMLTextAreaElement>('[aria-label="Edit task"]')!.select()); await page.type('[aria-label="Edit task"]', 'Check the display.'); await page.keyboard.press('Enter');
   await until(async () => (await api('/api/state')).threads[0].humanTasks[0].text === 'Check the display.');
-  await page.click('[aria-label="For me tasks"] button[role="checkbox"]'); await page.waitForFunction(() => document.title === '(1) Gibbous'); await clickText('1 done');
-  await page.click('[aria-label="For me tasks"] button[aria-label^="Reopen task:"]'); await page.waitForFunction(() => document.title === '(2) Gibbous');
+  await page.click('[aria-label="For me tasks"] button[role="checkbox"]'); await openTasks(1); await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent?.trim() === '1 done')); await clickText('1 done');
+  await page.click('[aria-label="For me tasks"] button[aria-label^="Reopen task:"]'); await openTasks(2);
   await api(`/api/threads/${t.id}/human-tasks`, 'POST', { text: 'Temporary manual task.' });
   // Only the first few open tasks show; the rest sit behind "N more".
   await page.waitForFunction(() => [...document.querySelectorAll('[aria-label="For me tasks"] button')].some(b => /more$/.test(b.textContent ?? '') || b.getAttribute('aria-label') === 'Remove task: Temporary manual task.'));
@@ -75,27 +77,28 @@ try {
   await page.waitForSelector('[aria-label="Remove task: Temporary manual task."]');
   await page.evaluate(() => document.querySelector<HTMLButtonElement>('[aria-label="Remove task: Temporary manual task."]')!.click());
   await until(async () => (await api('/api/state')).threads[0].humanTasks.length === 2);
-  await page.waitForFunction(() => document.title === '(2) Gibbous');
-  assert.equal(await page.evaluate(() => (window as any).taskBadges.at(-1)), 2);
+  await openTasks(2);
+  // The app badge counts unread threads, not tasks: the open thread is read, so nothing to show.
+  assert.equal(await page.evaluate(() => (window as any).taskBadges.at(-1) ?? 0), 0);
   assert.equal(await page.evaluate(() => (window as any).taskNotices.length), 0);
   const filed = await mcp('tools/call', { name: 'gibbous_request_human_task', arguments: { thread: t.id, tasks: ['Approve the purchase.', 'Sign in.', 'Pick the board.'] } });
   const ids = JSON.parse(filed.result.content[0].text).created; assert.equal(ids.length, 3);
-  await page.waitForFunction(() => document.title === '(5) Gibbous'); await page.waitForFunction(() => (window as any).taskNotices.length === 1);
+  await openTasks(5); await page.waitForFunction(() => (window as any).taskNotices.length === 1);
   assert.equal(await page.evaluate(() => (window as any).taskNotices[0].title), 'Gibbous needs you · 3 things');
   assert.equal(JSON.parse((await mcp('tools/call', { name: 'gibbous_list_human_tasks', arguments: { thread: t.id } })).result.content[0].text).tasks.length, 5);
-  await mcp('tools/call', { name: 'gibbous_complete_human_task', arguments: { thread: t.id, task_id: ids[0] } }); await page.waitForFunction(() => document.title === '(4) Gibbous');
+  await mcp('tools/call', { name: 'gibbous_complete_human_task', arguments: { thread: t.id, task_id: ids[0] } }); await openTasks(4);
   await api(`/api/threads/${t.id}/human-tasks/${ids[1]}`, 'PATCH', { text: 'Sign in to the dashboard.' });
-  await api(`/api/threads/${t.id}/human-tasks/${ids[2]}`, 'DELETE'); await page.waitForFunction(() => document.title === '(3) Gibbous');
+  await api(`/api/threads/${t.id}/human-tasks/${ids[2]}`, 'DELETE'); await openTasks(3);
   await page.click('[aria-label="For me tasks"] [aria-label="Add a task for me"]'); await page.type('[aria-label="New task"]', 'Run a hardware test.');
-  await page.evaluate(() => document.querySelector('[aria-label="New task"]')!.closest('form')!.requestSubmit()); await page.waitForFunction(() => document.title === '(4) Gibbous');
+  await page.evaluate(() => document.querySelector('[aria-label="New task"]')!.closest('form')!.requestSubmit()); await openTasks(4);
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
   await page.waitForSelector('.prose-moon li');
   await page.evaluate(() => document.querySelector('.prose-moon li')!.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [new Touch({ identifier: 1, target: document.querySelector('.prose-moon li')!, clientX: 100, clientY: 400 })] })));
-  await page.waitForSelector('[role="menu"]'); await clickText('Add to For me'); await page.waitForFunction(() => document.title === '(5) Gibbous');
+  await page.waitForSelector('[role="menu"]'); await clickText('Add to For me'); await openTasks(5);
   tasks = (await api('/api/state')).threads[0].humanTasks; assert.equal(tasks.at(-1).text, 'Hardware: Plug in the device.');
   // The sidebar only counts a thread's open tasks; ticking happens in the thread's card.
   await page.waitForFunction(() => !!document.querySelector('nav [aria-label="5 tasks for you"]'));
-  await page.click('[aria-label="For me tasks"] button[role="checkbox"]'); await page.waitForFunction(() => document.title === '(4) Gibbous');
+  await page.click('[aria-label="For me tasks"] button[role="checkbox"]'); await openTasks(4);
   await api(`/api/threads/${t.id}`, 'DELETE'); await page.waitForFunction(() => document.title === 'Gibbous');
   assert.equal((await api('/api/state')).threads.length, 0);
   assert.deepEqual(errors, []);

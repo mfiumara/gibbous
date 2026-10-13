@@ -13,7 +13,7 @@ import { ensureRemoteBackend, closeHost, testHost } from './hosts.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Host } from './store.ts';
 import * as kanban from './kanban.ts';
-import { attentionCount, openHumanTask, humanTasks, addHumanTasks, patchHumanTask, removeHumanTask, completeHumanTask, taskNotifier } from './humanTasks.ts';
+import { unreadCount, openHumanTask, humanTasks, addHumanTasks, patchHumanTask, removeHumanTask, completeHumanTask, taskNotifier } from './humanTasks.ts';
 import { handleMcp } from './mcp.ts';
 import { gatewayChat, gatewayAvailable } from './gateway.ts';
 import { MESSAGING_SOURCES } from './sources.ts';
@@ -339,6 +339,11 @@ route('DELETE', '/api/threads/:id/human-task', p => taskMutation(p.id, t => {
   removeHumanTask(t, open[0].id);
 }));
 
+// You opened it (on any device): read everywhere. Not `touch`: looking at a thread isn't activity.
+route('POST', '/api/threads/:id/seen', p => {
+  const t = need(orch.thread(p.id), 'thread');
+  t.seenAt = Math.max(Date.now(), t.updatedAt); save(); orch.changed('thread', t); return { ok: true };
+});
 route('PATCH', '/api/threads/:id', (p, b) => {
   const t = need(orch.thread(p.id), 'thread');
   if (b.title && String(b.title) !== t.title) {
@@ -822,7 +827,7 @@ const broadcast = (kind: string, data: unknown) => {
   for (const c of clients) if (c.readyState === WebSocket.OPEN) c.send(frame);
 };
 orch.on('change', ({ kind, data }) => broadcast(kind, kind === 'requests' ? [...orch.requests.values()] : data));
-setBadgeSource(() => attentionCount(orch.requests.size, state.threads));
+setBadgeSource(() => unreadCount(state.threads));
 orch.on('change', ({ kind }) => { if (['requests', 'thread', 'reload', 'thread-deleted'].includes(kind)) badgeChanged(); });
 
 // Sidebar PR + CI badges: poll gh every minute, push only when something changed.

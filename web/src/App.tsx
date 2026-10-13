@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { X, Search, CornerDownLeft, Copy } from 'lucide-react';
-import { useStore, toastError, archiveWithUndo, NONE } from './store';
+import { useStore, toastError, archiveWithUndo, isUnread, NONE } from './store';
 import { inIosApp, iosBadge } from './iosBridge';
 import { desktopBadge, inDesktopApp } from './desktopBridge';
 import { useShallow } from 'zustand/react/shallow';
@@ -10,7 +10,6 @@ import { BINDINGS, helpRows } from './keys';
 import { vimKey, vimEscape } from './vim';
 import { Sidebar } from './Sidebar';
 import { HumanTaskEditor, editHumanTask } from './HumanTask';
-import { attentionCount } from '../../server/humanTasks';
 import { editSpace, moveToSpace, deleteSpace } from './Spaces';
 import { ProjectFilter } from './ProjectFilter';
 import { Home, AddProjectDialog } from './Home';
@@ -90,7 +89,7 @@ export function App() {
 
   // Favicon: the moon, plus a dot while agents work (tide) or wait on you (halo).
   const working = useStore(s => s.threads.some(t => t.status === 'running'));
-  const needs = useStore(s => attentionCount(s.requests.length, s.threads) > 0);
+  const needs = useStore(s => s.requests.length > 0);
   useEffect(() => {
     const link = document.querySelector<HTMLLinkElement>('link[rel=icon][sizes="32x32"]');
     if (!link) return;
@@ -106,8 +105,8 @@ export function App() {
     img.src = '/favicon-64.png';
   }, [working, needs]);
 
-  // Tab title shows how many agents wait on you.
-  const waiting = useStore(s => attentionCount(s.requests.length, s.threads));
+  // Tab title and app badges: threads with news you haven't read yet (same count as the iPhone icon, from the server).
+  const waiting = useStore(s => s.threads.filter(t => isUnread(t, s.seen)).length);
   useEffect(() => {
     document.title = waiting ? `(${waiting}) Gibbous` : 'Gibbous';
     if (inIosApp()) iosBadge(waiting); // iPhone app: icon badge

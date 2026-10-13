@@ -71,6 +71,7 @@ export interface Thread {
   pinned?: boolean;                     // shown at the top of the sidebar
   // Prompts typed while a turn runs (queue.ts): the server sends the head when a turn ends. A Stop pauses the line.
   queue?: QueueItem[]; queuePaused?: boolean;
+  seenAt?: number;  // last time you looked at it on any device; newer activity = unread
   space?: string;   // a chat without a project can sit in a space too (a project's chats follow the project)
   // Messages already handed to Hermes' own queue (with images) until the running turn ends: shown on every device.
   held?: { id: string; shown: string; at: number }[];
@@ -117,6 +118,8 @@ export function migrate(raw: any): State {
     projects: (rest.projects ?? []).map(({ playbookId: _, space, ...p }: any) => ({ ...p, ...(spaces.some(s => s.id === space) ? { space } : {}) })),
     threads: (rest.threads ?? []).map(({ taskId: _a, planId: _b, planned: _c, parentId: _d, queue, ...t }: any) => ({
       ...t, role: 'chat',
+      // Read state lives here (shared by every device); threads from before start out read.
+      seenAt: typeof t.seenAt === 'number' ? t.seenAt : (t.updatedAt ?? 0),
       ...(t.humanTasks ? {} : t.humanTask ? { humanTasks: [{ ...t.humanTask, id: `legacy-${t.humanTask.at}` }] } : {}),
       ...(Array.isArray(queue) && queue.length ? { queue: queue.filter((m: any) => typeof m?.id === 'string' && typeof m?.text === 'string').map((m: any) => ({ id: m.id, text: m.text, shown: typeof m.shown === 'string' ? m.shown : m.text, at: Number(m.at) || 0 })) } : {}),
     })),

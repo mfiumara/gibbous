@@ -304,7 +304,7 @@ export class Orchestrator extends EventEmitter {
     });
     const t: Thread = {
       id: newId('th'), projectId: project?.id, ...(!project && o.space && state.settings.spaces.some(x => x.id === o.space) ? { space: o.space } : {}), title, autoTitle: o.autoTitle || title === 'New thread' || undefined, sessionId: r.stored_session_id, cwd, worktree,
-      role: 'chat', profile, host, status: 'idle', createdAt: Date.now(), updatedAt: Date.now(),
+      role: 'chat', profile, host, status: 'idle', createdAt: Date.now(), updatedAt: Date.now(), seenAt: Date.now(),
     };
     state.threads.unshift(t);
     this.live.set(t.sessionId, r.session_id);
@@ -361,7 +361,7 @@ export class Orchestrator extends EventEmitter {
     const projectId = o.projectId ?? (o.host ? undefined : projectForSession(sessionId, state.projects, sys().home, state.settings.profile || undefined)?.id);
     const t: Thread = {
       id: newId('th'), projectId, title: title || 'Imported session', sessionId, cwd: this.project(projectId)?.path ?? sys().home,
-      role: 'chat', status: 'idle', source: o.source, readOnly: o.readOnly ?? true, host: o.host, createdAt: at, updatedAt: at,
+      role: 'chat', status: 'idle', source: o.source, readOnly: o.readOnly ?? true, host: o.host, createdAt: at, updatedAt: at, seenAt: at,
     };
     state.threads.unshift(t);
     save();
@@ -395,7 +395,7 @@ export class Orchestrator extends EventEmitter {
     const r = await this.cl(t).call('session.create', { ...(t.host ? {} : { cwd: t.cwd, cwd_explicit: true }), title: `${t.title} (continued)`, messages: seed, ...(state.settings.model ? { model: state.settings.model, provider: state.settings.provider || undefined } : {}) });
     const nt: Thread = {
       id: newId('th'), projectId: t.projectId, title: `${t.title} (continued)`, sessionId: r.stored_session_id, cwd: t.cwd,
-      role: 'chat', status: 'idle', host: t.host, createdAt: Date.now(), updatedAt: Date.now(),
+      role: 'chat', status: 'idle', host: t.host, createdAt: Date.now(), updatedAt: Date.now(), seenAt: Date.now(),
     };
     state.threads.unshift(nt);
     this.live.set(nt.sessionId, r.session_id);

@@ -6,8 +6,9 @@ export function humanTasks(t: Tasks): HumanTask[] {
   return t.humanTasks ?? (t.humanTask ? [{ ...t.humanTask, id: `legacy-${t.humanTask.at}` }] : []);
 }
 export function openHumanTask(t: Tasks): boolean { return humanTasks(t).some(t => t.doneAt == null); }
-export function attentionCount(requests: number, threads: Tasks[]): number {
-  return requests + threads.reduce((n, t) => n + humanTasks(t).filter(t => t.doneAt == null).length, 0);
+// The app badge: threads with activity you haven't looked at yet, on any device (archived and still-running ones don't count).
+export function unreadCount(threads: { status: string; updatedAt: number; createdAt: number; seenAt?: number; readOnly?: boolean }[]): number {
+  return threads.filter(t => t.status !== 'archived' && t.status !== 'running' && t.updatedAt > (t.seenAt ?? t.createdAt)).length;
 }
 export function taskText(text: unknown): string {
   if (typeof text !== 'string' || !text.trim() || text.trim().length > 1000) throw new Error('Task text must be 1–1000 characters');
