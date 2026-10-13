@@ -277,7 +277,7 @@ export class Orchestrator extends EventEmitter {
   // ── threads ───────────────────────────────────────────────────────────
   async createThread(o: {
     projectId?: string; space?: string; title?: string; autoTitle?: boolean; prompt?: string; worktree?: boolean; base?: string;
-    cwd?: string; model?: string; provider?: string; profile?: string; host?: string;
+    cwd?: string; model?: string; provider?: string; effort?: string; profile?: string; host?: string;
   }): Promise<Thread> {
     const profile = o.profile ?? (state.settings.profile || undefined);
     const host = o.host && o.host !== 'local' ? o.host : undefined;
@@ -300,6 +300,7 @@ export class Orchestrator extends EventEmitter {
       // A placeholder title stays out of Hermes: a set title blocks its AI title generation for the session.
       ...(host && cwd === '~' ? {} : { cwd, cwd_explicit: true }), title: title === 'New thread' || o.autoTitle ? undefined : title,
       ...(model ? { model } : {}), ...(provider ? { provider } : {}), ...(profile ? { profile } : {}),
+      ...(o.effort && /^(low|medium|high|xhigh|max|none)$/.test(o.effort) ? { reasoning_effort: o.effort } : {}),
     });
     const t: Thread = {
       id: newId('th'), projectId: project?.id, ...(!project && o.space && state.settings.spaces.some(x => x.id === o.space) ? { space: o.space } : {}), title, autoTitle: o.autoTitle || title === 'New thread' || undefined, sessionId: r.stored_session_id, cwd, worktree,

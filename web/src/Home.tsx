@@ -4,6 +4,7 @@ import { api, type Project, type Thread } from './api';
 import { useStore, toastError, NONE } from './store';
 import { useAttachments, AttachmentChips, filesFrom, handOff } from './attachments';
 import { useCompletions } from './thread/completions';
+import { ModelPicker, type ModelDraft } from './thread/ModelPicker';
 import { Button, IconButton, Modal, Moon, Switch, inputCls, go, ago, sourceLabel, useDraft, NO_PREDICT } from './ui';
 import { haptic } from './iosBridge';
 import { useUsage } from './useUsage';
@@ -49,6 +50,9 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
   }, [space, projectId, scopedProjects]);
   const project = projects.find(p => p.id === pid);
   const [worktree, setWorktree] = useState(() => localStorage.getItem('gibbous.worktree') !== '0');
+  // Model + effort for the new thread; the last pick sticks on this device (empty = Hermes' default).
+  const [mdv, setMdv] = useState<Omit<ModelDraft, 'set'>>(() => { try { return JSON.parse(localStorage.getItem('gibbous.newModel') ?? '{}'); } catch { return {}; } });
+  const md: ModelDraft = { ...mdv, set: p => setMdv(v => { const n = { ...v, ...p }; localStorage.setItem('gibbous.newModel', JSON.stringify(n)); return n; }) };
   const [base, setBase] = useState('');
   const [branches, setBranches] = useState<string[]>([]);
   useEffect(() => { if (hostParam) setHost(hostParam); }, [hostParam]);
@@ -90,7 +94,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
     try {
       // With attachments or a /command the thread is created empty and its own composer sends it (one upload path, slash.exec).
       const files = att.files, viaComposer = files.length > 0 || text.trimStart().startsWith('/'), title = (text.split('\n')[0] || files[0]?.name || 'New thread').slice(0, 70);
-      const t = await api.post<Thread>('/api/threads', { projectId: host ? undefined : project?.id, space: project ? undefined : useStore.getState().activeSpace || undefined, host: host || undefined, prompt: viaComposer ? undefined : text, worktree: !host && canWorktree && worktree, base: base || undefined, title, autoTitle: true });
+      const t = await api.post<Thread>('/api/threads', { ...(host ? {} : { model: md.model, provider: md.provider, effort: md.effort }), projectId: host ? undefined : project?.id, space: project ? undefined : useStore.getState().activeSpace || undefined, host: host || undefined, prompt: viaComposer ? undefined : text, worktree: !host && canWorktree && worktree, base: base || undefined, title, autoTitle: true });
       if (viaComposer) { handOff(t.id, text, files); att.clear(); }
       setText(t => t === sent ? '' : t); // keep anything typed while it was sending
       go(`/t/${t.id}`);
@@ -142,6 +146,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
                 <input ref={fileInput} type="file" multiple hidden onChange={e => { if (e.target.files) att.add(e.target.files); e.target.value = ''; }} />
                 <button aria-label="Attach files" data-tip="Attach files, or paste a screenshot" onClick={() => fileInput.current?.click()} className="press size-8 pointer-coarse:size-10 -ml-1 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Paperclip size={16} /></button>
               </>
+              {!host && <ModelPicker draft={md} />}
               <span className="truncate font-mono">{project ? (canWorktree && worktree ? `new branch off ${base || project.baseBranch}` : project.path) : '~'}</span>
               <button onClick={start} disabled={(!text.trim() && !att.files.length) || busy} aria-label="Start thread" data-kbd="↵" data-tip="Start thread"
                 className="press ml-auto size-9 grid place-items-center rounded-full bg-moon text-basalt disabled:opacity-25 shadow-[inset_0_1px_0_rgb(255_255_255/.35)] hover:shadow-[inset_0_1px_0_rgb(255_255_255/.35),0_0_0_5px_color-mix(in_srgb,var(--color-moon)_14%,transparent)]"><ArrowUp size={18} strokeWidth={2.5} /></button>

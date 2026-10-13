@@ -15,7 +15,11 @@ const usable = (ps: ModelOptionProvider[]) => ps.filter(p => p.authenticated !==
 // Phones: the row has room for ~8 characters, so drop the vendor ("claude-opus-5-5" → "opus-5-5", "openai/gpt-6" → "gpt-6").
 export const shortModel = (m: string) => m.replace(/^.*\//, '').replace(/^(claude|anthropic|google|meta-llama)-/, '');
 
-export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: string }) {
+// `draft`: the new-thread screen, before a session exists. Picks are kept here and sent with the thread instead.
+export interface ModelDraft { model?: string; provider?: string; effort?: string; set(p: Partial<Omit<ModelDraft, 'set'>>): void }
+export function ModelPicker({ info: live, sid, draft }: { info?: SessionLiveInfo; sid?: string; draft?: ModelDraft }) {
+  const [dflt, setDflt] = useState<{ model?: string; provider?: string }>({});
+  const info = (draft ? { model: draft.model ?? dflt.model, provider: draft.provider ?? dflt.provider, reasoning_effort: draft.effort } : live) as SessionLiveInfo | undefined;
   const rpc = useRpc();
   const [open, setOpen] = useState(false);
   const sheet = useSheet(); // phones: no autofocus, the keyboard would cover the sheet
@@ -24,15 +28,16 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
   const [q, setQ] = useState('');
   const load = (refresh = false) => {
     if (refresh) setRefreshing(true);
-    return rpc.call('model.options', { session_id: sid, ...(refresh ? { refresh: true } : {}) }).then(r => setProviders(usable(r.providers)), toastError).finally(() => setRefreshing(false));
+    return rpc.call('model.options', { session_id: sid, ...(refresh ? { refresh: true } : {}) }).then(r => { setProviders(usable(r.providers)); setDflt({ model: r.model, provider: r.provider }); }, toastError).finally(() => setRefreshing(false));
   };
-  useEffect(() => { if (open && !providers) load(); }, [open, providers]);
+  useEffect(() => { if ((open || draft) && !providers) load(); }, [open, providers]);
   useEffect(() => { if (!open) setQ(''); }, [open]);
   const run = (cmd: string) => sid && rpc.call('slash.exec', { session_id: sid, command: cmd }).then(r => r.warning && useStore.getState().toast({ title: r.warning }), toastError);
   // config.set, not `/model`: the slash mirror only touches a live, idle agent, so a pick made while a turn runs (or
   // retries after the credits ran out) or before the agent exists silently did nothing. config.set defers a busy
   // session's pick to the next message, builds the agent when it's missing, and asks before a pricey model.
   const pick = async (provider: string, model: string, confirmed = false): Promise<void> => {
+    if (draft) { draft.set({ model, provider }); return; }
     if (!sid) return;
     const toast = useStore.getState().toast;
     try {
@@ -48,7 +53,7 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
     // flex + max-w-full: the button must shrink with its wrapper. A plain block wrapper shrank alone and the button
     // spilled out under the next chips (model name, shield, subagents and context moon piled up on a phone).
     <div className="relative min-w-0 flex">
-      <button onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" disabled={!sid} data-tip="Model for this thread"
+      <button onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" disabled={!sid && !draft} data-tip="Model for this thread"
         className="press inline-flex items-center gap-1.5 h-8 px-2 rounded-lg text-[12px] text-dust hover:text-moon hover:bg-ridge disabled:opacity-40 min-w-0 max-w-full overflow-hidden">
         <span className="font-mono truncate min-w-0 max-w-36 sm:max-w-52"><span className="sm:hidden">{shortModel(info?.model ?? 'model')}</span><span className="hidden sm:inline">{info?.model ?? 'model'}</span></span>
         {info?.reasoning_effort && <span className="label text-[9px] text-ash hidden sm:inline">{info.reasoning_effort}</span>}
@@ -59,11 +64,11 @@ export function ModelPicker({ info, sid }: { info?: SessionLiveInfo; sid?: strin
         <div className="px-2 pt-1.5 pb-2 space-y-2">
           <p className="label">Reasoning effort</p>
           <div className="flex gap-1">{EFFORTS.map(e => (
-            <button key={e} onClick={() => sid && rpc.call('config.set', { session_id: sid, key: 'reasoning', value: e }).catch(toastError)} className={`press flex-1 h-7 rounded-md text-[12px] border ${info?.reasoning_effort === e ? 'border-tide/60 bg-tide/10 text-moon' : 'border-line text-dust hover:text-moon'}`}>{e}</button>
+            <button key={e} onClick={() => draft ? draft.set({ effort: draft.effort === e ? undefined : e }) : sid && rpc.call('config.set', { session_id: sid, key: 'reasoning', value: e }).catch(toastError)} className={`press flex-1 h-7 rounded-md text-[12px] border ${info?.reasoning_effort === e ? 'border-tide/60 bg-tide/10 text-moon' : 'border-line text-dust hover:text-moon'}`}>{e}</button>
           ))}</div>
-          <button onClick={() => run(`/fast ${info?.fast ? 'normal' : 'fast'}`)} className="press w-full flex items-center gap-2 h-8 px-2 rounded-md text-[13px] hover:bg-ridge">
+          {!draft && <button onClick={() => run(`/fast ${info?.fast ? 'normal' : 'fast'}`)} className="press w-full flex items-center gap-2 h-8 px-2 rounded-md text-[13px] hover:bg-ridge">
             <Zap size={14} className={info?.fast ? 'text-halo' : 'text-ash'} /><span className="flex-1 text-left">Priority (fast) mode</span><span className="label">{info?.fast ? 'on' : 'off'}</span>
-          </button>
+          </button>}
         </div>
         <div className="border-t border-line p-1.5 flex flex-col min-h-0">
           <div className="flex items-center gap-1 mb-1">
