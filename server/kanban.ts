@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { Backend } from './hermes.ts';
 import type { Project } from './store.ts';
 import { openStateDb } from './subagents.ts';
-import { isInside, nativeHermesHome, pathOf, sys, type Sys } from './platform.ts';
+import { isInside, nativeHermesHome, hermesHome, pathOf, sys, type Sys } from './platform.ts';
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;   // kanban_db._BOARD_SLUG_RE
 export const TASK_RE = /^[A-Za-z0-9_-]{1,64}$/;          // ids are t_<hex>; anything path-safe is passed to Hermes as-is
@@ -26,6 +26,7 @@ export interface KanbanCard {
   createdAt: number; startedAt: number | null; completedAt: number | null; runStartedAt: number | null;
   parents: number; children: number; progress: { done: number; total: number } | null;
   comments: number; summary: string | null; warnings: number; blockKind: string | null; branch: string | null;
+  model: string | null; effort: string | null;   // the task's override, else what its assignee profile runs
 }
 export interface KanbanColumn { name: KanbanStatus; tasks: KanbanCard[] }
 export interface BoardMatch { slug: string; how: 'linked' | 'workdir' | 'hermes-project' | 'inside' }
@@ -49,7 +50,27 @@ export function toCard(t: any): KanbanCard {
     createdAt: t.created_at ?? 0, startedAt: t.started_at ?? null, completedAt: t.completed_at ?? null, runStartedAt: t.current_run_started_at ?? null,
     parents: t.link_counts?.parents ?? 0, children: t.link_counts?.children ?? 0, progress: t.progress ?? null,
     comments: t.comment_count ?? 0, summary: t.latest_summary || null, warnings: t.warnings?.count ?? 0, blockKind: t.block_kind || null, branch: t.branch_name || null,
+    model: t.model_override || (t.assignee ? profileModel(t.assignee).model : null) || null,
+    effort: t.reasoning_effort || (t.assignee ? profileModel(t.assignee).effort : null) || null,
   };
+}
+
+// What a profile runs by default: `model.default` and `agent.reasoning_effort` in its config.yaml (top-level blocks,
+// two-space keys; read with a regex, cached per file mtime). Unknown or unreadable → nothing shown.
+const profileCache = new Map<string, { mtime: number; v: { model: string | null; effort: string | null } }>();
+export function readProfileModel(yaml: string): { model: string | null; effort: string | null } {
+  const block = (name: string) => new RegExp(`^${name}:[ \\t]*\\n((?:[ \\t]+.*\\n?|\\s*\\n)*)`, 'm').exec(yaml)?.[1] ?? '';
+  const key = (b: string, k: string) => new RegExp(`^  ${k}:[ \\t]*['"]?([^'"#\\n]*?)['"]?[ \\t]*(?:#.*)?$`, 'm').exec(b)?.[1].trim() || null;
+  return { model: key(block('model'), 'default'), effort: key(block('agent'), 'reasoning_effort') };
+}
+export function profileModel(profile: string): { model: string | null; effort: string | null } {
+  if (!/^[\w.-]+$/.test(profile)) return { model: null, effort: null };
+  const home = hermesHome(), file = profile === 'default' ? path.join(home, 'config.yaml') : path.join(home, 'profiles', profile, 'config.yaml');
+  try {
+    const mtime = fs.statSync(file).mtimeMs, hit = profileCache.get(file);
+    if (hit?.mtime === mtime) return hit.v;
+    const v = readProfileModel(fs.readFileSync(file, 'utf8')); profileCache.set(file, { mtime, v }); return v;
+  } catch { return { model: null, effort: null }; }
 }
 
 // Hermes' /board payload → columns in Hermes' order, trimmed to what a card shows.

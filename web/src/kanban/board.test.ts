@@ -5,7 +5,7 @@ import type { KanbanCard, KanbanColumn, KanbanStatus } from '../api';
 
 const card = (id: string, o: Partial<KanbanCard> = {}): KanbanCard => ({
   id, title: `Task ${id}`, status: 'todo', assignee: null, priority: 0, createdAt: 0, startedAt: null, completedAt: null, runStartedAt: null,
-  parents: 0, children: 0, progress: null, comments: 0, summary: null, warnings: 0, blockKind: null, branch: null, ...o,
+  parents: 0, children: 0, progress: null, comments: 0, summary: null, warnings: 0, blockKind: null, branch: null, model: null, effort: null, ...o,
 });
 const col = (name: KanbanStatus, n: number): KanbanColumn => ({ name, tasks: Array.from({ length: n }, (_, i) => card(`${name}${i}`, { status: name })) });
 const cols = [col('triage', 0), col('todo', 0), col('scheduled', 0), col('ready', 1), col('running', 0), col('blocked', 2), col('review', 0), col('done', 3), col('archived', 4)];

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchBoards, toBoard, toColumns, slug, taskId, cached } from './kanban.ts';
+import { matchBoards, toBoard, toColumns, slug, taskId, cached, readProfileModel } from './kanban.ts';
 
 // Small, made-up fixtures shaped like Hermes' /api/plugins/kanban responses.
 const board = (o: Record<string, unknown>) => toBoard({ name: '', description: '', icon: '', color: '', project_id: null, archived: false, counts: {}, total: 0, ...o });
@@ -108,4 +108,11 @@ test('links: read task_links from a board db (read-only), [] when the db or tabl
     const bare = path.join(home, 'bare.db'); new DatabaseSync(bare).close();
     assert.deepEqual(readLinks(bare), []);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+test('readProfileModel reads model.default and agent.reasoning_effort, not same-named keys elsewhere', () => {
+  const y = "model:\n  provider: openai-codex\n  default: gpt-6.1-sol\nfallback_providers: []\nagent:\n  max_turns: 90\n  reasoning_effort: medium # how hard\ndelegation:\n  reasoning_effort: ''\n  default: x\n";
+  assert.deepEqual(readProfileModel(y), { model: 'gpt-6.1-sol', effort: 'medium' });
+  assert.deepEqual(readProfileModel('terminal:\n  backend: local\n'), { model: null, effort: null });
+  assert.deepEqual(readProfileModel("model:\n  default: 'anthropic/claude-opus-5-5'\n"), { model: 'anthropic/claude-opus-5-5', effort: null });
 });

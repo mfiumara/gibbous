@@ -1,5 +1,6 @@
 // Hermes' kanban, read and acted on through the Gibbous server (server/kanban.ts). Gibbous keeps no tasks of its own:
 // `#/board/<projectId>` shows the board matched to that project, `#/kanban` lists every board, `#/kanban/<slug>` opens one.
+import { shortModel } from '../thread/ModelPicker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Menu as MenuIcon, Plus, Archive, Link2, Unlink, Settings2, GitBranch, MessageSquare, AlertTriangle, Ban, Search, Eye, Undo2, Trash2, ChevronRight, KanbanSquare, CornerDownLeft, Network, Columns3 } from 'lucide-react';
 import { api, type KanbanBoard, type KanbanCard, type KanbanColumn, type BoardMatch, type Project } from '../api';
@@ -275,6 +276,7 @@ function Card({ t, now, onOpen }: { t: KanbanCard; now: number; onOpen(): void }
       <span className="flex items-center gap-x-2.5 gap-y-1 flex-wrap pl-4 text-[11.5px] text-ash">
         <span className="font-mono">{t.id}</span>
         {t.assignee && <span className="text-dust truncate max-w-[9rem]" data-tip="Assigned profile">{t.assignee}</span>}
+        {t.model && <span className="font-mono text-[11px] truncate max-w-[11rem]" data-tip={`Model: ${t.model}${t.effort ? ` · ${t.effort} reasoning` : ''}`}>{shortModel(t.model)}{t.effort && <span className="text-ash/70"> · {t.effort}</span>}</span>}
         {t.status === 'running' && t.runStartedAt ? <span className="text-tide" data-tip="Running for"><Elapsed since={t.runStartedAt * 1000} /></span>
           : t.status === 'done' && t.completedAt ? <span data-tip="Completed">{agoS(t.completedAt, now)}</span> : null}
         {t.parents > 0 && <span className="inline-flex items-center gap-0.5" data-tip={`Depends on ${t.parents} task${t.parents > 1 ? 's' : ''}`}><GitBranch size={11} className="rotate-180" />{t.parents}</span>}

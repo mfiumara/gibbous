@@ -1,5 +1,6 @@
 // Dependency graph of one kanban board (parent → child, left to right). Layout is pure (graphLayout.ts) and memoized
 // on the task/link set; pan and zoom only touch one CSS transform on the canvas, so polling and hovering stay cheap.
+import { shortModel } from '../thread/ModelPicker';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { AlertTriangle, Ban, GitBranch, ZoomIn, ZoomOut, Maximize, CircleCheckBig } from 'lucide-react';
 import type { KanbanCard, KanbanStatus } from '../api';
@@ -209,6 +210,9 @@ export function GraphView({ tasks, links, now, hideDone, onHideDone, doneCount, 
   );
 }
 
+// Board profiles are named <project>-<role> (spice-ts-engineer): on a small node the role says enough.
+const role = (profile: string) => /^[\w.]+(?:-[\w.]+)*-(engineer|review|reviewer|supervisor|designer|analysis|benchmark|core|web|design|social)$/.exec(profile)?.[1] ?? profile;
+
 const Node = memo(function Node({ t, x, y, now, onOpen, onHover }: { t: KanbanCard; x: number; y: number; now: number; onOpen(id: string): void; onHover(id: string | null): void }) {
   const done = t.status === 'done' || t.status === 'archived';
   return (
@@ -223,7 +227,8 @@ const Node = memo(function Node({ t, x, y, now, onOpen, onHover }: { t: KanbanCa
         {t.priority > 0 && <span className="label text-halo flex-none !text-[9.5px]">P{t.priority}</span>}
       </span>
       <span className="flex items-center gap-x-2 pl-[18px] text-[11px] text-ash min-w-0 whitespace-nowrap">
-        {t.assignee ? <span className="text-dust truncate min-w-0">{t.assignee}</span> : <span className="truncate">{LABEL[t.status]}</span>}
+        {t.assignee ? <span className="text-dust truncate min-w-0" data-tip={t.assignee}>{role(t.assignee)}</span> : <span className="truncate">{LABEL[t.status]}</span>}
+        {t.model && <span className="font-mono text-[10.5px] truncate min-w-[3ch] flex-none max-w-[45%]" data-tip={`Model: ${t.model}${t.effort ? ` · ${t.effort} reasoning` : ''}`}>{shortModel(t.model)}{t.effort && <span className="text-ash/70">·{t.effort.slice(0, 3)}</span>}</span>}
         {t.status === 'running' && t.runStartedAt ? <span className="text-tide flex-none"><Elapsed since={t.runStartedAt * 1000} /></span> : null}
         {t.progress && <span className="inline-flex items-center gap-0.5 flex-none tabular-nums"><GitBranch size={10} />{t.progress.done}/{t.progress.total}</span>}
         {t.status === 'blocked' && <span className="inline-flex items-center gap-0.5 text-halo flex-none min-w-0"><Ban size={10} />{t.blockKind ?? 'blocked'}</span>}
