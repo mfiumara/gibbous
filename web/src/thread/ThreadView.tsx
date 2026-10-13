@@ -356,7 +356,10 @@ export function ThreadView({ id }: { id: string }) {
             // Only scrolling *up* stops following; growth, scroll anchoring and smooth-scrolls down never do.
             const el = e.currentTarget, b = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
             // Layout changes (a growing composer, content settling) can move scrollTop too; only a real gesture unfollows.
-            if (b) stick.current = true; else if (el.scrollTop < lastTop.current - 2 && performance.now() - gesture.current < 800) stick.current = false;
+            // Any upward gesture lets go at once, even inside the 80px "at the bottom" zone: otherwise the first flick
+            // up got pulled back by the next output or resize and scrolling seemed to stall until a second try.
+            const up = el.scrollTop < lastTop.current - 1 && performance.now() - gesture.current < 800;
+            if (up) stick.current = false; else if (b && el.scrollTop >= lastTop.current) stick.current = true;
             lastTop.current = el.scrollTop;
             const shown = b || stick.current; if (shown !== atBottom) setAtBottom(shown);
             if (!loading) { if (stick.current) SCROLL.delete(id); else SCROLL.set(id, el.scrollHeight - el.scrollTop); } }}
