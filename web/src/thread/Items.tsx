@@ -2,7 +2,7 @@ import { Children, memo, useDeferredValue, useRef, useState, type ReactNode } fr
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { ChevronRight, FileText, FilePen, Terminal, Search, Globe, Bot, Wrench, Brain, ListTodo, Pencil, Image, Code2, Copy, Check, History, Paperclip, Volume2, Download, Maximize2 } from 'lucide-react';
+import { ChevronRight, FileText, FilePen, Terminal, Search, Globe, Bot, Wrench, Brain, ListTodo, Pencil, Image, Code2, Copy, Check, History, Paperclip, Volume2, Download, Maximize2, ImageOff } from 'lucide-react';
 import { canSpeak, speak } from '../voice';
 import { parseUserText, type Item } from './timeline';
 import { DiffView } from '../panels/DiffView';
@@ -147,6 +147,13 @@ function resultImages(r: unknown): string[] {
   return [...found].slice(0, 6);
 }
 
+// A tool's image; one that's gone (temp file cleaned up, moved) shrinks to a quiet note instead of a broken box.
+function ToolImage({ src }: { src: string }) {
+  const [gone, setGone] = useState(false);
+  if (gone) return <span className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-line text-[11.5px] text-ash" title={src}><ImageOff size={12} />{baseName(src)} is no longer on disk</span>;
+  return <button onClick={() => viewMedia(imageSrc(src), baseName(src))} aria-label="View image" className="cursor-zoom-in"><img src={imageSrc(src)} alt="" loading="lazy" onError={() => setGone(true)} className="h-40 rounded-lg border border-line object-cover hover:border-ash transition-colors" /></button>;
+}
+
 export const ToolRow = memo(function ToolRow({ item, cwd }: { item: Extract<Item, { kind: 'tool' }>; cwd?: string }) {
   const [open, setOpen] = useState(false);
   // Hermes' lazy-loading `tool_call` wraps the real calls: show what it actually ran.
@@ -176,7 +183,7 @@ export const ToolRow = memo(function ToolRow({ item, cwd }: { item: Extract<Item
         {item.duration != null && <span className="ml-auto pl-2 font-mono text-[11px] text-ash flex-none">{item.duration < 1 ? `${Math.round(item.duration * 1000)}ms` : `${item.duration.toFixed(1)}s`}</span>}
       </button>
       {!open && item.diff && <div className="ml-6 my-1 animate-fade"><DiffView diff={item.diff} compact /></div>}
-      {images.length > 0 && <div className="ml-6 my-1.5 flex flex-wrap gap-2">{images.map(src => <button key={src} onClick={() => viewMedia(imageSrc(src), baseName(src))} aria-label="View image" className="cursor-zoom-in"><img src={imageSrc(src)} alt="" loading="lazy" className="h-40 rounded-lg border border-line object-cover hover:border-ash transition-colors" /></button>)}</div>}
+      {images.length > 0 && <div className="ml-6 my-1.5 flex flex-wrap gap-2">{images.map(src => <ToolImage key={src} src={src} />)}</div>}
       {open && (
         <div className="ml-6 my-1.5 space-y-2 animate-rise">
           {item.diff && <DiffView diff={item.diff} />}

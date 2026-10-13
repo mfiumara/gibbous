@@ -655,9 +655,10 @@ route('POST', '/api/fs/mkdir', (_, b) => {
 const IMAGE_MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 async function serveImage(u: URL, res: http.ServerResponse) {
   let p = path.resolve(u.searchParams.get('path') ?? '');
-  if (isHeic(p) && isInside(p, sys().home) && fs.existsSync(p)) p = await heicJpeg(p);
+  if (isHeic(p) && (isInside(p, sys().home) || inTemp(p)) && fs.existsSync(p)) p = await heicJpeg(p);
   const type = IMAGE_MIME[path.extname(p).toLowerCase()];
-  if (!type || !(isInside(p, sys().home) || isInside(p, HEIC_CACHE)) || !fs.existsSync(p)) throw new HttpError(404, 'image not found');
+  // Agents often render screenshots/plots into the system temp folder ($TMPDIR, per user on macOS): images only.
+  if (!type || !(isInside(p, sys().home) || isInside(p, HEIC_CACHE) || inTemp(p)) || !fs.existsSync(p)) throw new HttpError(404, 'image not found');
   // SVG can carry script: serve it sandboxed.
   res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'private, max-age=86400', ...(type === 'image/svg+xml' ? { 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" } : {}) });
   fs.createReadStream(p).pipe(res);
@@ -676,6 +677,10 @@ function mediaPath(raw: string) {
 }
 // HEIC (iPhone photos) shows as a cached JPEG twin: only Safari can draw HEIC itself. Downloads keep the original.
 const HEIC_CACHE = path.join(GIBBOUS_HOME, 'cache', 'heic');
+// The user's temp folders: Node's, and on macOS the per-user one agents' shells get (/var/folders/…/T) even when
+// this server runs with another TMPDIR.
+const TEMP_DIRS = [...new Set([os.tmpdir(), ...(process.platform === 'darwin' ? [(() => { try { return execFileSync('getconf', ['DARWIN_USER_TEMP_DIR'], { encoding: 'utf8' }).trim(); } catch { return ''; } })()] : [])].filter(Boolean))];
+const inTemp = (p: string) => TEMP_DIRS.some(d => isInside(p, d));
 const heicJpeg = (p: string) => cachedJpeg(p, HEIC_CACHE).catch(() => { throw new HttpError(415, 'HEIC conversion is not available on this machine'); });
 async function serveMedia(u: URL, req: http.IncomingMessage, res: http.ServerResponse) {
   let p = mediaPath(u.searchParams.get('path') ?? '');
