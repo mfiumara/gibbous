@@ -9,7 +9,7 @@ import { SpaceSwitcher, SpaceItems } from './Spaces';
 import { activeSpace, inSpace } from '../../server/spaces';
 import { EDGE, axis, progress, settle } from './drawer';
 import { prefetch } from './thread/prefetch';
-import { Moon, MoonLoader, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
+import { Moon, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
 import { quiet } from './screenTransition';
 import { editHumanTask } from './HumanTask';
 import { humanTasks } from '../../server/humanTasks';
@@ -26,7 +26,7 @@ const prLook: Record<PrBadge['state'], { Icon: typeof GitPullRequest; cls: strin
   open: { Icon: GitPullRequest, cls: 'text-sprout' }, draft: { Icon: GitPullRequestDraft, cls: 'text-ash', word: 'draft' },
   merged: { Icon: GitMerge, cls: 'text-[#b8a6e0]', word: 'merged' }, closed: { Icon: GitPullRequestClosed, cls: 'text-ash', word: 'closed' },
 };
-const ciLook = { pass: { cls: 'text-sprout', word: 'passed' }, fail: { cls: 'text-oxide', word: 'failing' }, pending: { cls: 'text-halo', word: 'running' } };
+const ciLook = { pass: { cls: 'text-sprout', word: 'passed' }, fail: { cls: 'text-oxide', word: 'failing' }, pending: { cls: 'text-[#d29922]', word: 'running' } };
 const kNum = (n: number) => n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
 function PrLine({ pr }: { pr: PrBadge }) {
@@ -42,7 +42,7 @@ function PrLine({ pr }: { pr: PrBadge }) {
       {word && <><span aria-hidden className="opacity-50">·</span><span className={cls}>{word}</span></>}
       {ci && <><span aria-hidden className="opacity-50">·</span>
         <span className={`inline-flex items-center gap-1 ${ci.cls}`}>
-          {pr.ci === 'pending' ? <MoonLoader size={9} label="Checks running" />
+          {pr.ci === 'pending' ? <span className="grid place-items-center [--color-tide:#d29922]" aria-label="Checks running"><Moon thread="running" size={7} /></span>
             : <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 {pr.ci === 'pass' ? <path d="M1.2 4.3 3.2 6.2 6.8 1.9" /> : <path d="M1.6 1.6l4.8 4.8M6.4 1.6 1.6 6.4" />}</svg>}
           {ci.word}</span></>}

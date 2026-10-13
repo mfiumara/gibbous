@@ -63,12 +63,13 @@ function AgentMeta({ a }: { a: Agent }) {
   </span>;
 }
 
-export function SubagentGroup({ agents, earlierCount, onOpen, open, setOpen }: { agents: Agent[]; earlierCount: number; onOpen(key?: string): void; open: boolean; setOpen(f: (o: boolean) => boolean): void }) {
+export function SubagentGroup({ agents, onOpen, open, setOpen }: { agents: Agent[]; onOpen(key?: string): void; open: boolean; setOpen(f: (o: boolean) => boolean): void }) {
   const [, tick] = useState(0);
   const anyLive = agents.some(isLive);
   useEffect(() => { if (!anyLive) return; const t = setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t); }, [anyLive]);
   if (!agents.length) return null;
   const working = agents.filter(isLive), done = !working.length;
+  const single = agents.length === 1, unfolded = open && !single;
   const now = working.find(a => a.activity) ?? working[0];
   const lead = <>{done ? <AgentDot a={agents.find(a => a.state === 'failed') ?? agents[0]} size={16} /> : <MoonLoader size={16} label="subagents working" />}</>;
   const title = done ? `${agents.length} subagent${agents.length > 1 ? 's' : ''} finished` : <><span className="font-mono tabular-nums text-tide">{working.length}/{agents.length}</span> subagent{agents.length > 1 ? 's' : ''} working</>;
@@ -80,18 +81,21 @@ export function SubagentGroup({ agents, earlierCount, onOpen, open, setOpen }: {
       const at = rows.indexOf(document.activeElement as HTMLButtonElement);
       rows[Math.max(0, Math.min(rows.length - 1, at + (e.key === 'j' ? 1 : -1)))]?.focus();
     }} className={`group/sa w-full rounded-xl border transition-[background-color,border-color,box-shadow] duration-300 ease-out hover:shadow-[0_6px_24px_-12px_rgb(0_0_0/.6)] ${done ? 'border-line/70 bg-crater/40 hover:border-ash/40 hover:bg-crater/70' : 'border-tide/25 bg-tide/[.05] hover:border-tide/45 hover:bg-tide/[.09]'}`}>
-      <button onClick={() => setOpen(o => !o)} aria-expanded={open} data-tip={open ? 'Fold' : 'Show each subagent'}
-        className="press w-full flex items-center gap-2.5 px-3 py-2 text-left rounded-xl">
-        {lead}
+      {/* One subagent: nothing to unfold, the card opens it directly. Unfolded: each row carries its own moon, so the
+          card's lead moon steps aside instead of doubling up. */}
+      <button onClick={() => single ? onOpen(agents[0].key) : setOpen(o => !o)} aria-expanded={single ? undefined : open} data-tip={single ? 'Open this subagent' : open ? 'Fold' : 'Show each subagent'}
+        className="press w-full flex items-center px-3 py-2 text-left rounded-xl">
+        <span className={`grid place-items-center overflow-hidden flex-none transition-[opacity,scale] duration-300 ease-out w-4 mr-2.5 ${unfolded ? 'opacity-0 scale-50' : 'opacity-100'}`}>{lead}</span>
         <span className="flex-1 min-w-0">
           <span className="block text-[12.5px] text-moon">{title}</span>
-          <span className={`block truncate text-[11.5px] text-dust transition-opacity duration-200 ${open ? 'opacity-0' : ''}`}>{now ? <span className="flex items-center gap-1.5 min-w-0"><span className="truncate min-w-0 flex-none max-w-[45%]">{agentName(now, agents.indexOf(now))}</span><AgentMeta a={now} /></span> : agents.map((a) => agentName(a, agents.indexOf(a))).join(' · ')}</span>
+          {/* The live line folds away with the card open: each row below shows the same details. */}
+          <span className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${unfolded ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr]'}`}><span className="min-h-0 overflow-hidden"><span className="block truncate text-[11.5px] text-dust">{now ? <span className="flex items-center gap-1.5 min-w-0"><span className="truncate min-w-0 flex-none max-w-[45%]">{agentName(now, agents.indexOf(now))}</span><AgentMeta a={now} /></span> : agents.map((a) => agentName(a, agents.indexOf(a))).join(' · ')}</span></span></span>
         </span>
-        <ChevronRight size={14} className={`flex-none text-ash transition-[transform,color] duration-300 ease-out group-hover/sa:text-moon ${open ? 'rotate-90' : ''}`} />
+        <ChevronRight size={14} className={`flex-none ml-2.5 text-ash transition-[transform,color] duration-300 ease-out group-hover/sa:text-moon ${unfolded ? 'rotate-90' : ''}`} />
       </button>
       {/* Unfolds downwards: the grid row animates 0fr → 1fr, the rows slide and fade in after it. */}
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`} inert={!open}>
-      <ul className={`min-h-0 overflow-hidden px-1.5 transition-[opacity,translate] duration-300 ease-out ${open ? 'pb-1.5 opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}>{[...working, ...agents.filter(a => !isLive(a))].map(a => (
+      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${unfolded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`} inert={!unfolded}>
+      <ul className={`min-h-0 overflow-hidden px-1.5 transition-[opacity,translate] duration-300 ease-out ${unfolded ? 'pb-1.5 opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}>{[...working, ...agents.filter(a => !isLive(a))].map(a => (
         <li key={a.key}>
           <button onClick={() => onOpen(a.key)} className="press w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-[13px] text-dust transition-colors duration-200 hover:text-moon hover:bg-ridge/60">
             <span className="w-4 grid place-items-center flex-none"><AgentDot a={a} size={11} /></span>
@@ -100,12 +104,6 @@ export function SubagentGroup({ agents, earlierCount, onOpen, open, setOpen }: {
           </button>
         </li>
       ))}
-        {earlierCount > 0 && <li>
-          <button onClick={() => onOpen()} className="press w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-[13px] text-ash transition-colors duration-200 hover:text-dust hover:bg-ridge/60">
-            <span className="w-4 grid place-items-center flex-none opacity-50"><span role="img" aria-label="earlier subagents" className="moon-loader moon-still" style={{ '--s': '11px', '--tonight': 18 } as React.CSSProperties} /></span>
-            <span>{earlierCount} earlier subagents</span>
-          </button>
-        </li>}
       </ul>
       </div>
     </div>

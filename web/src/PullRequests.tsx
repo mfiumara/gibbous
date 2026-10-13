@@ -1,6 +1,6 @@
 import { GitPullRequest, GitMerge, GitPullRequestClosed, ChevronDown, Check, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Menu, Moon } from './ui';
+import { Menu, Moon, Fold } from './ui';
 import { aggregateCi, overviewCollapsed, overviewMode, stackRows } from './prOverview';
 import { useStore, NONE } from './store';
 import { HumanTaskCard } from './HumanTask';
@@ -79,12 +79,12 @@ export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelO
     {mode === 'card' && hasTasks && <div data-rail className="absolute right-3 top-[calc(100%+12px)] w-[300px]"><HumanTaskCard thread={thread!} rail /></div>}
   </div>;
   const body = <PrList prs={prs} compact/>;
-  const heading = <><GitPullRequest size={13}/><span className="flex-1 text-left">Pull requests</span><span className="text-ash tabular-nums">{prs.length}</span><CiDot ci={aggregateCi(prs)}/><ChevronDown size={12} className={collapsed ? '-rotate-90' : ''}/></>;
+  const heading = <><GitPullRequest size={13}/><span className="flex-1 text-left">Pull requests</span><span className="text-ash tabular-nums">{prs.length}</span><CiDot ci={aggregateCi(prs)}/><ChevronDown size={12} className={`transition-transform duration-300 ease-out ${collapsed ? '-rotate-90' : ''}`}/></>;
   return <div ref={anchor} data-pr-overview data-mode={mode} className="flex-none">
     {mode === 'card' ? <div data-rail className="absolute right-3 top-[calc(100%+12px)] w-[300px] flex flex-col gap-3">
       <section className="rounded-xl surface bg-basalt overflow-hidden" aria-label="Pull requests overview">
         <button aria-label={collapsed ? 'Expand pull requests' : 'Collapse pull requests'} aria-expanded={!collapsed} onClick={toggleCollapse} className="press w-full flex items-center gap-2 px-3.5 py-3 text-[12px] text-dust hover:text-moon">{heading}</button>
-        {!collapsed && body}
+        <Fold open={!collapsed}>{body}</Fold>
       </section>
       {hasTasks && <HumanTaskCard thread={thread!} rail />}
     </div> : <div className="relative">

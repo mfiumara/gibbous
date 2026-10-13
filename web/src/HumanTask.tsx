@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Check, UserCheck, X, Pencil, Plus } from 'lucide-react';
+import { Check, UserCheck, X, Pencil, Plus, ChevronDown } from 'lucide-react';
 import { api, type Thread } from './api';
 import { toastError } from './store';
-import { Modal, NO_PREDICT } from './ui';
+import { Modal, NO_PREDICT, Fold } from './ui';
 import { humanTasks, type HumanTask } from '../../server/humanTasks';
 
 export const editHumanTask = (t: Thread) => dispatchEvent(new CustomEvent('gibbous:humanTask', { detail: t.id }));
@@ -45,10 +45,11 @@ function TaskText({ text }: { text: string }) {
   })}</>;
 }
 
-function TaskRow({ thread, task }: { thread: Thread; task: HumanTask }) {
+function TaskRow({ thread, task, n }: { thread: Thread; task: HumanTask; n?: number }) {
   const [edit, setEdit] = useState(false); const [text, setText] = useState(task.text); const [open, setOpen] = useState(false);
   const save = async () => { if (!text.trim()) return; try { await api.patch(`/api/threads/${thread.id}/human-tasks/${task.id}`, { text }); setEdit(false); } catch (e) { toastError(e); } };
-  const done = task.doneAt != null, { tag, body } = splitTask(task.text);
+  const done = task.doneAt != null, { tag, body: raw } = splitTask(task.text);
+  const body = n ? raw.replace(/^(?:step\s*)?\d+[.):]\s+/i, '') : raw; // our number replaces the agent's own "1."
   return <li id={`human-task-${task.id}`} tabIndex={-1} className="group/task relative flex items-start gap-2 px-3 py-2 focus:outline-none focus:bg-ridge/50 hover:bg-ridge/30 transition-colors">
     <span className="pt-px"><TaskCheck thread={thread} task={task} /></span>
     {edit ? <form className="flex-1 min-w-0" onSubmit={e => { e.preventDefault(); save(); }}>
@@ -58,8 +59,8 @@ function TaskRow({ thread, task }: { thread: Thread; task: HumanTask }) {
       </form>
       : <button type="button" onClick={() => setOpen(!open)} onDoubleClick={() => { setText(task.text); setEdit(true); }} aria-expanded={open} title={open ? undefined : task.text}
           className={`flex-1 min-w-0 text-left text-[12.5px] leading-[1.45] select-text ${done ? 'text-ash line-through' : 'text-moon/90'}`}>
-          {tag && <span className="block mb-0.5 font-mono text-[10.5px] tracking-tight text-ash">{tag}</span>}
-          <span className={open ? '' : 'line-clamp-2'}><TaskText text={body} /></span>
+          {tag && <span className="block mb-0.5 font-mono text-[10.5px] tracking-tight text-ash">{n != null && <span className="text-dust tabular-nums mr-1.5">{n}.</span>}{tag}</span>}
+          <span className={open ? '' : 'line-clamp-2'}>{n != null && !tag && <span className="font-mono text-[11px] text-ash tabular-nums mr-1.5">{n}.</span>}<TaskText text={body} /></span>
         </button>}
     {!edit && <div className="absolute right-1.5 top-1.5 flex rounded-md bg-basalt/95 shadow-[0_0_0_1px_var(--color-line)] opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 pointer-coarse:hidden transition-opacity">
       <button aria-label={`Edit task: ${task.text}`} onClick={() => { setText(task.text); setEdit(true); }} className="press size-6 grid place-items-center text-ash hover:text-moon"><Pencil size={11} /></button>
@@ -70,24 +71,33 @@ function TaskRow({ thread, task }: { thread: Thread; task: HumanTask }) {
 
 // The thread's "For me" checklist. `rail`: a card in the right gutter under the pull requests (wide screens);
 // otherwise a slim card above the conversation. Gone when nothing is left to do.
+const FOLD_KEY = 'gibbous.tasksCard.collapsed';
 const SHOWN = 4, SHOWN_INLINE = 2;  // above the chat it stays short so the conversation keeps the room
 export function HumanTaskCard({ thread, rail = false }: { thread: Thread; rail?: boolean }) {
   const tasks = humanTasks(thread); const [all, setAll] = useState(false); const [showDone, setShowDone] = useState(false); const [adding, setAdding] = useState(false); const [text, setText] = useState('');
+  const [folded, setFolded] = useState(() => localStorage.getItem(FOLD_KEY) === '1');
+  const fold = () => { const next = !folded; localStorage.setItem(FOLD_KEY, next ? '1' : '0'); setFolded(next); };
   const open = tasks.filter(task => task.doneAt == null), done = tasks.filter(task => task.doneAt != null);
   if (!open.length && !adding) return null;
+  // Tasks are steps in the order they were filed (agents file them in doing-order), so more than one gets numbers.
+  const numbered = tasks.length > 1;
   const cap = rail ? SHOWN : SHOWN_INLINE, visible = all ? open : open.slice(0, cap), more = open.length - visible.length;
   const submit = async () => { if (!text.trim()) return; try { await api.post(`/api/threads/${thread.id}/human-tasks`, { text }); setText(''); setAdding(false); } catch (e) { toastError(e); } };
   const card = <div className="rounded-xl surface bg-basalt overflow-hidden">
-    <div className="flex items-center gap-2 pl-3.5 pr-2 h-10 text-[12px] text-dust">
-      <UserCheck size={13} className="text-tide" /><span className="flex-1">For me</span>
-      <span className="text-ash tabular-nums" data-tip={`${done.length} of ${tasks.length} done`}>{open.length} left</span>
-      <button aria-label="Add a task for me" data-tip="Add a task" onClick={() => setAdding(true)} className="press size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Plus size={13} /></button>
+    <div className="flex items-center pr-2 h-10 text-[12px] text-dust">
+      <button onClick={fold} aria-expanded={!folded} aria-label={folded ? 'Expand For me tasks' : 'Collapse For me tasks'} className="press flex-1 min-w-0 h-full flex items-center gap-2 pl-3.5 pr-2 hover:text-moon">
+        <UserCheck size={13} className="text-tide" /><span className="flex-1 text-left">For me</span>
+        <span className="text-ash tabular-nums" data-tip={`${done.length} of ${tasks.length} done`}>{open.length} left</span>
+        <ChevronDown size={12} className={`text-ash transition-transform duration-300 ease-out ${folded ? '-rotate-90' : ''}`} />
+      </button>
+      <button aria-label="Add a task for me" data-tip="Add a task" onClick={() => { if (folded) fold(); setAdding(true); }} className="press size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Plus size={13} /></button>
     </div>
+    <Fold open={!folded}>
     {/* Progress: how much of this thread's list is done. */}
     <div className="mx-3.5 h-px bg-line relative"><span className="absolute inset-y-0 left-0 bg-tide/70 transition-[width] duration-500" style={{ width: `${tasks.length ? done.length / tasks.length * 100 : 0}%` }} /></div>
     <ol aria-label="Open tasks" className={`py-1 ${rail ? 'max-h-[55dvh]' : 'max-h-[32dvh]'} overflow-y-auto`}>
-      {visible.map(task => <TaskRow key={task.id} task={task} thread={thread} />)}
-      {showDone && done.map(task => <TaskRow key={task.id} task={task} thread={thread} />)}
+      {visible.map(task => <TaskRow key={task.id} task={task} thread={thread} n={numbered ? tasks.indexOf(task) + 1 : undefined} />)}
+      {showDone && done.map(task => <TaskRow key={task.id} task={task} thread={thread} n={numbered ? tasks.indexOf(task) + 1 : undefined} />)}
     </ol>
     {adding && <form className="px-3 pb-2" onSubmit={e => { e.preventDefault(); submit(); }}><input {...NO_PREDICT} autoFocus value={text} onChange={e => setText(e.target.value)} maxLength={1000} aria-label="New task" placeholder="Something for me to do…" onBlur={() => { if (!text.trim()) setAdding(false); }} onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setAdding(false); } }} className="w-full h-8 rounded-lg bg-well border border-line px-2.5 text-[12.5px] text-moon focus:outline-none focus:border-tide/50" /></form>}
     {(more > 0 || all && open.length > cap || done.length > 0) && <div className="flex items-center gap-3 px-3.5 h-8 border-t border-line text-[11.5px] text-ash">
@@ -95,6 +105,7 @@ export function HumanTaskCard({ thread, rail = false }: { thread: Thread; rail?:
       <span className="flex-1" />
       {done.length > 0 && <button onClick={() => setShowDone(!showDone)} aria-expanded={showDone} className="press hover:text-moon">{showDone ? 'Hide done' : `${done.length} done`}</button>}
     </div>}
+    </Fold>
   </div>;
   if (rail) return <section aria-label="For me tasks" className="w-full animate-fade">{card}</section>;
   return <section aria-label="For me tasks" data-inline-tasks className="mx-auto w-full max-w-3xl px-4 pt-3 flex-none animate-fade">{card}</section>;

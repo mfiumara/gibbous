@@ -122,6 +122,13 @@ export function MoonImplode({ size = 14, label = 'Compacting context', className
   return <span role="status" aria-label={label} className={`moon-implode ${className}`} style={{ '--s': `${size}px` } as React.CSSProperties} />;
 }
 
+// Smooth fold/unfold like the subagent card: the grid row animates 0fr → 1fr, the content fades and slides after it.
+export function Fold({ open, children, className = '' }: { open: boolean; children: ReactNode; className?: string }) {
+  return <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`} inert={!open}>
+    <div className={`min-h-0 overflow-hidden transition-[opacity,translate] duration-300 ease-out ${open ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'} ${className}`}>{children}</div>
+  </div>;
+}
+
 export function Logo({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
