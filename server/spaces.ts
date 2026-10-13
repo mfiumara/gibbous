@@ -29,3 +29,10 @@ export function cycleSpace(active: string, spaces: Space[], direction: 1 | -1): 
   const ids = ['', ...spaces.map(s => s.id)], i = ids.indexOf(activeSpace(active, spaces));
   return ids[(i + direction + ids.length) % ids.length];
 }
+
+// A thread's space: its project's when it has one, otherwise its own (chats without a project).
+export function threadInSpace(thread: { projectId?: string; space?: string }, projects: { id: string; space?: string }[], active: string): boolean {
+  if (!active) return true;
+  const p = thread.projectId ? projects.find(x => x.id === thread.projectId) : undefined;
+  return (p ? p.space : thread.space) === active;
+}

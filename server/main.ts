@@ -348,6 +348,7 @@ route('PATCH', '/api/threads/:id', (p, b) => {
     if (!t.readOnly) orch.withLive(t, sid => orch.cl(t).call('session.title', { session_id: sid, title: t.title })).catch(() => {}); // on the thread's own host
   }
   if ('projectId' in b) t.projectId = b.projectId || undefined;
+  if ('space' in b) { try { assignSpace(t, b.space, state.settings.spaces); } catch (e) { throw new HttpError(400, (e as Error).message); } }
   if ('pinned' in b) t.pinned = b.pinned ? true : undefined;
   if (b.status === 'idle' && t.status === 'archived') t.status = 'idle';
   save(); orch.changed('thread', t); return t;

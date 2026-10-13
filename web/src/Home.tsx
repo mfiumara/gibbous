@@ -90,7 +90,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
     try {
       // With attachments or a /command the thread is created empty and its own composer sends it (one upload path, slash.exec).
       const files = att.files, viaComposer = files.length > 0 || text.trimStart().startsWith('/'), title = (text.split('\n')[0] || files[0]?.name || 'New thread').slice(0, 70);
-      const t = await api.post<Thread>('/api/threads', { projectId: host ? undefined : project?.id, host: host || undefined, prompt: viaComposer ? undefined : text, worktree: !host && canWorktree && worktree, base: base || undefined, title, autoTitle: true });
+      const t = await api.post<Thread>('/api/threads', { projectId: host ? undefined : project?.id, space: project ? undefined : useStore.getState().activeSpace || undefined, host: host || undefined, prompt: viaComposer ? undefined : text, worktree: !host && canWorktree && worktree, base: base || undefined, title, autoTitle: true });
       if (viaComposer) { handOff(t.id, text, files); att.clear(); }
       setText(t => t === sent ? '' : t); // keep anything typed while it was sending
       go(`/t/${t.id}`);

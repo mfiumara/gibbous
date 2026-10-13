@@ -71,6 +71,7 @@ export interface Thread {
   pinned?: boolean;                     // shown at the top of the sidebar
   // Prompts typed while a turn runs (queue.ts): the server sends the head when a turn ends. A Stop pauses the line.
   queue?: QueueItem[]; queuePaused?: boolean;
+  space?: string;   // a chat without a project can sit in a space too (a project's chats follow the project)
   // Messages already handed to Hermes' own queue (with images) until the running turn ends: shown on every device.
   held?: { id: string; shown: string; at: number }[];
   status: ThreadStatus; lastText?: string; error?: string;

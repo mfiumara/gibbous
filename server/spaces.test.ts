@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { migrateSpaces, spaceName, assignSpace, inSpace, activeSpace, cycleSpace } from './spaces.ts';
+import { migrateSpaces, spaceName, assignSpace, inSpace, activeSpace, cycleSpace, threadInSpace } from './spaces.ts';
 
 const spaces = [{ id: 'private', name: 'Private' }, { id: 'work', name: 'Work' }];
 test('spaces are opt-in, validated and ordered; corrupt entries do not survive migration', () => {
@@ -35,4 +35,13 @@ test('switching wraps in creation order and deleted spaces fall back to All', ()
   assert.equal(cycleSpace('', spaces, -1), 'work');
   assert.equal(activeSpace('deleted', spaces), '');
   assert.equal(cycleSpace('deleted', [], 1), '');
+});
+
+test('a projectless chat sits in its own space; a project chat follows its project', () => {
+  const projects = [{ id: 'p', space: 'work' }];
+  assert.equal(threadInSpace({ space: 'home' }, projects, 'home'), true);
+  assert.equal(threadInSpace({ space: 'home' }, projects, 'work'), false);
+  assert.equal(threadInSpace({ projectId: 'p', space: 'home' }, projects, 'work'), true);
+  assert.equal(threadInSpace({}, projects, 'work'), false);
+  assert.equal(threadInSpace({}, projects, ''), true);
 });

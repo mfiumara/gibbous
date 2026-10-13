@@ -276,7 +276,7 @@ export class Orchestrator extends EventEmitter {
 
   // ── threads ───────────────────────────────────────────────────────────
   async createThread(o: {
-    projectId?: string; title?: string; autoTitle?: boolean; prompt?: string; worktree?: boolean; base?: string;
+    projectId?: string; space?: string; title?: string; autoTitle?: boolean; prompt?: string; worktree?: boolean; base?: string;
     cwd?: string; model?: string; provider?: string; profile?: string; host?: string;
   }): Promise<Thread> {
     const profile = o.profile ?? (state.settings.profile || undefined);
@@ -302,7 +302,7 @@ export class Orchestrator extends EventEmitter {
       ...(model ? { model } : {}), ...(provider ? { provider } : {}), ...(profile ? { profile } : {}),
     });
     const t: Thread = {
-      id: newId('th'), projectId: project?.id, title, autoTitle: o.autoTitle || title === 'New thread' || undefined, sessionId: r.stored_session_id, cwd, worktree,
+      id: newId('th'), projectId: project?.id, ...(!project && o.space && state.settings.spaces.some(x => x.id === o.space) ? { space: o.space } : {}), title, autoTitle: o.autoTitle || title === 'New thread' || undefined, sessionId: r.stored_session_id, cwd, worktree,
       role: 'chat', profile, host, status: 'idle', createdAt: Date.now(), updatedAt: Date.now(),
     };
     state.threads.unshift(t);

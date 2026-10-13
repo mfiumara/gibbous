@@ -1,12 +1,12 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Trash2, UserCheck } from 'lucide-react';
+import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Trash2, UserCheck, Layers } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread, NONE } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type Project, type PrBadge } from './api';
 import { CiDot } from './PullRequests';
 import { aggregateCi } from '../../server/prSummary';
 import { SpaceSwitcher, SpaceItems } from './Spaces';
-import { activeSpace, inSpace } from '../../server/spaces';
+import { activeSpace, inSpace, threadInSpace } from '../../server/spaces';
 import { EDGE, axis, progress, settle } from './drawer';
 import { prefetch } from './thread/prefetch';
 import { Moon, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
@@ -65,6 +65,7 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
   const prs = useStore(s => s.threadPrs[t.id] ?? NONE);
   const ci = aggregateCi(prs);
   const archived = t.status === 'archived';
+  const spaces = useStore(s => s.settings?.spaces ?? NONE);
   const openTasks = humanTasks(t).filter(x => x.doneAt == null).length;
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -113,6 +114,8 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
         <MenuItem icon={<Check />} onClick={() => { setMenu(false); editHumanTask(t); }}>Add a task for me…</MenuItem>
         <MenuItem icon={<Pencil />} onClick={() => { setMenu(false); setRenaming(true); }}>Rename</MenuItem>
         <MenuItem icon={t.pinned ? <PinOff /> : <Pin />} onClick={() => { setMenu(false); api.patch(`/api/threads/${t.id}`, { pinned: !t.pinned }).catch(toastError); }}>{t.pinned ? 'Unpin' : 'Pin to top'}</MenuItem>
+        {/* A chat in a project follows the project's space; a chat on its own picks one itself. */}
+        {!t.projectId && spaces.length > 0 && <>{spaces.map(sp => <MenuItem key={sp.id} icon={t.space === sp.id ? <Check className="text-tide" /> : <Layers />} onClick={() => { setMenu(false); api.patch(`/api/threads/${t.id}`, { space: t.space === sp.id ? null : sp.id }).catch(toastError); }}>{t.space === sp.id ? `In ${sp.name}` : `Move to ${sp.name}`}</MenuItem>)}</>}
         <MenuItem icon={archived ? <ArchiveRestore /> : <Archive />} onClick={() => { setMenu(false); toggleArchive(); }}>{archived ? 'Unarchive' : 'Archive'}</MenuItem>
       </Menu>
     </div>
@@ -274,7 +277,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
   const spaces = useStore(s => s.settings?.spaces ?? NONE);
   const storedSpace = useStore(s => s.activeSpace);
   const space = activeSpace(storedSpace, spaces);
-  const belongs = (t: Thread) => inSpace(projects.find(p => p.id === t.projectId), space);
+  const belongs = (t: Thread) => threadInSpace(t, projects, space);
   const shown = projects.filter(p => !hidden.includes(p.id) && inSpace(p, space));
   const [filterMenu, setFilterMenu] = useState(false);
   const [spaceMenu, setSpaceMenu] = useState(false);
