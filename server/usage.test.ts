@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { computeUsage, loadRows, modelLabel, modelId, parseDays, rangeStart } from './usage.ts';
+import { computeUsage, loadRows, splitRows, modelLabel, modelId, parseDays, rangeStart } from './usage.ts';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gib-usage-'));
 const NOW = new Date(2030, 4, 15, 15, 0, 0).getTime(); // a fixed local afternoon
@@ -102,4 +102,26 @@ test('labels and params', () => {
   assert.equal(parseDays('30'), 30);
   assert.equal(parseDays('x'), 7);
   assert.equal(new Date(rangeStart(1, NOW)! * 1000).getHours(), 0);
+});
+
+test('splitRows: a long session that switched models lands per model, over the hours it was active', () => {
+  const H = (d: number) => Math.floor(at(d) / 3600);
+  const row: any = { id: 'long', source: 'discord', model: 'claude-opus-5-5', provider: 'anthropic', parent: null, delegated: 0, started: at(60), messages: 100, tools: 10, api: 50,
+    input: 1100, output: 110, cacheRead: 0, cacheWrite: 0, reasoning: 0, est: 5, status: 'estimated' };
+  const pieces: any[] = [
+    { id: 'long', model: 'gpt-5.6-sol', provider: 'openai-codex', api: 40, input: 1000, output: 100, cacheRead: 0, cacheWrite: 0, reasoning: 0, est: 0, first: at(60), last: at(10) },
+    { id: 'long', model: 'claude-opus-5-5', provider: 'anthropic', api: 10, input: 100, output: 10, cacheRead: 0, cacheWrite: 0, reasoning: 0, est: 5, first: at(2), last: at(1) },
+  ];
+  const out = splitRows([row], pieces, [{ id: 'long', hour: H(60), n: 3 }, { id: 'long', hour: H(10), n: 1 }, { id: 'long', hour: H(2), n: 1 }, { id: 'long', hour: H(1), n: 1 }]);
+  const opusEarly = out.filter(r => r.model === 'claude-opus-5-5' && r.started < at(5));
+  assert.equal(opusEarly.length, 0, 'no Opus before it was used');
+  const gptAt60 = out.find(r => r.model === 'gpt-5.6-sol' && r.started === H(60) * 3600)!;
+  assert.equal(Math.round(gptAt60.input), 750);   // 3 of the 4 active hours in its window
+  const r = computeUsage([{ profile: 'default', rows: out, parents: new Map() }], [], null, NOW);
+  assert.equal(r.totals.sessions, 1);
+  assert.equal(r.totals.input, 1100);
+  assert.equal(r.models.find(m => m.id === 'claude-opus-5-5')!.costUsd, 5);
+  const week = computeUsage([{ profile: 'default', rows: out, parents: new Map() }], [], 7, NOW);
+  assert.deepEqual(week.models.map(m => m.id), ['claude-opus-5-5']);
+  assert.equal(week.totals.sessions, 1);
 });

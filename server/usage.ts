@@ -44,9 +44,52 @@ const SQL = `SELECT id, source, model, billing_provider AS provider, parent_sess
   estimated_cost_usd AS est, cost_status AS status
 FROM sessions WHERE started_at >= ? AND (COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) + COALESCE(cache_read_tokens, 0) > 0 OR COALESCE(message_count, 0) > 0)`;
 const PARENTS = `SELECT id, parent_session_id AS parent FROM sessions WHERE parent_session_id IS NOT NULL`;
+// A long-lived session (a Discord chat, a supervisor) runs for weeks and can switch models. Hermes keeps per-model totals
+// with first/last use (session_model_usage) and every message's time, so such a session is split: per model, spread over
+// the hours it was active in that model's window. Older databases without those tables keep one row per session.
+const MODEL_USAGE = `SELECT session_id AS id, model, MAX(billing_provider) AS provider, SUM(api_call_count) AS api,
+  SUM(input_tokens) AS input, SUM(output_tokens) AS output, SUM(cache_read_tokens) AS cacheRead, SUM(cache_write_tokens) AS cacheWrite,
+  SUM(reasoning_tokens) AS reasoning, SUM(CASE WHEN estimated_cost_usd > 0 AND COALESCE(cost_status, '') <> 'included' THEN estimated_cost_usd ELSE 0 END) AS est,
+  MIN(first_seen) AS first, MAX(last_seen) AS last FROM session_model_usage GROUP BY session_id, model`;
+const ACTIVITY = `SELECT m.session_id AS id, CAST(m.timestamp AS INTEGER) / 3600 AS hour, COUNT(*) AS n
+  FROM sessions s JOIN messages m INDEXED BY idx_messages_session ON m.session_id = s.id
+  WHERE COALESCE(s.ended_at, CAST(strftime('%s', 'now') AS INTEGER)) - s.started_at > 86400 GROUP BY 1, 2`;
+interface ModelPiece { id: string; model: string; provider: string | null; api: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; est: number; first: number | null; last: number | null }
 
+export function splitRows(rows: Row[], pieces: ModelPiece[], activity: { id: string; hour: number; n: number }[]): Row[] {
+  const bySession = new Map<string, ModelPiece[]>(), hours = new Map<string, { hour: number; n: number }[]>();
+  for (const p of pieces) (bySession.get(p.id) ?? bySession.set(p.id, []).get(p.id)!).push(p);
+  for (const a of activity) (hours.get(a.id) ?? hours.set(a.id, []).get(a.id)!).push(a);
+  const out: Row[] = [];
+  for (const r of rows) {
+    const ps = bySession.get(r.id), hs = hours.get(r.id);
+    if (!ps?.length && !hs?.length) { out.push(r); continue; }
+    const parts: ModelPiece[] = ps?.length ? ps : [{ id: r.id, model: r.model ?? '', provider: r.provider, api: r.api, input: r.input, output: r.output, cacheRead: r.cacheRead, cacheWrite: r.cacheWrite, reasoning: r.reasoning, est: cost(r) ?? 0, first: null, last: null }];
+    const tokens = parts.reduce((n, p) => n + p.input + p.output, 0) || 1;
+    const pieces_: Row[] = [];
+    for (const p of parts) {
+      const from = (p.first ?? r.started) - 3600, to = (p.last ?? Infinity) + 3600;
+      const win = (hs ?? []).filter(h => h.hour * 3600 >= from && h.hour * 3600 <= to);
+      const spread = win.length ? win : [{ hour: Math.floor((p.first ?? r.started) / 3600), n: 1 }];
+      const total = spread.reduce((n, h) => n + h.n, 0), share = (p.input + p.output) / tokens;
+      for (const h of spread) {
+        const w = h.n / total;
+        pieces_.push({ ...r, model: p.model || r.model, provider: p.provider || r.provider, started: h.hour * 3600,
+          api: p.api * w, input: p.input * w, output: p.output * w, cacheRead: p.cacheRead * w, cacheWrite: p.cacheWrite * w, reasoning: p.reasoning * w,
+          messages: r.messages * share * w, tools: r.tools * share * w, est: p.est > 0 ? p.est * w : null, status: p.est > 0 ? 'estimated' : r.status });
+      }
+    }
+    out.push(...pieces_);
+  }
+  return out;
+}
+
+const counted = new WeakMap<object, Set<string>>();
 function add(s: UsageStats, r: Row) {
-  s.sessions++; s.apiCalls += r.api; s.toolCalls += r.tools; s.messages += r.messages;
+  // A split session (splitRows) counts once per total, however many of its pieces land in it.
+  let ids = counted.get(s); if (!ids) counted.set(s, ids = new Set());
+  if (!ids.has(r.id)) { ids.add(r.id); s.sessions++; }
+  s.apiCalls += r.api; s.toolCalls += r.tools; s.messages += r.messages;
   s.input += r.input; s.output += r.output; s.cacheRead += r.cacheRead; s.cacheWrite += r.cacheWrite; s.reasoning += r.reasoning;
   s.tokens += r.input + r.output;
   const c = cost(r);
@@ -94,7 +137,11 @@ export function loadRows(dbs: UsageDb[]): UsageRows[] {
   const out: UsageRows[] = [];
   for (const { profile, db } of dbs) {
     try {
-      out.push({ profile, rows: db.prepare(SQL).all(0) as unknown as Row[], parents: new Map((db.prepare(PARENTS).all() as { id: string; parent: string }[]).map(r => [r.id, r.parent])) });
+      const rows = db.prepare(SQL).all(0) as unknown as Row[];
+      let pieces: ModelPiece[] = [], activity: { id: string; hour: number; n: number }[] = [];
+      try { pieces = db.prepare(MODEL_USAGE).all() as unknown as ModelPiece[]; } catch { /* no per-model table yet */ }
+      try { activity = db.prepare(ACTIVITY).all() as unknown as typeof activity; } catch { /* no messages index/table */ }
+      out.push({ profile, rows: splitRows(rows, pieces, activity), parents: new Map((db.prepare(PARENTS).all() as { id: string; parent: string }[]).map(r => [r.id, r.parent])) });
     } catch { /* a profile db mid-migration or locked: skip it rather than fail the page */ }
   }
   return out;
@@ -135,7 +182,9 @@ export function computeUsage(sets: UsageRows[], threads: UsageThreadRef[], days:
       const dk = dayKey(r.started);
       let d = daily.get(dk);
       if (!d) daily.set(dk, d = { day: dk, tokens: 0, costUsd: null, sessions: 0, byModel: {} });
-      d.tokens += r.input + r.output; d.sessions++;
+      d.tokens += r.input + r.output;
+      let dayIds = counted.get(d); if (!dayIds) counted.set(d, dayIds = new Set());
+      if (!dayIds.has(r.id)) { dayIds.add(r.id); d.sessions++; }
       d.byModel[mid] = (d.byModel[mid] ?? 0) + r.input + r.output;
       const c = cost(r); if (c != null) d.costUsd = (d.costUsd ?? 0) + c;
     }
@@ -153,6 +202,10 @@ export function computeUsage(sets: UsageRows[], threads: UsageThreadRef[], days:
       d.setDate(d.getDate() + 1);
     }
   }
+  // Split sessions leave fractions behind: whole numbers out.
+  const whole = <T extends UsageStats>(x: T): T => { for (const k of ['apiCalls', 'toolCalls', 'messages', 'input', 'output', 'cacheRead', 'cacheWrite', 'reasoning', 'tokens'] as const) x[k] = Math.round(x[k]); return x; };
+  for (const x of [totals, ...models.values(), ...sources.values(), ...profiles.values(), ...perThread.values()]) whole(x);
+  for (const d of days_) { d.tokens = Math.round(d.tokens); for (const k in d.byModel) d.byModel[k] = Math.round(d.byModel[k]); }
   const prompt = totals.input + totals.cacheRead + totals.cacheWrite;
   const byTokens = <T extends UsageStats>(a: T, b: T) => b.tokens - a.tokens || b.sessions - a.sessions;
   return {
