@@ -37,14 +37,6 @@ export function resetIn(at: number | null, now = Date.now()): string {
   const d = new Date(at);
   return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
 }
-const dur = (ms: number) => { const m = Math.round(ms / 60_000); return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d ${Math.floor(m / 60) % 24}h`; };
-function PaceLine({ w, now }: { w: LimitWindow; now: number }) {
-  const p = pace(w.usedPercent, w.resetAt, w.windowSeconds, now);
-  if (!p) return null;
-  const n = Math.round(Math.abs(p.delta));
-  return <span className={p.delta < -0.5 ? 'text-halo' : 'text-sprout/90'} data-tip="Used compared with how much of the window has gone by">
-    {n === 0 ? 'on pace' : p.delta < 0 ? `${n}% in deficit` : `${n}% in reserve`}{p.runsOutIn != null ? ` · runs out in ${dur(p.runsOutIn)}` : ''}</span>;
-}
 // Hermes phrases details for its own CLI ("… - use /usage reset to activate"): keep the fact.
 const detailText = (d: string) => d.replace(/\s*[-–]\s*use \/usage.*$/i, '');
 const tone = (p: number) => p >= 90 ? 'bg-oxide' : p >= 75 ? 'bg-halo' : 'bg-tide';
@@ -92,7 +84,7 @@ export function LimitsCard() {
         {l.windows.map(w => (
           <div key={w.label}>
             <Bar w={w} now={now} />
-            <p className="mt-0.5 flex flex-wrap gap-x-2 text-[10.5px] text-ash">{w.resetAt && <span className="whitespace-nowrap">resets {resetIn(w.resetAt, now)}{w.scope === 'model' ? ' · this model only' : ''}</span>}<span className="ml-auto whitespace-nowrap"><PaceLine w={w} now={now} /></span></p>
+            <p className="mt-0.5 flex flex-wrap gap-x-2 text-[10.5px] text-ash">{w.resetAt && <span className="whitespace-nowrap">resets {resetIn(w.resetAt, now)}{w.scope === 'model' ? ' · this model only' : ''}</span>}</p>
           </div>
         ))}
         {l.details.map(d => <p key={d} className="text-[11.5px] text-dust">{detailText(d)}</p>)}
