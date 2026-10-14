@@ -41,15 +41,16 @@ export function resetIn(at: number | null, now = Date.now()): string {
 const detailText = (d: string) => d.replace(/\s*[-–]\s*use \/usage.*$/i, '');
 const tone = (p: number) => p >= 90 ? 'bg-oxide' : p >= 75 ? 'bg-halo' : 'bg-tide';
 
+// Like CodexBar: the bar is what's LEFT of the window, the marker is how much time is left. Bar ending short of the
+// marker = using it faster than the clock (deficit, red marker); past it = reserve (green marker).
 function Bar({ w, now }: { w: LimitWindow; now: number }) {
-  const p = Math.max(0, Math.min(100, w.usedPercent ?? 0)), pc = pace(w.usedPercent, w.resetAt, w.windowSeconds, now);
-  const el = pc ? Math.max(0, Math.min(100, p + pc.delta)) : null;
-  return <div className="min-w-0" data-tip={`${w.label}: ${Math.round(p)}% used${pc ? ` · ${Math.round(Math.abs(pc.delta))}% ${pc.delta < 0 ? 'in deficit' : 'in reserve'}` : ''}${w.resetAt ? ` · resets ${resetIn(w.resetAt, now)}` : ''}`}>
+  const used = Math.max(0, Math.min(100, w.usedPercent ?? 0)), left = 100 - used, pc = pace(w.usedPercent, w.resetAt, w.windowSeconds, now);
+  const timeLeft = pc ? Math.max(0, Math.min(100, 100 - (used + pc.delta))) : null;
+  return <div className="min-w-0" data-tip={`${w.label}: ${Math.round(left)}% left${pc ? ` · ${Math.round(Math.abs(pc.delta))}% ${pc.delta < 0 ? 'in deficit' : 'in reserve'}` : ''}${w.resetAt ? ` · resets ${resetIn(w.resetAt, now)}` : ''}`}>
     <div className="flex items-baseline gap-1.5 text-[11px] text-ash"><span className="truncate">{shortLabel(w.label)}</span>
-      <span className="ml-auto tabular-nums text-dust">{Math.round(p)}%</span></div>
-    <div className="relative mt-0.5 h-1 rounded-full bg-line"><div className={`h-full rounded-full ${tone(p)} transition-[width] duration-500`} style={{ width: `${p}%` }} />
-      {/* Where you'd be at an even pace, like CodexBar: green while you're under it (reserve), red once past it (deficit). */}
-      {el != null && <span aria-hidden className={`absolute -inset-y-px w-[2px] -ml-px rounded-full ${pc!.delta < -0.5 ? 'bg-oxide/80' : 'bg-sprout/80'} shadow-[0_0_0_1px_var(--color-basalt)]`} style={{ left: `${el}%` }} />}</div>
+      <span className="ml-auto tabular-nums text-dust">{Math.round(left)}% left</span></div>
+    <div className="relative mt-0.5 h-1 rounded-full bg-line"><div className={`h-full rounded-full ${tone(used)} transition-[width] duration-500`} style={{ width: `${left}%` }} />
+      {timeLeft != null && <span aria-hidden className={`absolute -inset-y-px w-[2px] -ml-px rounded-full ${pc!.delta < -0.5 ? 'bg-oxide/80' : 'bg-sprout/80'} shadow-[0_0_0_1px_var(--color-basalt)]`} style={{ left: `${timeLeft}%` }} />}</div>
   </div>;
 }
 
