@@ -12,7 +12,7 @@ export const CORNER_ITEMS = [
   { key: 'rooms', label: 'Rooms' },
 ] as const;
 export type CornerKey = typeof CORNER_ITEMS[number]['key'];
-const KEY = 'gibbous.corner', DEFAULT: CornerKey[] = ['limits', 'usage', 'kanban'];
+const KEY = 'gibbous.corner.v2', DEFAULT: CornerKey[] = ['usage', 'kanban'];   // v2: limits moved off by default (they live on Usage)
 const subs = new Set<() => void>();
 let cur: CornerKey[] = (() => { try { const v = JSON.parse(localStorage.getItem(KEY) ?? 'null'); return Array.isArray(v) ? v : DEFAULT; } catch { return DEFAULT; } })();
 export function setCorner(keys: CornerKey[]) { cur = CORNER_ITEMS.map(i => i.key).filter(k => keys.includes(k)); localStorage.setItem(KEY, JSON.stringify(cur)); subs.forEach(f => f()); }
