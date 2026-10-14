@@ -42,7 +42,7 @@ function Headline({ r }: { r: UsageReport }) {
       <Stat label="Sessions" value={t.sessions.toLocaleString()} sub={`${t.apiCalls.toLocaleString()} model calls`} />
       <Stat label="Tool calls" value={t.toolCalls.toLocaleString()} sub={`${t.messages.toLocaleString()} messages`} />
       <Stat label="Cache hits" value={hit == null ? '—' : fmtPct(hit)} sub={`${fmtCount(t.cacheRead)} read from cache`} tip="Share of prompt tokens served from the provider's cache. The moon fills with it." />
-      <Stat label="API-equivalent" value={t.costUsd == null ? '—' : `~${fmtCost(t.costUsd)}`} sub={t.costUsd == null ? 'nothing priced' : `${t.pricedSessions.toLocaleString()} sessions priced`}
+      <Stat label="API-equivalent" value={t.costUsd == null ? '—' : `~${fmtCost(t.costUsd)}`} sub={t.costUsd == null ? 'nothing priced' : t.includedUsd > 0 ? `~${fmtCost(t.includedUsd)} of it on your subscription` : `${t.pricedSessions.toLocaleString()} sessions priced`}
         tip="What the priced sessions would cost at API list prices. Subscription sessions aren't priced, so they're left out." />
     </div>
   </section>;
@@ -192,7 +192,7 @@ export function UsageTab() {
           <Card title="Profiles" aside={`${shown.profiles.length}`}><Groups rows={shown.profiles} total={shown.totals.tokens} /></Card>
         </div>
         {shown.threads.length > 0 && <Card title="Top threads" aside="incl. subagents"><Threads r={shown} /></Card>}
-        <p className="text-[11.5px] text-ash px-1">Tokens are input plus output; cache reads are counted separately. API-equivalent cost is an estimate at list prices, shown only for sessions the agent priced: subscription usage has no per-token price.</p>
+        <p className="text-[11.5px] text-ash px-1">Tokens are input plus output; cache reads are counted separately. API-equivalent cost is an estimate at API list prices. Subscription use (a ChatGPT/Codex login) is priced at the same list prices, at the base rate (long-prompt surcharges aren't known): that's what it would have cost on the API, not what you paid.</p>
       </div>}
   </>;
 }

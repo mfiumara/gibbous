@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { computeUsage, loadRows, splitRows, modelLabel, modelId, parseDays, rangeStart } from './usage.ts';
+import { computeUsage, loadRows, splitRows, costOf, modelLabel, modelId, parseDays, rangeStart } from './usage.ts';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gib-usage-'));
 const NOW = new Date(2030, 4, 15, 15, 0, 0).getTime(); // a fixed local afternoon
@@ -124,4 +124,13 @@ test('splitRows: a long session that switched models lands per model, over the h
   const week = computeUsage([{ profile: 'default', rows: out, parents: new Map() }], [], 7, NOW);
   assert.deepEqual(week.models.map(m => m.id), ['claude-opus-5-5']);
   assert.equal(week.totals.sessions, 1);
+});
+
+test('costOf: subscription use is priced at the API list price; API use keeps Hermes\' estimate; unknown models stay unpriced', () => {
+  const table = new Map([['gpt-5.6-sol', { input: 5, output: 30, cacheRead: 0.5, cacheWrite: null }]]);
+  const r: any = { model: 'openai/gpt-5.6-sol', provider: 'openai-codex', status: 'included', est: 0, input: 1e6, output: 1e5, cacheRead: 2e6, cacheWrite: 0 };
+  assert.deepEqual(costOf(r, table), { usd: 5 + 3 + 1, included: true });
+  assert.deepEqual(costOf({ ...r, provider: 'anthropic', status: 'estimated', est: 2 }, table), { usd: 2, included: false });
+  assert.equal(costOf({ ...r, model: 'k3' }, table), null);
+  assert.equal(costOf({ ...r, provider: 'anthropic', status: 'estimated', est: null }, table), null);
 });

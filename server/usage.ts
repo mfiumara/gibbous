@@ -3,6 +3,7 @@
 // server's local timezone. Results are cached for a minute per range.
 import type { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { openStateDb } from './subagents.ts';
 import { hermesHome } from './platform.ts';
@@ -13,7 +14,8 @@ export interface UsageStats {
   input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number;
   tokens: number;          // input + output (fresh tokens; cache reads are reported separately)
   costUsd: number | null;  // API-equivalent estimate; null when Hermes priced none of these sessions
-  pricedSessions: number;  // sessions that carry an estimate (subscriptions usually don't)
+  includedUsd: number;     // the part of costUsd that ran on a subscription (ChatGPT/Codex login): list price, not spend
+  pricedSessions: number;  // sessions that carry an estimate
 }
 export interface UsageModel extends UsageStats { id: string; label: string; providers: string[] }
 export interface UsageDay { day: string; tokens: number; costUsd: number | null; sessions: number; byModel: Record<string, number> }
@@ -27,7 +29,7 @@ export interface UsageReport {
 export interface UsageDb { profile: string; db: DatabaseSync }
 export interface UsageThreadRef { id: string; title: string; sessionId: string }
 
-const empty = (): UsageStats => ({ sessions: 0, apiCalls: 0, toolCalls: 0, messages: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, tokens: 0, costUsd: null, pricedSessions: 0 });
+const empty = (): UsageStats => ({ sessions: 0, apiCalls: 0, toolCalls: 0, messages: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, tokens: 0, costUsd: null, includedUsd: 0, pricedSessions: 0 });
 
 interface Row {
   id: string; source: string; model: string | null; provider: string | null; parent: string | null; delegated: number;
@@ -92,11 +94,24 @@ function add(s: UsageStats, r: Row) {
   s.apiCalls += r.api; s.toolCalls += r.tools; s.messages += r.messages;
   s.input += r.input; s.output += r.output; s.cacheRead += r.cacheRead; s.cacheWrite += r.cacheWrite; s.reasoning += r.reasoning;
   s.tokens += r.input + r.output;
-  const c = cost(r);
-  if (c != null) { s.costUsd = (s.costUsd ?? 0) + c; s.pricedSessions++; }
+  const c = costOf(r);
+  if (c) { s.costUsd = (s.costUsd ?? 0) + c.usd; if (c.included) s.includedUsd += c.usd; if (!ids.has(`$${r.id}`)) { ids.add(`$${r.id}`); s.pricedSessions++; } }
 }
-// Only Hermes' own estimate counts. Subscriptions ("included", 0.0) have no API-equivalent price, so they're omitted.
-const cost = (r: Row) => r.est != null && r.est > 0 && r.status !== 'included' ? r.est : null;
+// Hermes' own estimate when it made one. Subscription use (the ChatGPT/Codex login: Hermes records it as "included", $0)
+// is priced here at the model's API list price from Hermes' pricing table (apiPrices), so it shows what it would cost.
+export interface Price { input: number; output: number; cacheRead: number | null; cacheWrite: number | null }
+let prices = new Map<string, Price>();
+export const setPrices = (p: Map<string, Price>) => { prices = p; loaded = undefined; cache.clear(); };
+const onSubscription = (r: Row) => r.status === 'included' || /codex/.test(r.provider ?? '');
+export function costOf(r: Row, table = prices): { usd: number; included: boolean } | null {
+  if (r.est != null && r.est > 0 && r.status !== 'included') return { usd: r.est, included: false };
+  if (!onSubscription(r)) return null;
+  const p = table.get(modelId(r.model));
+  if (!p) return null;
+  const usd = (r.input * p.input + r.output * p.output + r.cacheRead * (p.cacheRead ?? p.input) + r.cacheWrite * (p.cacheWrite ?? p.input)) / 1e6;
+  return usd > 0 ? { usd, included: true } : null;
+}
+const cost = (r: Row) => costOf(r)?.usd ?? null;
 
 // "openai/gpt-5.6-sol" and "gpt-5.6-sol" are the same model.
 export const modelId = (m?: string | null) => (m ?? '').trim().replace(/^[\w.-]+\//, '').toLowerCase() || 'unknown';
@@ -245,9 +260,37 @@ let loaded: { at: number; sets: UsageRows[] } | undefined;
 const cache = new Map<string, UsageReport>();
 export function usage(days: number | null, threads: UsageThreadRef[], ttlMs = 60_000): UsageReport {
   const now = Date.now();
-  if (!loaded || now - loaded.at >= ttlMs) { loaded = { at: now, sets: loadRows(usageDbs()) }; cache.clear(); }
+  if (!loaded || now - loaded.at >= ttlMs) { loaded = { at: now, sets: loadRows(usageDbs()) }; cache.clear(); refreshPrices(loaded.sets, now); }
   const key = String(days);
   let report = cache.get(key);
   if (!report) cache.set(key, report = computeUsage(loaded.sets, threads, days, now));
   return report;
+}
+
+// API list prices for the subscription models, from Hermes' own pricing table (agent/usage_pricing.py), asked once an
+// hour through Hermes' Python. Unknown models stay unpriced. Base rates: per-request long-context tiers aren't known here.
+const PRICE_PY = `import json,sys
+from agent.usage_pricing import get_pricing_entry
+out={}
+for m in json.load(sys.stdin):
+    try: e=get_pricing_entry(m, provider='openai', base_url='https://api.openai.com/v1')
+    except Exception: e=None
+    if e and e.input_cost_per_million is not None and e.output_cost_per_million is not None:
+        f=lambda v: None if v is None else float(v)
+        out[m]={'input':f(e.input_cost_per_million),'output':f(e.output_cost_per_million),'cacheRead':f(e.cache_read_cost_per_million),'cacheWrite':f(e.cache_write_cost_per_million)}
+print(json.dumps(out))`;
+let pricedAt = 0;
+export function refreshPrices(sets: UsageRows[], now = Date.now()) {
+  if (now - pricedAt < 3_600_000) return;
+  pricedAt = now;
+  const want = [...new Set(sets.flatMap(x => x.rows).filter(onSubscription).map(r => modelId(r.model)))].filter(m => m !== 'unknown');
+  if (!want.length) return;
+  const root = path.join(hermesHome(), 'hermes-agent');
+  const py = [path.join(root, 'venv', 'bin', 'python'), path.join(root, '.venv', 'bin', 'python'), path.join(root, 'venv', 'Scripts', 'python.exe')].find(f => fs.existsSync(f));
+  if (!py) return;
+  const p = execFile(py, ['-c', PRICE_PY], { cwd: root, timeout: 30_000, maxBuffer: 1 << 20 }, (err, out) => {
+    if (err) { pricedAt = 0; return; }
+    try { setPrices(new Map(Object.entries(JSON.parse(out.trim().split('\n').pop() ?? '{}')) as [string, Price][])); } catch { /* keep the old table */ }
+  });
+  p.stdin?.end(JSON.stringify(want));
 }
