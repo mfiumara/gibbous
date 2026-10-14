@@ -2,9 +2,11 @@
 // and a fuller card for Home and Settings → Usage. Like CodexBar: how much of each window is used and when it resets.
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { pace } from './limitsPace';
+import { useStore, toastError } from './store';
 
-export interface LimitWindow { label: string; usedPercent: number | null; resetAt: number | null; scope: string; detail: string | null }
-export interface AccountLimits { provider: string; label: string; plan: string | null; windows: LimitWindow[]; details: string[]; unavailable: string | null; fetchedAt: number }
+export interface LimitWindow { label: string; usedPercent: number | null; resetAt: number | null; scope: string; detail: string | null; windowSeconds: number | null }
+export interface AccountLimits { provider: string; label: string; plan: string | null; windows: LimitWindow[]; details: string[]; unavailable: string | null; fetchedAt: number; resets: number | null }
 
 let last: AccountLimits[] | undefined;
 const subs = new Set<(v: AccountLimits[]) => void>();
@@ -35,16 +37,27 @@ export function resetIn(at: number | null, now = Date.now()): string {
   const d = new Date(at);
   return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
 }
+const dur = (ms: number) => { const m = Math.round(ms / 60_000); return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d ${Math.floor(m / 60) % 24}h`; };
+function PaceLine({ w, now }: { w: LimitWindow; now: number }) {
+  const p = pace(w.usedPercent, w.resetAt, w.windowSeconds, now);
+  if (!p) return null;
+  const n = Math.round(Math.abs(p.delta));
+  return <span className={p.delta < -0.5 ? 'text-halo' : 'text-sprout/90'} data-tip="Used compared with how much of the window has gone by">
+    {n === 0 ? 'on pace' : p.delta < 0 ? `${n}% in deficit` : `${n}% in reserve`}{p.runsOutIn != null ? ` · runs out in ${dur(p.runsOutIn)}` : ''}</span>;
+}
 // Hermes phrases details for its own CLI ("… - use /usage reset to activate"): keep the fact.
 const detailText = (d: string) => d.replace(/\s*[-–]\s*use \/usage.*$/i, '');
 const tone = (p: number) => p >= 90 ? 'bg-oxide' : p >= 75 ? 'bg-halo' : 'bg-tide';
 
 function Bar({ w, now }: { w: LimitWindow; now: number }) {
-  const p = Math.max(0, Math.min(100, w.usedPercent ?? 0));
-  return <div className="min-w-0" data-tip={`${w.label}: ${Math.round(p)}% used${w.resetAt ? ` · resets ${resetIn(w.resetAt, now)}` : ''}`}>
+  const p = Math.max(0, Math.min(100, w.usedPercent ?? 0)), pc = pace(w.usedPercent, w.resetAt, w.windowSeconds, now);
+  const el = pc ? Math.max(0, Math.min(100, p + pc.delta)) : null;
+  return <div className="min-w-0" data-tip={`${w.label}: ${Math.round(p)}% used${pc ? ` · ${Math.round(Math.abs(pc.delta))}% ${pc.delta < 0 ? 'in deficit' : 'in reserve'}` : ''}${w.resetAt ? ` · resets ${resetIn(w.resetAt, now)}` : ''}`}>
     <div className="flex items-baseline gap-1.5 text-[11px] text-ash"><span className="truncate">{shortLabel(w.label)}</span>
       <span className="ml-auto tabular-nums text-dust">{Math.round(p)}%</span></div>
-    <div className="mt-0.5 h-1 rounded-full bg-line overflow-hidden"><div className={`h-full rounded-full ${tone(p)} transition-[width] duration-500`} style={{ width: `${p}%` }} /></div>
+    <div className="relative mt-0.5 h-1 rounded-full bg-line overflow-hidden"><div className={`h-full rounded-full ${tone(p)} transition-[width] duration-500`} style={{ width: `${p}%` }} />
+      {/* Where you'd be at an even pace: the bar past this tick = in deficit. */}
+      {el != null && <span aria-hidden className="absolute inset-y-0 w-px bg-moon/70" style={{ left: `${el}%` }} />}</div>
   </div>;
 }
 
@@ -79,11 +92,40 @@ export function LimitsCard() {
         {l.windows.map(w => (
           <div key={w.label}>
             <Bar w={w} now={now} />
-            {w.resetAt && <p className="mt-0.5 text-[10.5px] text-ash">resets {resetIn(w.resetAt, now)}{w.scope === 'model' ? ' · this model only' : ''}</p>}
+            <p className="mt-0.5 flex flex-wrap gap-x-2 text-[10.5px] text-ash">{w.resetAt && <span className="whitespace-nowrap">resets {resetIn(w.resetAt, now)}{w.scope === 'model' ? ' · this model only' : ''}</span>}<span className="ml-auto whitespace-nowrap"><PaceLine w={w} now={now} /></span></p>
           </div>
         ))}
         {l.details.map(d => <p key={d} className="text-[11.5px] text-dust">{detailText(d)}</p>)}
+        {l.provider === 'openai-codex' && l.resets != null && <ResetRow resets={l.resets} worst={Math.max(0, ...l.windows.map(w => w.usedPercent ?? 0))} />}
       </section>
     ))}
+  </div>;
+}
+
+// Banked Codex resets: how many are left, and a button to use one. Always confirmed; a second, sterner confirmation
+// when no window is used up yet (a reset restores the whole allowance, so most of it would be wasted).
+function ResetRow({ resets, worst }: { resets: number; worst: number }) {
+  const [busy, setBusy] = useState(false);
+  const toast = useStore(s => s.toast);
+  const use = async () => {
+    if (!confirm(`Use 1 of your ${resets} banked Codex resets? It restores your full 5-hour and weekly limits right away.`)) return;
+    setBusy(true);
+    try {
+      let r = await api.post<{ status: string; available: number | null }>('/api/limits/codex/reset', { force: false });
+      if (r.status === 'not_exhausted') {
+        if (!confirm(`Your busiest window is only ${Math.round(worst)}% used, so most of this reset would go to waste. Use it anyway?`)) return;
+        r = await api.post('/api/limits/codex/reset', { force: true });
+      }
+      const left = r.available ?? undefined;
+      toast(r.status === 'reset' ? { title: `Reset used: your Codex limits are full again${left != null ? ` · ${left} left` : ''}` }
+        : r.status === 'nothing_to_reset' ? { title: 'Nothing to reset: your limits aren\'t used up. No reset was spent.' }
+        : r.status === 'already_redeemed' ? { title: 'That reset was already processed; nothing more was spent.' }
+        : { title: r.status === 'no_credits_banked' || r.status === 'no_credit' ? 'No banked resets left on this account.' : 'Could not use a reset right now. Try again shortly.', tone: 'error' });
+      await refreshLimits();
+    } catch (e) { toastError(e); } finally { setBusy(false); }
+  };
+  return <div className="flex items-center gap-2 pt-1 border-t border-line/60 text-[12px]">
+    <span className="text-dust">{resets === 0 ? 'No resets banked' : `${resets} reset${resets === 1 ? '' : 's'} banked`}</span>
+    {resets > 0 && <button disabled={busy} onClick={use} className="press ml-auto h-7 px-2.5 rounded-md border border-line text-[12px] text-moon hover:bg-ridge disabled:opacity-50">{busy ? 'Resetting…' : 'Use a reset…'}</button>}
   </div>;
 }
