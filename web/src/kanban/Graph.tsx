@@ -22,7 +22,9 @@ export function GraphView({ tasks, links, now, hideDone, onHideDone, doneCount, 
   tasks: KanbanCard[]; links: Link[]; now: number; hideDone: boolean; onHideDone(v: boolean): void; doneCount: number;
   fitKey: string; onOpen(id: string): void;
 }) {
-  const sorted = useMemo(() => tasks.map((t, i) => [t, i] as const).sort((a, b) => RANK[a[0].status] - RANK[b[0].status] || a[1] - b[1]).map(x => x[0]), [tasks]);
+  // Within a status, higher priority first: the layout keeps that order where links allow, so bumped tasks sit on top.
+  const sorted = useMemo(() => tasks.map((t, i) => [t, i] as const).sort((a, b) => RANK[a[0].status] - RANK[b[0].status] || b[0].priority - a[0].priority || a[1] - b[1]).map(x => x[0]), [tasks]);
+  const maxPrio = useMemo(() => Math.max(0, ...tasks.filter(t => t.status !== 'done' && t.status !== 'archived').map(t => t.priority)), [tasks]);
   // Re-layout only when the shape changes, not on every poll that returns the same tasks and links.
   const shape = sorted.map(t => t.id).join(' ') + '|' + links.map(l => `${l.parent}>${l.child}`).join(' ');
   const layout = useMemo(() => layoutGraph(sorted.map(t => t.id), links), [shape]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -196,7 +198,7 @@ export function GraphView({ tasks, links, now, hideDone, onHideDone, doneCount, 
             <g ref={hotG} />
           </svg>
           {layout.looseTop != null && <p className="absolute left-0 label text-ash whitespace-nowrap" style={{ top: layout.looseTop }}>No dependencies · {layout.loose.length}</p>}
-          {[...layout.nodes, ...layout.loose].map(n => { const t = byId.get(n.id); return t && <Node key={n.id} t={t} x={n.x} y={n.y} now={now} onOpen={open} onHover={enter} />; })}
+          {[...layout.nodes, ...layout.loose].map(n => { const t = byId.get(n.id); return t && <Node key={n.id} t={t} x={n.x} y={n.y} now={now} weight={maxPrio > 0 && t.priority > 0 && t.status !== 'done' && t.status !== 'archived' ? t.priority / maxPrio : 0} onOpen={open} onHover={enter} />; })}
         </div>
       </div>
       {empty && <div className="absolute inset-0 grid place-items-center pointer-events-none"><p className="text-[13px] text-ash">{hideDone && doneCount ? 'Nothing open. Show done tasks to see the finished graph.' : 'No tasks match'}</p></div>}
@@ -213,7 +215,7 @@ export function GraphView({ tasks, links, now, hideDone, onHideDone, doneCount, 
 // Board profiles are named <project>-<role> (spice-ts-engineer): on a small node the role says enough.
 export const role = (profile: string) => /^[\w.]+(?:-[\w.]+)*-(engineer|review|reviewer|supervisor|designer|analysis|benchmark|core|web|design|social)$/.exec(profile)?.[1] ?? profile;
 
-const Node = memo(function Node({ t, x, y, now, onOpen, onHover }: { t: KanbanCard; x: number; y: number; now: number; onOpen(id: string): void; onHover(id: string | null): void }) {
+const Node = memo(function Node({ t, x, y, now, weight = 0, onOpen, onHover }: { t: KanbanCard; x: number; y: number; now: number; weight?: number; onOpen(id: string): void; onHover(id: string | null): void }) {
   const done = t.status === 'done' || t.status === 'archived';
   return (
     <button data-vim-item data-node={t.id} onClick={() => onOpen(t.id)}
@@ -221,10 +223,12 @@ const Node = memo(function Node({ t, x, y, now, onOpen, onHover }: { t: KanbanCa
       aria-label={`${t.title} · ${LABEL[t.status]}`}
       className={`graph-node absolute flex flex-col justify-between rounded-xl px-2.5 py-2 text-left ${done ? 'is-done' : ''} ${t.status === 'running' ? 'is-running' : ''}`}
       style={{ left: x, top: y, width: W, height: H }}>
+      {/* Priority: the same thin amber edge as the board's cards. */}
+      {weight > 0 && <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-halo" style={{ opacity: 0.35 + 0.65 * weight }} />}
       <span className="flex items-start gap-1.5 min-w-0">
         <span className="mt-[3px] flex-none grid place-items-center size-3">{t.status === 'running' ? <MoonLoader size={12} label="Running" /> : <Moon kanban={t.status} size={8} />}</span>
         <span className={`flex-1 min-w-0 text-[12.5px] leading-[1.3] line-clamp-2 ${done ? 'text-dust' : 'text-moon'}`}>{t.title}</span>
-        {t.priority > 0 && <span className="label text-halo flex-none !text-[9.5px]">P{t.priority}</span>}
+        {t.priority > 0 && <span className="label text-halo/80 flex-none !text-[9.5px]" data-tip={`Priority ${t.priority} · higher runs first`}>P{t.priority}</span>}
       </span>
       <span className="flex items-center gap-x-2 pl-[18px] text-[11px] text-ash min-w-0 whitespace-nowrap">
         {t.assignee ? <span className="text-dust truncate min-w-0" data-tip={t.assignee}>{role(t.assignee)}</span> : <span className="truncate">{LABEL[t.status]}</span>}
