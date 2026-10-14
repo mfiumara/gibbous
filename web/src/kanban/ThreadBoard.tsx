@@ -36,12 +36,12 @@ export function ThreadBoardCard({ board, rail = false }: { board: NonNullable<Bo
   const lead = running[0] ?? board.tasks[0];
   const toTask = (id?: string) => go(`/kanban/${board.slug}${id ? `?task=${encodeURIComponent(id)}` : ''}`);
   const summary = [running.length && `${running.length} running`, blocked.length && `${blocked.length} blocked`].filter(Boolean).join(' · ');
-  const card = <div className={`group/kb rounded-xl border transition-[background-color,border-color] duration-300 ease-out ${blocked.length ? 'border-halo/30 bg-halo/[.05] hover:border-halo/50' : 'border-tide/25 bg-tide/[.05] hover:border-tide/45'}`}>
+  const card = <div className={`group/kb rounded-xl border transition-[background-color,border-color] duration-300 ease-out border-line/70 bg-crater/40 hover:border-ash/40 hover:bg-crater/70`}>
     <div className="flex items-center pr-1.5">
       <button onClick={toggle} aria-expanded={open} aria-label={open ? 'Fold board tasks' : 'Show board tasks'} className="press flex-1 min-w-0 flex items-center px-3 py-2 text-left rounded-xl">
         <span className={`grid place-items-center overflow-hidden flex-none transition-[opacity,scale,width,margin] duration-300 ease-out ${open ? 'w-0 mr-0 opacity-0 scale-50' : 'w-4 mr-2.5'}`}>{running.length ? <MoonLoader size={16} label="kanban tasks running" /> : <Moon kanban="blocked" size={12} />}</span>
         <span className="flex-1 min-w-0">
-          <span className="flex items-center gap-1.5 text-[12.5px] text-moon"><KanbanSquare size={12} className="text-ash flex-none" /><span className="truncate">{board.name}</span><span className={`flex-none text-[11.5px] ${blocked.length ? 'text-halo' : 'text-tide'}`}>{summary}</span></span>
+          <span className="flex items-center gap-1.5 text-[12.5px] text-moon"><KanbanSquare size={12} className="text-ash flex-none" /><span className="truncate">{board.name}</span><span className={`flex-none text-[11.5px] text-dust`}>{summary}</span></span>
           <span className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${open ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr]'}`}><span className="min-h-0 overflow-hidden"><span className="block truncate text-[11.5px] text-dust">{lead.title}</span></span></span>
         </span>
         <ChevronRight size={14} className={`flex-none ml-2 text-ash transition-[transform,color] duration-300 ease-out group-hover/kb:text-moon ${open ? 'rotate-90' : ''}`} />
