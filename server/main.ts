@@ -9,7 +9,7 @@ import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ensureBackend, upstreamUrl, restGet, HermesClient, HermesMissing, type Backend } from './hermes.ts';
 import { Installer, detectHermes, hermesVersion, modelState, installerCommand, manualInstallCommand, setupOs, INSTALL_DOCS, type InstallResult, type ModelState } from './setup.ts';
-import { ensureRemoteBackend, closeHost, testHost } from './hosts.ts';
+import { ensureRemoteBackend, closeHost, testHost, findLogin } from './hosts.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Host } from './store.ts';
 import * as kanban from './kanban.ts';
@@ -409,6 +409,13 @@ route('GET', '/api/tailnet/peers', () => {
       .map(p => ({ name: p.HostName, dns: String(p.DNSName ?? '').replace(/\.$/, ''), os: p.OS, online: !!p.Online })).sort((a, b) => Number(b.online) - Number(a.online));
   } catch { return []; }
 });
+route('POST', '/api/tailnet/login', async (_, b) => {
+  const extra: string[] = [];
+  try { const full = execFileSync('id', ['-F'], { encoding: 'utf8', timeout: 2000 }).trim(); extra.push(full.split(/\s+/)[0], full.replace(/\s+/g, '')); } catch { /* not macOS */ }
+  extra.push(os.userInfo().username);
+  try { for (const u of Object.values<any>(JSON.parse(execFileSync('tailscale', ['status', '--json'], { encoding: 'utf8', timeout: 5000 })).User ?? {})) extra.push(String(u.LoginName ?? '').split('@')[0]); } catch { /* no tailscale CLI */ }
+  return { login: await findLogin(String(b.dns ?? ''), extra) };
+});
 // Re-title threads whose title is still a slice of their first message (never ones you renamed).
 route('POST', '/api/threads/retitle', async (_, b) => {
   const want = Array.isArray(b.ids) ? new Set(b.ids.map(String)) : undefined;
@@ -560,6 +567,7 @@ route('GET', '/api/shares', () => (fs.existsSync(SHARES) ? fs.readdirSync(SHARES
 route('DELETE', '/api/shares/:id', p => { for (const ext of ['html', 'json']) fs.rmSync(path.join(SHARES, `${p.id.replace(/[^\w-]/g, '')}.${ext}`), { force: true }); return { ok: true }; });
 route('POST', '/api/hosts', (_, b) => {
   const ssh = String(b.ssh ?? '').trim();
+  if (ssh.startsWith('@')) throw new HttpError(400, `Add the login user before the @ (like you${ssh})`);
   if (!/^[\w.-]+(@[\w.:-]+)?$/.test(ssh)) throw new HttpError(400, 'SSH target looks like user@hostname or a ~/.ssh/config alias');
   const h: Host = { id: newId('host'), name: String(b.name || ssh), ssh, remotePort: Number(b.remotePort) || 9120, createdAt: Date.now() };
   state.hosts.push(h); save(); connectHost(h); broadcast('hosts', hostStatus()); return h;

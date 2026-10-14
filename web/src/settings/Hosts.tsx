@@ -14,8 +14,22 @@ export function HostsTab() {
   const sshInput = useRef<HTMLInputElement>(null);
   useEffect(() => { api.get<typeof peers>('/api/tailnet/peers').then(setPeers, () => {}); }, []);
   const known = new Set(hosts.map(h => h.ssh.split('@').pop()));
-  // Picking a peer fills in its MagicDNS name; you add the login user (e.g. root@) yourself.
-  const pick = (p: (typeof peers)[number]) => { setDraft({ ...draft, name: p.name, ssh: `@${p.dns}` }); requestAnimationFrame(() => { sshInput.current?.focus(); sshInput.current?.setSelectionRange(0, 0); }); };
+  // Picking a peer finds a login that works (server tries your name, the usual accounts…, prefers one with Hermes);
+  // only when none gets in do you type the user in front yourself.
+  const [finding, setFinding] = useState<string>();
+  const pick = async (p: (typeof peers)[number]) => {
+    setFinding(p.dns); setDraft(d => ({ ...d, name: p.name, ssh: p.dns }));
+    const r = await api.post<{ login: { ssh: string; hermes: boolean } | null }>('/api/tailnet/login', { dns: p.dns }).catch(() => ({ login: null }));
+    setFinding(undefined);
+    if (r.login) {
+      setDraft(d => ({ ...d, ssh: r.login!.ssh }));
+      if (!r.login.hermes) toast({ title: `Logged in as ${r.login.ssh.split('@')[0]}, but Hermes isn't installed there yet`, tone: 'error' });
+      return;
+    }
+    setDraft(d => ({ ...d, ssh: `@${p.dns}` }));
+    toast({ title: `No login worked on ${p.name}: type the user before the @`, tone: 'error' });
+    requestAnimationFrame(() => { sshInput.current?.focus(); sshInput.current?.setSelectionRange(0, 0); });
+  };
   const add = () => api.post('/api/hosts', draft).then(() => setDraft({ name: '', ssh: '', remotePort: '9120' }), toastError);
   const test = (id: string) => api.post<{ ok: boolean; output: string }>(`/api/hosts/${id}/test`).then(r => toast({ title: r.ok ? 'Hermes found' : 'Hermes not found', body: r.output, tone: r.ok ? undefined : 'error' }), toastError);
   return <>
@@ -37,12 +51,12 @@ export function HostsTab() {
       </div>
       <p className="text-xs text-dust">On a Tailscale SSH machine in <em>check</em> mode, run <span className="font-mono">ssh {draft.ssh || 'user@host'} true</span> once in Terminal and approve the browser prompt; Gibbous can't answer it. Needs SSH key login that works without a password prompt (try <span className="font-mono">ssh {draft.ssh || 'host'} true</span>). Remote threads are chats on that machine; projects, worktrees and the board stay on this Mac.</p>
     </Section>
-    {peers.length > 0 && <Section title="On your tailnet" description="Pick one, then add the login user in front.">
+    {peers.length > 0 && <Section title="On your tailnet" description="Pick one: Gibbous finds a login that works and has Hermes.">
       <ul className="divide-y divide-line">{peers.map(p => (
         <li key={p.dns} className="py-2.5 flex items-center gap-3 text-sm">
           <Radar size={14} className={p.online ? 'text-sprout' : 'text-ash'} />
           <span className="flex-1 min-w-0"><span className="block font-bold truncate">{p.name}</span><span className="block font-mono text-[12px] text-dust truncate">{p.dns} · {p.os}{p.online ? '' : ' · offline'}</span></span>
-          {known.has(p.dns) ? <span className="label text-tide">added</span> : <Button size="sm" disabled={!p.online} onClick={() => pick(p)}>Use</Button>}
+          {known.has(p.dns) ? <span className="label text-tide">added</span> : <Button size="sm" disabled={!p.online || !!finding} onClick={() => pick(p)}>{finding === p.dns ? 'Finding login…' : 'Use'}</Button>}
         </li>
       ))}</ul>
     </Section>}

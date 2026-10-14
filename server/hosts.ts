@@ -74,6 +74,26 @@ export async function ensureRemoteBackend(host: Host): Promise<Backend> {
 }
 
 // Quick reachability check for the Settings "Test" button.
+// Picking a tailnet machine: find a login that works without a prompt, preferring one with Hermes installed and a
+// personal account over root. Candidates: your first name (macOS full name), your Mac and Tailscale user names,
+// then the usual server accounts. Tried in parallel; null when none gets in.
+export async function findLogin(dns: string, extra: string[] = []): Promise<{ ssh: string; hermes: boolean } | null> {
+  if (!/^[\w.-]+$/.test(dns)) return null;
+  const users = [...new Set([...extra, 'ubuntu', 'admin', 'debian', 'ec2-user', 'pi', 'root'].map(u => u.toLowerCase()).filter(u => /^[a-z_][\w.-]{0,31}$/.test(u)))];
+  const tries = await Promise.all(users.map(async u => {
+    // Capped: a Tailscale SSH machine in check mode waits for a browser approval nobody gives here.
+    const r = await new Promise<{ code: number; out: string }>(resolve => {
+      const p = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'StrictHostKeyChecking=accept-new', `${u}@${dns}`, 'bash -lc \'echo __in__; command -v hermes || ls "$HOME/.local/bin/hermes"\''], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let out = ''; p.stdout.on('data', d => (out += d)); p.stderr.on('data', d => (out += d));
+      const kill = setTimeout(() => p.kill(), 15_000);
+      p.on('close', code => { clearTimeout(kill); resolve({ code: code ?? 1, out }); });
+    });
+    return { ssh: `${u}@${dns}`, in: r.out.includes('__in__'), hermes: r.code === 0 && /hermes/.test(r.out.split('__in__')[1] ?? '') };
+  }));
+  const hit = tries.find(t => t.hermes) ?? tries.find(t => t.in);
+  return hit ? { ssh: hit.ssh, hermes: hit.hermes } : null;
+}
+
 export async function testHost(host: Host) {
   const r = await ssh(host, ['bash', '-l', '-c', 'command -v hermes || ls "$HOME/.local/bin/hermes"; hermes --version 2>/dev/null | head -1']);
   return { ok: r.code === 0 && /hermes/i.test(r.out), output: r.out.trim().slice(-500) };
