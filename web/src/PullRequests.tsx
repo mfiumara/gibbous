@@ -31,8 +31,8 @@ function PrList({prs,compact=false}:{prs:PrBadge[];compact?:boolean}) {
   }} className="space-y-1 p-2 max-h-[56dvh] sm:max-h-[26rem] overflow-y-auto">
     {(compact ? stackRows(prs) : prs.map(pr => ({ pr, depth: 0, last: true }))).map(({ pr, depth }, i, rows) => compact ? <li key={pr.url}><a href={pr.url} target="_blank" rel="noreferrer" title={`#${pr.number} ${pr.title} · ${pr.headRefName}${depth ? ` · stacked on ${pr.baseRefName}` : ''} · ${pr.state}`}
       className="press relative flex items-center gap-2 h-7 pointer-coarse:h-10 rounded-md px-2 hover:bg-ridge min-w-0 text-[12.5px]">
-      {/* Stacked on the PR right above: a short line joining the two CI icons. */}
-      {depth > 0 && rows[i - 1]?.pr.headRefName === pr.baseRefName && <span aria-hidden className="absolute left-[13.5px] -top-2.5 h-4 w-px bg-ash/50" />}
+      {/* The row above is stacked on this one (a stack's top comes first): a short line joining the two CI icons. */}
+      {rows[i - 1]?.depth > 0 && rows[i - 1]?.pr.baseRefName === pr.headRefName && <span aria-hidden className="absolute left-[13.5px] -top-2.5 h-4 w-px bg-ash/50" />}
       {/* Merged / closed PRs show GitHub's icon instead of CI, which no longer matters for them. */}
       {pr.state === 'merged' ? <span className="size-3 grid place-items-center flex-none" data-tip="Merged" aria-label="Merged"><GitMerge size={12} strokeWidth={2.2} className="text-[#b8a6e0]" /></span>
         : pr.state === 'closed' ? <span className="size-3 grid place-items-center flex-none" data-tip="Closed without merging" aria-label="Closed"><GitPullRequestClosed size={12} strokeWidth={2.2} className="text-ash" /></span>

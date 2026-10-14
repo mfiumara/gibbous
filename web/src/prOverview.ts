@@ -8,8 +8,8 @@ export function overviewMode(width: number, panelOpen: boolean): 'card' | 'pill'
 }
 export const overviewCollapsed = (stored: string | null) => stored === '1';
 
-// Stacked PRs (a PR whose base is another PR's branch in the same repo) follow right below the PR they're based on.
-// Order: each root keeps its place; children follow their parent. depth > 0 = stacked on the row above's chain.
+// Stacked PRs (a PR whose base is another PR's branch in the same repo) sit right above the PR they're based on, like
+// GitHub/Graphite stacks: the top of the stack first, the PR on the trunk last. Each stack keeps its root's place.
 export interface StackRow { pr: PrBadge; depth: number; last: boolean }
 const repoOf = (url: string) => url.replace(/\/pull\/\d+.*$/, '');
 export function stackRows(prs: PrBadge[]): StackRow[] {
@@ -23,7 +23,7 @@ export function stackRows(prs: PrBadge[]): StackRow[] {
   for (const pr of [...parentOf.keys()].filter(inCycle)) parentOf.delete(pr);
   const children = (p: PrBadge) => prs.filter(x => parentOf.get(x) === p);
   const out: StackRow[] = [];
-  const walk = (pr: PrBadge, depth: number, last: boolean) => { out.push({ pr, depth, last }); const cs = children(pr); cs.forEach((c, i) => walk(c, depth + 1, i === cs.length - 1)); };
+  const walk = (pr: PrBadge, depth: number, last: boolean) => { const cs = children(pr); cs.forEach((c, i) => walk(c, depth + 1, i === cs.length - 1)); out.push({ pr, depth, last }); };
   prs.filter(pr => !parentOf.has(pr)).forEach(r => walk(r, 0, true));
   return out;
 }
