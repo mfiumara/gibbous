@@ -298,16 +298,15 @@ li p > .reply-task-action, table .reply-task-action, pre .reply-task-action { di
 [data-theme="light"] .moon-loader { filter: drop-shadow(0 0 1px rgb(0 0 0 / .35)); }
 /* Compaction: full moon (frame 18 of the strip) implodes to a speck, holds, then springs back to size. */
 .moon-implode { display: inline-block; flex: none; width: var(--s); height: var(--s); border-radius: 9999px;
-  background: url(/moon/phases.webp) calc(var(--s) * -18) 0 / calc(var(--s) * 36) var(--s) no-repeat;
+  /* The same flat blue moon as "working" (.moon-running), shrinking to a speck and springing back. */
+  background: var(--color-tide); box-shadow: 0 0 10px -1px color-mix(in srgb, var(--color-tide) 55%, transparent);
   animation: implode 1.8s cubic-bezier(.55, 0, .35, 1) infinite, fade .3s var(--ease-out) both; }
 @keyframes implode {
-  0%, 8% { transform: scale(1); filter: brightness(1.15); }
-  62% { transform: scale(.14); filter: brightness(1.6); }
-  70% { transform: scale(.14); filter: brightness(1.6); }
+  0%, 8% { transform: scale(1); }
+  62%, 70% { transform: scale(.14); }
   86% { transform: scale(1.08); }
-  100% { transform: scale(1); filter: brightness(1.15); }
+  100% { transform: scale(1); }
 }
-[data-theme="light"] .moon-implode { filter: drop-shadow(0 0 1px rgb(0 0 0 / .35)); }
 @media (prefers-reduced-motion: reduce) { .moon-implode { animation: none; } }
 [data-motion="off"] .moon-implode { animation: none; }
 /* The sidebar's still moon reddens with the real one during an eclipse (--blood, ui.tsx). */
