@@ -230,12 +230,13 @@ const Node = memo(function Node({ t, x, y, now, weight = 0, onOpen, onHover }: {
         <span className={`flex-1 min-w-0 text-[12.5px] leading-[1.3] line-clamp-2 ${done ? 'text-dust' : 'text-moon'}`}>{t.title}</span>
         {t.priority > 0 && <span className="label text-halo/80 flex-none !text-[9.5px]" data-tip={`Priority ${t.priority} · higher runs first`}>P{t.priority}</span>}
       </span>
-      <span className="flex items-center gap-x-2 pl-[18px] text-[11px] text-ash min-w-0 whitespace-nowrap">
-        {t.assignee ? <span className="text-dust truncate min-w-0" data-tip={t.assignee}>{role(t.assignee)}</span> : <span className="truncate">{LABEL[t.status]}</span>}
-        {t.model && <span className="font-mono text-[10.5px] truncate min-w-[3ch] flex-none max-w-[45%]" data-tip={`Model: ${t.model}${t.effort ? ` · ${t.effort} reasoning` : ''}`}>{shortModel(t.model)}{t.effort && <span className="text-ash/70">·{t.effort.slice(0, 3)}</span>}</span>}
+      <span className="flex items-center gap-x-2 pl-[18px] text-[11px] text-ash min-w-0 whitespace-nowrap overflow-hidden">
+        {t.assignee ? <span className="text-dust truncate min-w-[4ch]" data-tip={t.assignee}>{role(t.assignee)}</span> : <span className="truncate">{LABEL[t.status]}</span>}
+        {/* Blocked: the reason matters more than the model (still on hover of the card's detail). */}
+        {t.model && t.status !== 'blocked' && <span className="font-mono text-[10.5px] truncate min-w-[3ch] flex-none max-w-[45%]" data-tip={`Model: ${t.model}${t.effort ? ` · ${t.effort} reasoning` : ''}`}>{shortModel(t.model)}{t.effort && <span className="text-ash/70">·{t.effort.slice(0, 3)}</span>}</span>}
         {t.status === 'running' && t.runStartedAt ? <span className="text-tide flex-none"><Elapsed since={t.runStartedAt * 1000} /></span> : null}
         {t.progress && <span className="inline-flex items-center gap-0.5 flex-none tabular-nums"><GitBranch size={10} />{t.progress.done}/{t.progress.total}</span>}
-        {t.status === 'blocked' && <span className="inline-flex items-center gap-0.5 text-halo flex-none min-w-0"><Ban size={10} />{t.blockKind ?? 'blocked'}</span>}
+        {t.status === 'blocked' && <span className="inline-flex items-center gap-0.5 text-halo min-w-0" data-tip={t.blockKind ? `Blocked (${t.blockKind})` : 'Blocked'}><Ban size={10} className="flex-none" /><span className="truncate">{t.blockKind ?? 'blocked'}</span></span>}
         {t.warnings > 0 && <span className="inline-flex items-center gap-0.5 text-oxide flex-none"><AlertTriangle size={10} />{t.warnings}</span>}
         {done && t.completedAt ? <span className="ml-auto flex-none">{agoS(t.completedAt, now)}</span> : null}
       </span>
