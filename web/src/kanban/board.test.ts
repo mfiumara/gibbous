@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { visibleColumns, stepColumn, filterColumns, eventGist, agoS } from './board.ts';
+import { visibleColumns, stepColumn, filterColumns, eventGist, agoS, priorityGroups } from './board.ts';
 import type { KanbanCard, KanbanColumn, KanbanStatus } from '../api';
 
 const card = (id: string, o: Partial<KanbanCard> = {}): KanbanCard => ({
@@ -45,4 +45,13 @@ test('agoS formats unix seconds', () => {
   assert.equal(agoS(1000, 1000 + 7200), '2h');
   assert.equal(agoS(1000, 1000 + 3 * 86400), '3d');
   assert.equal(agoS(null), '');
+});
+
+test('priorityGroups: prioritised first by priority then age, the rest keep their order', () => {
+  const c = (id: string, priority: number, createdAt: number) => ({ id, priority, createdAt } as any);
+  const g = priorityGroups([c('a', 0, 1), c('b', 50, 5), c('d', 60, 9), c('e', 50, 2), c('f', 0, 0)]);
+  assert.deepEqual(g.top.map(t => t.id), ['d', 'e', 'b']);
+  assert.deepEqual(g.rest.map(t => t.id), ['a', 'f']);
+  assert.equal(g.weight(c('x', 30, 0)), 0.5);
+  assert.equal(priorityGroups([c('a', 0, 1)]).top.length, 0);
 });

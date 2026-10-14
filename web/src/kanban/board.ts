@@ -71,3 +71,12 @@ export function chains(tasks: BoardTask[]): Step[][] {
   for (const t of [...tasks.filter(t => !waits.has(t.id)), ...tasks]) { const g: Step[] = []; walk(t, g); if (g.length) out.push(g); }
   return out;
 }
+
+// Priority inside a lane (not Done/Archived): tasks with a priority first, highest first (ties: oldest first, the order
+// the dispatcher claims them in), then the rest in the board's own order. `weight` 0..1 = how high among the board's
+// priorities (the card's stripe strength). No prioritised tasks: one group, unchanged.
+export function priorityGroups(tasks: KanbanCard[], max = Math.max(0, ...tasks.map(t => t.priority))): { top: KanbanCard[]; rest: KanbanCard[]; weight(t: KanbanCard): number } {
+  const top = tasks.filter(t => t.priority > 0).sort((a, b) => b.priority - a.priority || a.createdAt - b.createdAt);
+  const rest = tasks.filter(t => !(t.priority > 0));
+  return { top, rest, weight: t => t.priority > 0 && max > 0 ? t.priority / max : 0 };
+}

@@ -7,7 +7,7 @@ import { api, type KanbanBoard, type KanbanCard, type KanbanColumn, type BoardMa
 import { useStore, toastError } from '../store';
 import { Button, IconButton, Modal, Field, Menu, MenuItem, Moon, MoonLoader, Empty, Elapsed, Skeleton, Segmented, inputCls, go, NO_PREDICT } from '../ui';
 import { TranscriptModal } from '../thread/TranscriptModal';
-import { LABEL, HINT, visibleColumns, stepColumn, filterColumns, eventGist, agoS } from './board';
+import { LABEL, HINT, visibleColumns, stepColumn, filterColumns, eventGist, agoS, priorityGroups } from './board';
 import { GraphView } from './Graph';
 import { graphTasks, type Link } from './graphLayout';
 
@@ -170,6 +170,7 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
   usePoll(load, 4000);
   useEffect(() => { load(); }, [load]);
   const cols = useMemo(() => data ? filterColumns(visibleColumns(data.columns, archived), q) : [], [data, archived, q]);
+  const boardMax = useMemo(() => Math.max(0, ...(data?.columns ?? []).flatMap(c => c.tasks).filter(t => t.status !== 'done' && t.status !== 'archived').map(t => t.priority)), [data]);
   const open_ = data?.columns.reduce((n, c) => n + (c.name === 'archived' || c.name === 'done' ? 0 : c.tasks.length), 0) ?? 0;
   const scroller = useRef<HTMLDivElement>(null);
   const graph = useMemo(() => {
@@ -248,7 +249,17 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
                     <Moon kanban={col.name} size={8} /><h2 className="label text-moon/80">{LABEL[col.name]}</h2><span className="label text-ash">{col.tasks.length}</span>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2 space-y-2">
-                    {shown.map(t => <Card key={t.id} t={t} now={data.now} onOpen={() => setOpen(t.id)} />)}
+                    {(() => {
+                      // Done/Archived keep their order; elsewhere bumped tasks get a group on top (only when there are any).
+                      if (col.name === 'done' || col.name === 'archived') return shown.map(t => <Card key={t.id} t={t} now={data.now} onOpen={() => setOpen(t.id)} />);
+                      const g = priorityGroups(shown, boardMax);
+                      const cards = (ts: KanbanCard[]) => ts.map(t => <Card key={t.id} t={t} now={data.now} weight={g.weight(t)} onOpen={() => setOpen(t.id)} />);
+                      if (!g.top.length || !g.rest.length) return cards([...g.top, ...g.rest]);   // one kind only: no labels needed
+                      return <>
+                        <Group label="Prioritised" tip="Higher priority runs first" />{cards(g.top)}
+                        {g.rest.length > 0 && <><Group label="Rest" />{cards(g.rest)}</>}
+                      </>;
+                    })()}
                     {col.tasks.length > shown.length && <button className="press w-full rounded-lg py-1.5 text-[12.5px] text-dust hover:text-moon hover:bg-ridge/50" onClick={() => setMore(m => ({ ...m, [col.name]: true }))}>Show all {col.tasks.length}</button>}
                     {!col.tasks.length && <p className="px-1.5 py-2 text-[12.5px] text-ash">{q ? 'No matches' : HINT[col.name]}</p>}
                   </div>
@@ -264,14 +275,20 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
   );
 }
 
-function Card({ t, now, onOpen }: { t: KanbanCard; now: number; onOpen(): void }) {
+function Group({ label, tip }: { label: string; tip?: string }) {
+  return <p className="flex items-center gap-2 px-1.5 pt-1 text-[10px] tracking-[.12em] uppercase text-ash after:flex-1 after:h-px after:bg-line" data-tip={tip}>{label}</p>;
+}
+
+function Card({ t, now, weight = 0, onOpen }: { t: KanbanCard; now: number; weight?: number; onOpen(): void }) {
   const blocked = t.status === 'blocked';
   return (
-    <button data-vim-item onClick={onOpen} className="tile w-full text-left rounded-xl px-3 py-2.5 space-y-1.5 focus-visible:outline-2 focus-visible:outline-tide">
+    <button data-vim-item onClick={onOpen} className="tile relative w-full text-left rounded-xl px-3 py-2.5 space-y-1.5 focus-visible:outline-2 focus-visible:outline-tide">
+      {/* Priority: a thin amber edge, stronger the higher it is on this board. */}
+      {weight > 0 && <span aria-hidden className="absolute left-0 top-2.5 bottom-2.5 w-[2px] rounded-full bg-halo" style={{ opacity: 0.35 + 0.65 * weight }} />}
       <span className="flex items-start gap-2">
         <span className="mt-[5px] flex-none"><Moon kanban={t.status} size={8} /></span>
         <span className="flex-1 min-w-0 text-[13.5px] leading-snug line-clamp-3">{t.title}</span>
-        {t.priority > 0 && <span className="label text-halo flex-none" data-tip={`Priority ${t.priority}`}>P{t.priority}</span>}
+        {t.priority > 0 && <span className="label text-halo/80 flex-none" data-tip={`Priority ${t.priority} · higher runs first`}>P{t.priority}</span>}
       </span>
       {t.summary && <span className="text-[12px] text-dust line-clamp-2 pl-4">{t.summary}</span>}
       <span className="flex items-center gap-x-2.5 gap-y-1 flex-wrap pl-4 text-[11.5px] text-ash">
