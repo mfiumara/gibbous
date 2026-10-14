@@ -1,5 +1,6 @@
 // Settings → Usage: tokens, sessions and API-equivalent cost per model, day, source, profile and thread, read from
 // every Hermes state.db by the Gibbous server (/api/usage). Charts are hand-drawn SVG; numbers are tabular.
+import { LimitsCard } from '../Limits';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Segmented, Skeleton, Empty, MoonDisc } from '../ui';
@@ -43,7 +44,7 @@ function Headline({ r }: { r: UsageReport }) {
       <Stat label="Tool calls" value={t.toolCalls.toLocaleString()} sub={`${t.messages.toLocaleString()} messages`} />
       <Stat label="Cache hits" value={hit == null ? '—' : fmtPct(hit)} sub={`${fmtCount(t.cacheRead)} read from cache`} tip="Share of prompt tokens served from the provider's cache. The moon fills with it." />
       <Stat label="API-equivalent" value={t.costUsd == null ? '—' : `~${fmtCost(t.costUsd)}`} sub={t.costUsd == null ? 'nothing priced' : t.includedUsd > 0 ? `~${fmtCost(t.includedUsd)} of it on your subscription` : `${t.pricedSessions.toLocaleString()} sessions priced`}
-        tip="What the priced sessions would cost at API list prices. Subscription sessions aren't priced, so they're left out." />
+        tip="What it would cost at API list prices. Subscription use (ChatGPT/Codex login) is priced at the same list prices." />
     </div>
   </section>;
 }
@@ -178,6 +179,7 @@ export function UsageTab() {
       : !shown ? <><Skeleton className="h-52 rounded-2xl" /><Skeleton className="h-60 rounded-2xl" /></>
       : !shown.totals.sessions ? <Empty title="No usage yet">Nothing ran in {RANGE_WORDS[range]}.</Empty>
       : <div className={`space-y-4 transition-opacity duration-200 ${r ? '' : 'opacity-60'}`}>
+        <Card title="Account limits" aside="your logins' session and weekly windows"><LimitsCard /></Card>
         <Headline r={shown} />
         <Card title={data.length && data[0].day !== data[0].end ? 'Per week' : 'Per day'} aside={`peak ${fmtCount(Math.max(...data.map(d => d.tokens)))}`}>
           <Chart data={data} series={series} labels={labels} />

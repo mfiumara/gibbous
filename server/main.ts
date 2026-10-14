@@ -25,6 +25,7 @@ import { smoke } from './smoke.ts';
 import { redact, tail } from './diagnostics.ts';
 import { watchBuild } from './build.ts';
 import { listSubagents, openStateDb } from './subagents.ts';
+import { accountLimits } from './limits.ts';
 import { sessionLineage } from './prHistory.ts';
 import { isHeic, heicToJpeg, cachedJpeg } from './heic.ts';
 import { usage, parseDays } from './usage.ts';
@@ -439,6 +440,8 @@ route('POST', '/api/threads/retitle', async (_, b) => {
 });
 // Every subagent (delegate_task child) of this thread, live or finished; remote hosts keep their own state.db.
 // Model usage (tokens, sessions, API-equivalent cost) from every Hermes state.db, grouped for Settings → Usage.
+// Account limits (Codex / Claude session and weekly windows), from Hermes. ?fresh=1 re-asks (at most every 20s).
+route('GET', '/api/limits', (_, __, u) => accountLimits(u.searchParams.get('fresh') === '1'));
 route('GET', '/api/usage', (_, __, u) => usage(parseDays(u.searchParams.get('days')), state.threads.filter(t => !t.host).map(t => ({ id: t.id, title: t.title, sessionId: t.sessionId }))));
 route('GET', '/api/threads/:id/subagents', p => { const t = need(orch.thread(p.id), 'thread'); return { subagents: t.host ? [] : listSubagents(t.sessionId, t.profile) }; });
 route('GET', '/api/threads/:id/history', (p, _, u) => {

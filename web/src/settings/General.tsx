@@ -4,6 +4,7 @@ import { rpc } from '../rpc';
 import { useStore, toastError, NONE } from '../store';
 import { Field, Segmented, Switch, inputCls, usePref, type Theme, type Density } from '../ui';
 import { Section, Row } from './common';
+import { CORNER_ITEMS, setCorner, useCorner } from '../corner';
 import type { ModelOptionProvider } from '../hermes/contract';
 import { moonPhase, savedLoc, upcomingEclipses, eclipseLabel } from '../moon';
 import { EDITORS } from '../panels/FilesPanel';
@@ -35,6 +36,7 @@ export function GeneralTab() {
       ]} />}
     </Section>
     <Snippets />
+    <CornerSection />
     <Section title="Housekeeping">
       <Row title="Archive idle chats" description="Pinned threads are never archived.">
         <select className={inputCls + ' py-1.5 w-36'} value={settings.autoArchiveDays ?? 0} onChange={e => patch({ autoArchiveDays: Number(e.target.value) })}>
@@ -126,4 +128,16 @@ function EclipseList() {
     {list.map(e => <span key={+e.peak} className={`block ${e.kind === 'total' ? 'text-oxide' : ''}`}>{eclipseLabel(e.kind)} · {fmt(e.peak)}{e.altitude == null ? '' : e.visible ? ' · visible here' : ' · below your horizon'}</span>)}
     <span className="block text-ash">{loc ? `Location: ${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)} (${loc.src === 'device' ? 'this device' : 'approximate, from your IP'}). The background moon is tilted as it stands in your sky.` : 'Location unknown: the moon is drawn north-up and visibility is not checked.'}</span>
   </span>;
+}
+
+// The sidebar's bottom-left corner: pick what shows there (this device). Settings always stays.
+function CornerSection() {
+  const corner = useCorner();
+  return <Section title="Sidebar corner" description="What the bottom-left of the sidebar shows on this device. Settings is always there; the rest stays in ⌘K and on Home.">
+    {CORNER_ITEMS.map(i => (
+      <Row key={i.key} title={i.label} description={'hint' in i ? i.hint : undefined}>
+        <Switch label={i.label} checked={corner.includes(i.key)} onChange={on => setCorner(on ? [...corner, i.key] : corner.filter(k => k !== i.key))} />
+      </Row>
+    ))}
+  </Section>;
 }

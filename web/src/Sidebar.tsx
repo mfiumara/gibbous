@@ -1,5 +1,7 @@
+import { LimitsMini } from './Limits';
+import { useCorner } from './corner';
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Trash2, UserCheck, Layers } from 'lucide-react';
+import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Trash2, UserCheck, Layers, Gauge } from 'lucide-react';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread, NONE } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type Project, type PrBadge } from './api';
@@ -9,7 +11,7 @@ import { SpaceSwitcher, SpaceItems } from './Spaces';
 import { activeSpace, inSpace, threadInSpace } from '../../server/spaces';
 import { EDGE, axis, progress, settle } from './drawer';
 import { prefetch } from './thread/prefetch';
-import { Moon, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, type Route } from './ui';
+import { Moon, TonightMoon, Kbd, Menu, MenuItem, ago, sourceLabel, go, type Route } from './ui';
 import { quiet } from './screenTransition';
 import { editHumanTask } from './HumanTask';
 import { humanTasks } from '../../server/humanTasks';
@@ -305,6 +307,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => JSON.parse(localStorage.getItem('gibbous.collapsed') ?? '{}'));
   const [showArchived, setShowArchived] = useState(false);
   const [more, setMore] = useState(() => localStorage.getItem('gibbous.sidebarMore') === '1');
+  const corner = useCorner();
   const toggle = (id: string) => setCollapsed(c => { const n = { ...c, [id]: !c[id] }; localStorage.setItem('gibbous.collapsed', JSON.stringify(n)); return n; });
   const [q, setQ] = useState('');
   // Projects: order lives on the server (same on every device); which ones are hidden is per device.
@@ -372,8 +375,10 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
     <nav ref={navRef} aria-label="Threads" data-pane="nav" data-drag-window="self" style={{ '--sb-w': `${width.w}px` } as React.CSSProperties}
       className={`fixed lg:relative inset-y-0 left-0 z-50 w-[276px] lg:w-[var(--sb-w)] max-w-[85vw] flex-none flex flex-col pt-[env(safe-area-inset-top)] bg-crater lg:bg-transparent edge-r transition-transform duration-300 [transition-timing-function:var(--ease-out)] lg:translate-x-0 ${sidebar ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
       <div data-drag-window className="flex items-center gap-2.5 px-4 h-12 flex-none">
-        <TonightMoon size={18} />
-        <span className="font-label text-[12.5px] tracking-[0.2em] lowercase text-moon/90">gibbous</span>
+        <a href="#/" onClick={close} aria-label="Home" data-tip="Home" className="press flex items-center gap-2.5 -mx-1.5 px-1.5 py-1 rounded-lg hover:bg-ridge/55">
+          <TonightMoon size={18} />
+          <span className="font-label text-[12.5px] tracking-[0.2em] lowercase text-moon/90">gibbous</span>
+        </a>
         {status && <span className="ml-auto flex items-center gap-1.5 rounded-full border border-line px-2 h-5 text-[10.5px] text-dust animate-fade"><span className={`size-1.5 rounded-full ${status.cls}`} />{status.text}</span>}
       </div>
 
@@ -500,21 +505,23 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
         {/* Phones: the places below fold away so the threads get the height; the fold is remembered. Desktop: always open. */}
         <button onClick={() => setMore(m => { localStorage.setItem('gibbous.sidebarMore', m ? '0' : '1'); return !m; })} aria-expanded={more}
           className="lg:hidden press flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg text-[13.5px] text-dust hover:text-moon hover:bg-ridge/55">
-          <MoreHorizontal size={15} /><span className="flex-1 text-left">{more ? 'Less' : 'Kanban, sessions, settings…'}</span>
+          <MoreHorizontal size={15} /><span className="flex-1 text-left">{more ? 'Less' : 'Usage, settings…'}</span>
           <ChevronDown size={15} className={`text-ash transition-transform duration-300 ease-out ${more ? 'rotate-180' : ''}`} />
         </button>
         <div className={`grid transition-[grid-template-rows] duration-300 ease-out lg:grid-rows-[1fr] ${more ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
         <div className={`min-h-0 overflow-hidden space-y-0.5 transition-opacity duration-300 lg:opacity-100 ${more ? 'opacity-100' : 'opacity-0'}`}>
-        {/* A filter, not a place: when on it's tinted (not the page highlight) and says how to get back. */}
-        <button onClick={() => setShowArchived(!showArchived)} aria-pressed={showArchived}
+        {/* The corner holds what you picked in Settings → General (per device); Settings is always there. */}
+        {corner.includes('limits') && <LimitsMini onOpen={() => { close(); go('/settings/usage'); }} />}
+        {corner.includes('archived') && <button onClick={() => setShowArchived(!showArchived)} aria-pressed={showArchived}
           className={`press group relative flex items-center gap-2.5 rounded-lg text-[13.5px] w-full px-3 py-1.5 pointer-coarse:py-2.5 ${showArchived ? 'text-tide bg-tide/10 hover:bg-tide/15' : 'text-dust hover:text-moon hover:bg-ridge/55'}`}>
           <Archive size={15} /><span className="flex-1 text-left">{showArchived ? 'Viewing archived' : 'Archived'}</span>{showArchived && <X size={14} className="opacity-70" />}
-        </button>
-        {nav('#/kanban', <KanbanSquare size={15} />, 'Kanban', route.name === 'kanban')}
-        {nav('#/automations', <CalendarClock size={15} />, 'Automations', route.name === 'automations')}
-        {nav('#/rooms', <Users size={15} />, 'Rooms', route.name === 'rooms')}
-        {nav('#/sessions', <History size={15} />, 'Sessions', route.name === 'sessions')}
-        {nav('#/settings', <Settings size={15} />, 'Settings', route.name === 'settings')}
+        </button>}
+        {corner.includes('kanban') && nav('#/kanban', <KanbanSquare size={15} />, 'Kanban', route.name === 'kanban')}
+        {corner.includes('automations') && nav('#/automations', <CalendarClock size={15} />, 'Automations', route.name === 'automations')}
+        {corner.includes('rooms') && nav('#/rooms', <Users size={15} />, 'Rooms', route.name === 'rooms')}
+        {corner.includes('sessions') && nav('#/sessions', <History size={15} />, 'Sessions', route.name === 'sessions')}
+        {corner.includes('usage') && nav('#/settings/usage', <Gauge size={15} />, 'Usage', route.name === 'settings' && route.tab === 'usage')}
+        {nav('#/settings', <Settings size={15} />, 'Settings', route.name === 'settings' && route.tab !== 'usage')}
         </div>
         </div>
       </div>

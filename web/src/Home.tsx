@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Menu, Folder, FolderPlus, Paperclip, ArrowUp, CornerLeftUp, GitBranch, ChevronDown, Server } from 'lucide-react';
+import { Menu, Folder, FolderPlus, Paperclip, ArrowUp, CornerLeftUp, GitBranch, ChevronDown, Server, KanbanSquare, History, CalendarClock, Users, Gauge } from 'lucide-react';
 import { api, type Project, type Thread } from './api';
 import { useStore, toastError, NONE } from './store';
 import { useAttachments, AttachmentChips, filesFrom, handOff } from './attachments';
@@ -26,6 +26,8 @@ function SelectChip({ icon, value, onChange, children, label }: { icon: React.Re
     </label>
   );
 }
+
+const PLACES: [string, string, typeof KanbanSquare][] = [['#/kanban', 'Kanban', KanbanSquare], ['#/sessions', 'Sessions', History], ['#/automations', 'Automations', CalendarClock], ['#/rooms', 'Rooms', Users], ['#/settings/usage', 'Usage', Gauge]];
 
 export function Home({ projectId, host: hostParam, onAddProject }: { projectId?: string; host?: string; onAddProject(): void }) {
   const projects = useStore(s => s.projects);
@@ -157,6 +159,10 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
             <button key={x.name} onClick={() => { setText(x.text); ta.current?.focus(); }} data-tip={x.text.slice(0, 160)}
               className="press h-7 pointer-coarse:h-9 px-2.5 tile rounded-full text-[12.5px] text-dust hover:text-moon font-mono">;{x.name}</button>
           ))}</div>}
+          {/* Places: everything the sidebar corner may not show (it's configurable), one tap away. */}
+          <nav aria-label="Places" className="flex flex-wrap gap-1.5 pt-1">{PLACES.map(([href, label, Icon]) => (
+            <a key={href} href={href} className="press inline-flex items-center gap-1.5 h-7 pointer-coarse:h-9 px-2.5 tile rounded-full text-[12.5px] text-dust hover:text-moon"><Icon size={13} />{label}</a>
+          ))}</nav>
           {recent.length > 0 && <div className="space-y-2 pt-2">
             <p className="label">Pick up where you left off</p>
             <div className="grid grid-cols-[minmax(0,1fr)] sm:grid-cols-2 gap-2">{recent.map((t, i) => (
