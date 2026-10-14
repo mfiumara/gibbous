@@ -5,7 +5,7 @@ import { Square, Send, ChevronLeft, ChevronRight, Wrench } from 'lucide-react';
 import { api } from '../api';
 import { useRpc } from '../rpc';
 import { toastError } from '../store';
-import { IconButton, MoonLoader, Skeleton, inputCls, fmtTokens, fmtDuration, sameJson } from '../ui';
+import { IconButton, Moon, MoonLoader, Skeleton, inputCls, fmtTokens, fmtDuration, sameJson } from '../ui';
 import { fromStored, type Item, type StoredRow } from './timeline';
 import { AssistantMessage, ToolRow, ReasoningBlock, Markdown } from './Items';
 import { mergeAgents, agentName, firstLine, isLive, type Agent, type AgentState, type StoredSub, type LiveSub } from './agents';
@@ -34,10 +34,9 @@ const label: Record<AgentState, string> = { running: 'working', queued: 'queued'
 // Every subagent is a moon of the same size: waxing (animated) while it works, full when done, a dim new moon while
 // queued or quiet, and a reddened full moon when it failed or was stopped.
 export function AgentDot({ a, size = 10 }: { a: Agent; size?: number }) {
-  if (a.state === 'running') return <MoonLoader size={size} label="working" />;
-  const frame = a.state === 'queued' || a.state === 'quiet' ? 0 : 18;
-  const tint = a.state === 'failed' ? 'sepia(1) saturate(4) hue-rotate(-30deg) brightness(.85)' : a.state === 'stopped' ? 'sepia(.8) saturate(2) brightness(.9)' : a.state === 'queued' || a.state === 'quiet' ? 'brightness(.7)' : undefined;
-  return <span role="img" aria-label={label[a.state]} className="moon-loader moon-still" style={{ '--s': `${size}px`, '--tonight': frame, filter: tint } as React.CSSProperties} />;
+  // The small flat moons of the sidebar and board card (not the photo moon): waxing while it works, full when done.
+  const st = { running: 'running', done: 'idle', failed: 'error', stopped: 'error', queued: 'archived', quiet: 'archived' } as const;
+  return <span aria-label={label[a.state]} className="inline-grid"><Moon thread={st[a.state]} size={Math.min(size, 10)} /></span>;
 }
 
 // One card for a group of subagents: collapsed, the moon + "2/9 subagents working" + what one of them is doing;
@@ -66,7 +65,7 @@ export function SubagentGroup({ agents, onOpen, open, setOpen }: { agents: Agent
   const working = agents.filter(isLive), done = !working.length;
   const single = agents.length === 1, unfolded = open && !single;
   const now = working.find(a => a.activity) ?? working[0];
-  const lead = <>{done ? <AgentDot a={agents.find(a => a.state === 'failed') ?? agents[0]} size={16} /> : <MoonLoader size={16} label="subagents working" />}</>;
+  const lead = done ? <AgentDot a={agents.find(a => a.state === 'failed') ?? agents[0]} /> : <span aria-label="subagents working" className="inline-grid"><Moon thread="running" size={10} /></span>;
   const title = done ? `${agents.length} subagent${agents.length > 1 ? 's' : ''} finished` : <><span className="font-mono tabular-nums text-tide">{working.length}/{agents.length}</span> subagent{agents.length > 1 ? 's' : ''} working</>;
   return (
     <div onKeyDown={e => {

@@ -3,12 +3,13 @@
 // the board; "Open board" opens the whole board. Hidden when nothing runs or waits there.
 import { useEffect, useState } from 'react';
 import { ChevronRight, KanbanSquare, ArrowUpRight } from 'lucide-react';
-import { api, type KanbanCard } from '../api';
-import { Elapsed, Moon, MoonLoader, go } from '../ui';
+import { api } from '../api';
+import { Elapsed, Moon, go } from '../ui';
 import { shortModel } from '../thread/ModelPicker';
 import { role } from './Graph';
+import { chains, type BoardTask } from './board';
 
-type Board = { slug: string; name: string; tasks: (KanbanCard & { fromChat: boolean })[]; now: number } | null;
+type Board = { slug: string; name: string; tasks: BoardTask[]; now: number } | null;
 const FOLD_KEY = 'gibbous.boardCard.open';
 const cache = new Map<string, Board>();   // last answer per thread: switching threads shows it at once
 // The rail and the inline strip both ask: one request per thread at a time, answers shared.
@@ -39,7 +40,7 @@ export function ThreadBoardCard({ board, rail = false }: { board: NonNullable<Bo
   const card = <div className={`group/kb rounded-xl border transition-[background-color,border-color] duration-300 ease-out border-line/70 bg-crater/40 hover:border-ash/40 hover:bg-crater/70`}>
     <div className="flex items-center pr-1.5">
       <button onClick={toggle} aria-expanded={open} aria-label={open ? 'Fold board tasks' : 'Show board tasks'} className="press flex-1 min-w-0 flex items-center px-3 py-2 text-left rounded-xl">
-        <span className={`grid place-items-center overflow-hidden flex-none transition-[opacity,scale,width,margin] duration-300 ease-out ${open ? 'w-0 mr-0 opacity-0 scale-50' : 'w-4 mr-2.5'}`}>{running.length ? <MoonLoader size={16} label="kanban tasks running" /> : <Moon kanban="blocked" size={12} />}</span>
+        <span className={`grid place-items-center overflow-hidden flex-none transition-[opacity,scale,width,margin] duration-300 ease-out ${open ? 'w-0 mr-0 opacity-0 scale-50' : 'w-4 mr-2.5'}`}><Moon kanban={running.length ? 'running' : 'blocked'} size={10} /></span>
         <span className="flex-1 min-w-0">
           <span className="flex items-center gap-1.5 text-[12.5px] text-moon"><KanbanSquare size={12} className="text-ash flex-none" /><span className="truncate">{board.name}</span><span className={`flex-none text-[11.5px] text-dust`}>{summary}</span></span>
           <span className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${open ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr]'}`}><span className="min-h-0 overflow-hidden"><span className="block truncate text-[11.5px] text-dust">{lead.title}</span></span></span>
@@ -49,10 +50,20 @@ export function ThreadBoardCard({ board, rail = false }: { board: NonNullable<Bo
     </div>
     <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`} inert={!open}>
       <div className={`min-h-0 overflow-hidden transition-[opacity,translate] duration-300 ease-out ${open ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'}`}>
-        <ul aria-label="Board tasks" className="px-1.5 max-h-[45dvh] overflow-y-auto">{board.tasks.map(t => (
-          <li key={t.id}>
-            <button onClick={() => toTask(t.id)} data-tip={t.title} className="press w-full flex items-start gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-dust transition-colors duration-200 hover:text-moon hover:bg-ridge/60">
-              <span className="w-4 h-[18px] grid place-items-center flex-none"><Moon kanban={t.status} size={10} /></span>
+        <ul aria-label="Board tasks" className="px-1.5 max-h-[55dvh] overflow-y-auto">{chains(board.tasks).map(g => (
+          <li key={g[0].id} className="py-0.5">{g.map((step, i) => {
+            // One straight line through the moons of a chain: from the moon down to the next step's moon.
+            const up = i > 0, down = i < g.length - 1;
+            const line = <>{up && <span aria-hidden className="absolute left-[13.5px] top-0 h-[15px] w-px bg-line" />}{down && <span aria-hidden className="absolute left-[13.5px] top-[19px] bottom-0 w-px bg-line" />}</>;
+            if (step.kind === 'next') return (
+              <button key={step.id} onClick={() => toTask(step.id)} data-tip={`Next: ${step.title}`} className="press relative w-full flex items-start gap-2.5 px-1.5 py-1 rounded-lg text-left text-ash transition-colors duration-200 hover:text-moon hover:bg-ridge/60">
+                {line}<span className="w-4 h-[18px] grid place-items-center flex-none"><Moon kanban={step.status} size={8} /></span>
+                <span className="flex-1 min-w-0 truncate text-[12px]">{step.title}</span>
+              </button>);
+            const t = step.task;
+            return (
+            <button key={t.id} onClick={() => toTask(t.id)} data-tip={t.title} className="press relative w-full flex items-start gap-2.5 px-1.5 py-1.5 rounded-lg text-left text-dust transition-colors duration-200 hover:text-moon hover:bg-ridge/60">
+              {line}<span className="w-4 h-[18px] grid place-items-center flex-none"><Moon kanban={t.status} size={10} /></span>
               <span className="flex-1 min-w-0">
                 <span className="block truncate text-[12.5px] text-moon/90">{t.title}</span>
                 <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-ash">
@@ -62,8 +73,8 @@ export function ThreadBoardCard({ board, rail = false }: { board: NonNullable<Bo
                   <span className="ml-auto flex-none font-mono">{t.status === 'running' && t.runStartedAt ? <span className="text-tide"><Elapsed since={t.runStartedAt * 1000} /></span> : <span className="text-halo">{t.blockKind ?? 'blocked'}</span>}</span>
                 </span>
               </span>
-            </button>
-          </li>
+            </button>);
+          })}</li>
         ))}</ul>
         <button onClick={() => toTask()} className="press w-full flex items-center gap-1.5 px-3 h-8 border-t border-line/60 text-[11.5px] text-ash hover:text-moon"><span className="flex-1 text-left">Open board</span><ArrowUpRight size={12} /></button>
       </div>

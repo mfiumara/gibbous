@@ -1,5 +1,5 @@
 // Pure helpers for the Hermes kanban view (tested in board.test.ts); the DOM side is Kanban.tsx.
-import type { KanbanColumn, KanbanStatus } from '../api';
+import type { KanbanCard, KanbanColumn, KanbanStatus } from '../api';
 
 export const LABEL: Record<KanbanStatus, string> = {
   triage: 'Triage', todo: 'To do', scheduled: 'Scheduled', ready: 'Ready', running: 'Running', blocked: 'Blocked', review: 'Review', done: 'Done', archived: 'Archived',
@@ -47,3 +47,27 @@ export const agoS = (sec?: number | null, now = Date.now() / 1000) => {
   const s = Math.max(0, now - sec);
   return s < 60 ? 'now' : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
 };
+
+export type BoardTask = KanbanCard & { fromChat: boolean; next: { id: string; title: string; status: KanbanCard['status'] }[] };
+export type Step = { kind: 'task'; id: string; task: BoardTask } | { kind: 'next'; id: string; title: string; status: KanbanCard['status'] };
+
+// Chains for the card: each active task, then what it hands off to. An active task that waits on another active one
+// sits right under it (not as its own chain); a task with no active follow-up shows its first queued next step, greyed.
+// Only that one: the rest of the queue is on the board.
+export function chains(tasks: BoardTask[]): Step[][] {
+  tasks = tasks.map(t => ({ ...t, next: t.next ?? [] }));   // a server from before `next` sends none
+  const live = new Map(tasks.map(t => [t.id, t]));
+  const waits = new Set(tasks.flatMap(t => t.next.filter(n => live.has(n.id)).map(n => n.id)));
+  const seen = new Set<string>();
+  const walk = (t: BoardTask, out: Step[]) => {
+    if (seen.has(t.id)) return;
+    seen.add(t.id); out.push({ kind: 'task', id: t.id, task: t });
+    const kids = t.next.filter(n => live.has(n.id) && !seen.has(n.id));
+    if (kids.length) for (const k of kids) walk(live.get(k.id)!, out);
+    else { const n = t.next.find(n => !live.has(n.id)); if (n) out.push({ kind: 'next', id: `${t.id}>${n.id}`, title: n.title, status: n.status }); }
+  };
+  const out: Step[][] = [];
+  // Roots first (nothing active above them); then anything a cycle left out.
+  for (const t of [...tasks.filter(t => !waits.has(t.id)), ...tasks]) { const g: Step[] = []; walk(t, g); if (g.length) out.push(g); }
+  return out;
+}

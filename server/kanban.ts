@@ -252,10 +252,14 @@ export async function createTask(b: Backend, s: string, body: any) {
 
 // The thread's project board, for the card in the thread's right column: what's running or blocked there now, and
 // which of those this chat itself filed (task.session_id in the thread's session lineage; the board payload omits it).
-export interface ThreadBoard { slug: string; name: string; tasks: (KanbanCard & { fromChat: boolean })[]; now: number }
+export interface ThreadBoard { slug: string; name: string; tasks: (KanbanCard & { fromChat: boolean; next: { id: string; title: string; status: KanbanStatus }[] })[]; now: number }
 export async function threadBoard(b: Backend, slug: string, name: string, lineage: string[]): Promise<ThreadBoard> {
-  const { columns, now } = await boardTasks(b, slug, false);
-  const live = columns.flatMap(c => c.tasks).filter(t => t.status === 'running' || t.status === 'blocked');
+  const [{ columns, now }, { links }] = await Promise.all([boardTasks(b, slug, false), boardLinks(slug).catch(() => ({ links: [] as KanbanLink[] }))]);
+  const all = columns.flatMap(c => c.tasks), byId = new Map(all.map(t => [t.id, t]));
+  const live = all.filter(t => t.status === 'running' || t.status === 'blocked');
+  // What each task hands off to: its children that aren't finished yet (the card shows the next step under it).
+  const next = (id: string) => links.filter(l => l.parent === id).map(l => byId.get(l.child)).filter((c): c is KanbanCard => !!c && c.status !== 'done' && c.status !== 'archived')
+    .map(c => ({ id: c.id, title: c.title, status: c.status }));
   let mine = new Set<string>();
   if (live.length && lineage.length) {
     try {
@@ -267,7 +271,7 @@ export async function threadBoard(b: Backend, slug: string, name: string, lineag
     } catch { /* older board db without session_id */ }
   }
   // Blocked first (they wait on you), then the longest-running.
-  const tasks = live.map(t => ({ ...t, fromChat: mine.has(t.id) }))
+  const tasks = live.map(t => ({ ...t, fromChat: mine.has(t.id), next: next(t.id) }))
     .sort((x, y) => Number(y.status === 'blocked') - Number(x.status === 'blocked') || (x.runStartedAt ?? x.startedAt ?? 0) - (y.runStartedAt ?? y.startedAt ?? 0));
   return { slug, name, tasks, now };
 }
