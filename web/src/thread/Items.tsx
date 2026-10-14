@@ -2,12 +2,13 @@ import { Children, memo, useDeferredValue, useRef, useState, type ReactNode } fr
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { ChevronRight, FileText, FilePen, Terminal, Search, Globe, Bot, Wrench, Brain, ListTodo, Pencil, Image, Code2, Copy, Check, History, Paperclip, Volume2, Download, Maximize2, ImageOff } from 'lucide-react';
+import { ChevronRight, FileText, FilePen, Terminal, Search, Globe, Bot, Wrench, Brain, ListTodo, Pencil, Image, Code2, Copy, Check, History, Paperclip, Volume2, Download, Maximize2, ImageOff, GitFork } from 'lucide-react';
 import { canSpeak, speak } from '../voice';
 import { parseUserText, type Item } from './timeline';
 import { DiffView } from '../panels/DiffView';
 import { Moon, viewMedia, saveMedia, routeNow, Menu, MenuItem } from '../ui';
 import { addReplyTask } from '../HumanTask';
+import { forkThread } from '../fork';
 import { baseName } from '../paths';
 
 // Local file paths (attachments, generated images) load through the authenticated image route.
@@ -89,6 +90,9 @@ const splitMedia = (text: string) => {
 // mid-turn ones would float over the next row, so phones only get them on the turn's last reply; on a Mac they float as a
 // small toolbar with its own background. `tail`: the newest reply of a turn still running has none (the status line sits
 // right under it); they appear once the turn ends.
+// Stored row of a reply (`r123`); a reply still streaming in has none yet: fork the whole conversation then.
+const rowOf = (id: string) => /^r(\d+)$/.test(id) ? Number(id.slice(1)) : undefined;
+
 export const AssistantMessage = memo(function AssistantMessage({ item, endOfTurn = true, tail = false }: { item: Extract<Item, { kind: 'assistant' }>; endOfTurn?: boolean; tail?: boolean }) {
   const { media, rest } = item.streaming ? { media: [], rest: item.text } : splitMedia(item.text);
   const route = routeNow(), taskThread = route.name === 'thread' ? route.id : undefined;
@@ -105,10 +109,12 @@ export const AssistantMessage = memo(function AssistantMessage({ item, endOfTurn
     <div className={`group/msg relative ${item.streaming ? 'caret' : ''}`} onContextMenu={e => { const text = lineText(e.target); if (text && taskThread) { e.preventDefault(); setTaskMenu(text); } }}
       onTouchStart={e => { const text = lineText(e.target); if (text && taskThread) press.current = setTimeout(() => setTaskMenu(text), 500); }} onTouchMove={cancelPress} onTouchEnd={cancelPress} onTouchCancel={cancelPress}>
       <Markdown text={rest} taskThread={taskThread} />
-      <Menu open={!!taskMenu} onClose={() => setTaskMenu(undefined)}><MenuItem icon={<ListTodo />} onClick={() => { if (taskThread && taskMenu) addReplyTask(taskThread, taskMenu); setTaskMenu(undefined); }}>Add to For me</MenuItem></Menu>
+      <Menu open={!!taskMenu} onClose={() => setTaskMenu(undefined)}><MenuItem icon={<ListTodo />} onClick={() => { if (taskThread && taskMenu) addReplyTask(taskThread, taskMenu); setTaskMenu(undefined); }}>Add to For me</MenuItem>
+        <MenuItem icon={<GitFork />} onClick={() => { setTaskMenu(undefined); if (taskThread) forkThread(taskThread, rowOf(item.id)); }}>Fork from here</MenuItem></Menu>
       {media.length > 0 && <div className="mt-3 space-y-2">{media.map(m => <MediaCard key={m} path={m} />)}</div>}
       {!item.streaming && !tail && <div className={`absolute -bottom-1 -left-1 translate-y-full flex opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 ${endOfTurn ? '' : 'pointer-coarse:hidden rounded-lg bg-crater border border-line shadow-sm'}`}><CopyButton text={item.text} />
-        {canSpeak && <button aria-label="Read aloud" data-tip="Read aloud" onClick={() => speak(item.text)} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Volume2 size={13} /></button>}</div>}
+        {canSpeak && <button aria-label="Read aloud" data-tip="Read aloud" onClick={() => speak(item.text)} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Volume2 size={13} /></button>}
+        {taskThread && <button aria-label="Fork from here" data-tip="Fork from here: a new thread with the conversation up to this reply" onClick={() => forkThread(taskThread, rowOf(item.id))} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><GitFork size={13} /></button>}</div>}
     </div>
   );
 });
@@ -231,7 +237,7 @@ function UserBody({ text }: { text: string }) {
   </>;
 }
 
-export function UserMessage({ item, onEdit, onRevert }: { item: Extract<Item, { kind: 'user' }>; onEdit?: () => void; onRevert?: () => void }) {
+export function UserMessage({ item, onEdit, onRevert, onFork }: { item: Extract<Item, { kind: 'user' }>; onEdit?: () => void; onRevert?: () => void; onFork?: () => void }) {
   const action = (label: string, icon: ReactNode, fn: () => void) => (
     <button onClick={fn} aria-label={label} data-tip={label} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge">{icon}</button>
   );
@@ -240,6 +246,7 @@ export function UserMessage({ item, onEdit, onRevert }: { item: Extract<Item, { 
       <div className="mt-1 flex opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         {onRevert && action('Revert files to before this turn', <History size={13} />, onRevert)}
         {onEdit && action('Edit and rerun from here', <Pencil size={13} />, onEdit)}
+        {onFork && action('Fork from here: a new thread up to this message, to edit and send there', <GitFork size={13} />, onFork)}
       </div>
       <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ridge px-3.5 py-2 shadow-[inset_0_1px_0_var(--surface-hi)]"><UserBody text={item.text} /></div>
     </div>

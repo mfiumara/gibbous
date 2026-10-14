@@ -145,3 +145,31 @@ export async function historyPage(b: RestBackend, sessionId: string, o: { offset
   const { messages } = await r.json() as { messages: StoredMsg[] };
   return cutPage(messages ?? [], offset, limit, o.before);
 }
+
+// Fork: the conversation up to a point, as text turns a new session can be seeded with (tool rows don't carry over).
+// `at` a user row: everything before it, and that message comes back as `draft` to edit and send in the fork.
+// `at` a reply row: everything up to and including it. No `at`: the whole conversation.
+export function forkSeed(rows: StoredMsg[], at?: number): { seed: { role: 'user' | 'assistant'; content: string }[]; draft?: string } {
+  const sorted = [...rows].sort((a, b) => a.id - b.id);
+  const target = at == null ? undefined : sorted.find(r => r.id === at);
+  if (at != null && !target) throw new Error('that message is no longer in this conversation');
+  const atUser = target?.role === 'user';
+  const kept = at == null ? sorted : sorted.filter(r => r.id < at || (!atUser && r.id === at));
+  const seed = toDisplay(kept)
+    .filter(m => (m.role === 'user' || m.role === 'assistant') && m.text?.trim() && m.display_kind !== 'internal_notification')
+    .map(m => ({ role: m.role as 'user' | 'assistant', content: m.text! }));
+  return { seed, ...(atUser ? { draft: userText(target!) ?? '' } : {}) };
+}
+// Every stored row of a session (compaction continuations included), oldest first.
+export async function allRows(b: RestBackend, sessionId: string, profile?: string): Promise<StoredMsg[]> {
+  const out: StoredMsg[] = [];
+  for (let offset = 0; offset < 100_000; offset += 500) {
+    const q = new URLSearchParams({ limit: '500', offset: String(offset), order: 'latest', include_compacted: 'true', inline_images: 'false', ...(profile ? { profile } : {}) });
+    const r = await fetch(`http://127.0.0.1:${b.port}/api/sessions/${encodeURIComponent(sessionId)}/messages?${q}`, { headers: { 'X-Hermes-Session-Token': b.token }, signal: AbortSignal.timeout(30_000) });
+    if (!r.ok) throw new Error(`hermes history: ${r.status}`);
+    const { messages } = await r.json() as { messages: StoredMsg[] };
+    out.push(...(messages ?? []));
+    if ((messages ?? []).length < 500) break;
+  }
+  return [...new Map(out.map(m => [m.id, m])).values()].sort((a, b) => a.id - b.id);
+}

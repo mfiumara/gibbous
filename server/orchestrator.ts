@@ -12,7 +12,8 @@ import * as g from './git.ts';
 import { projectForSession } from './importProject.ts';
 import { notify } from './push.ts';
 import * as Q from './queue.ts';
-import { historyPage } from './history.ts';
+import { historyPage, forkSeed, allRows } from './history.ts';
+import { openStateDb } from './subagents.ts';
 import { defaultShell, shellArgs, sys } from './platform.ts';
 
 export interface OpenRequest { id: string; method: string; params: any; threadId?: string; at: number; host?: string }
@@ -403,6 +404,41 @@ export class Orchestrator extends EventEmitter {
     save();
     this.changed('thread', nt);
     return nt;
+  }
+
+  // Fork: a new thread in the same project and folder, seeded with the conversation up to `at` (see forkSeed), on the
+  // same model and reasoning level. The original is untouched; the fork isn't linked as its continuation.
+  async forkThread(t: Thread, at?: number): Promise<{ thread: Thread; draft?: string }> {
+    if (t.host) throw new Error('forking is only available for threads on this computer');
+    const b = await this.getBackend();
+    if (!b) throw new Error('Hermes is not running');
+    const { seed, draft } = forkSeed(await allRows(b, t.sessionId, t.profile), at);
+    if (!seed.length && !draft) throw new Error('nothing to fork yet');
+    let model: string | undefined, provider: string | undefined, effort: string | undefined;
+    const db = openStateDb(t.profile);
+    try {
+      const row = db?.prepare(`SELECT model, billing_provider AS provider, json_extract(model_config, '$.reasoning_config.effort') AS effort FROM sessions WHERE id = ?`).get(t.sessionId) as any;
+      model = row?.model || undefined; provider = row?.provider || undefined; effort = row?.effort || undefined;
+    } catch { /* older state.db: fall back to the defaults */ }   // shared cached handle: not ours to close
+    const title = `${t.title.replace(/ \(fork\)$/, '')} (fork)`;
+    const r = await this.cl(t).call('session.create', {
+      cwd: t.cwd, cwd_explicit: true, title, messages: seed,
+      ...(model ? { model, ...(provider ? { provider } : {}) } : state.settings.model ? { model: state.settings.model, provider: state.settings.provider || undefined } : {}),
+      ...(effort && /^(low|medium|high|xhigh|max|none)$/.test(effort) ? { reasoning_effort: effort } : {}),
+      ...(t.profile ? { profile: t.profile } : {}),
+    });
+    // Same folder (a worktree too), but the worktree stays the original's: archiving the fork never removes it.
+    const nt: Thread = {
+      id: newId('th'), projectId: t.projectId, ...(t.space ? { space: t.space } : {}), title, sessionId: r.stored_session_id, cwd: t.cwd,
+      role: 'chat', profile: t.profile, status: 'idle', createdAt: Date.now(), updatedAt: Date.now(), seenAt: Date.now(),
+    };
+    const i = state.threads.indexOf(t);
+    state.threads.splice(i < 0 ? 0 : i, 0, nt);
+    this.live.set(nt.sessionId, r.session_id);
+    this.byLive.set(r.session_id, nt.id);
+    save();
+    this.changed('thread', nt);
+    return { thread: nt, ...(draft ? { draft } : {}) };
   }
 
   // Mirror new sessions from the sources the user chose (e.g. Discord) into the sidebar.

@@ -1,3 +1,4 @@
+import { forkThread } from '../fork';
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FolderGit2, FileCode2, SquareTerminal, Gauge, X, ArrowDown, Globe, Activity, MonitorPlay, ChevronLeft, Paperclip, Clock, Bot } from 'lucide-react';
 import { api } from '../api';
@@ -386,7 +387,7 @@ export function ThreadView({ id }: { id: string }) {
                 case 'user': {
                   const idx = users.indexOf(it);
                   const cp = checkpointFor(it.at, users[idx + 1]?.at, checkpoints?.list ?? []);
-                  return <div key={it.id} className={anim} data-k={it.id}><UserMessage item={it} onEdit={it.rowId != null ? () => setEdit({ rowId: it.rowId, text: it.text }) : undefined} onRevert={cp ? () => revert(cp) : undefined} /></div>;
+                  return <div key={it.id} className={anim} data-k={it.id}><UserMessage item={it} onEdit={it.rowId != null ? () => setEdit({ rowId: it.rowId, text: it.text }) : undefined} onRevert={cp ? () => revert(cp) : undefined} onFork={it.rowId != null && !thread.host ? () => forkThread(thread.id, it.rowId) : undefined} /></div>;
                 }
                 case 'assistant': return <div key={it.id} className={anim} data-k={it.id}><AssistantMessage item={it} endOfTurn={items[i + 1]?.kind === 'turn'} tail={running && i === items.length - 1} /></div>;
                 case 'reasoning': return <div key={it.id} className={anim} data-k={it.id}><ReasoningBlock item={it} /></div>;

@@ -431,6 +431,7 @@ route('GET', '/api/threads/:id/history', (p, _, u) => {
   return orch.history(need(orch.thread(p.id), 'thread'), { offset: n('offset'), limit: n('limit'), before: n('before') });
 });
 route('GET', '/api/threads/:id/transcript', (p, _, u) => orch.transcript(need(orch.thread(p.id), 'thread'), Number(u.searchParams.get('offset') ?? 0) || 0));
+route('POST', '/api/threads/:id/fork', (p, b) => orch.forkThread(need(orch.thread(p.id), 'thread'), typeof b?.at === 'number' ? b.at : undefined));
 route('POST', '/api/threads/:id/continue', p => orch.continueThread(need(orch.thread(p.id), 'thread')));
 // Reply to a gateway-owned conversation (Discord, Telegram…): the gateway runs the turn on its own session.
 route('POST', '/api/threads/:id/reply', async (p, b) => {

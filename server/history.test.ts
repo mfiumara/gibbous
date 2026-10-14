@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toDisplay, cutPage, userText, skillInvocation, toolContext, type StoredMsg } from './history.ts';
+import { toDisplay, cutPage, forkSeed, userText, skillInvocation, toolContext, type StoredMsg } from './history.ts';
 
 const call = (id: string, name: string, args: unknown) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
 
@@ -106,4 +106,19 @@ test('one giant turn still keeps calls with their results', () => {
   const p = cutPage(rows, 0, rows.length);
   assert.equal(p.first, 11);
   assert.deepEqual([p.messages[0].role, p.messages[0].name], ['tool', 'terminal']); // the orphan result is cut, the next one has its call
+});
+
+test('forkSeed: at a reply keeps it; at a user message stops before it and hands it back as the draft; tools drop', () => {
+  const rows: StoredMsg[] = [
+    { id: 1, role: 'user', content: 'first ask' },
+    { id: 2, role: 'assistant', content: '', tool_calls: [call('c1', 'terminal', { command: 'ls' })] },
+    { id: 3, role: 'tool', tool_call_id: 'c1', content: 'a b' },
+    { id: 4, role: 'assistant', content: 'first answer' },
+    { id: 5, role: 'user', content: 'second ask' },
+    { id: 6, role: 'assistant', content: 'second answer' },
+  ];
+  assert.deepEqual(forkSeed(rows, 4), { seed: [{ role: 'user', content: 'first ask' }, { role: 'assistant', content: 'first answer' }] });
+  assert.deepEqual(forkSeed(rows, 5), { seed: [{ role: 'user', content: 'first ask' }, { role: 'assistant', content: 'first answer' }], draft: 'second ask' });
+  assert.equal(forkSeed([...rows].reverse()).seed.length, 4);
+  assert.throws(() => forkSeed(rows, 99), /no longer/);
 });
