@@ -154,7 +154,8 @@ function BoardView({ board, project, match, boards, onRelink, onSettings }: { bo
   const [err, setErr] = useState<string>();
   const [archived, setArchived] = useState(false);
   const [q, setQ] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
+  // `#/kanban/<slug>?task=<id>` (the thread's board card) opens that task.
+  const [open, setOpen] = useState<string | null>(() => new URLSearchParams(location.hash.split('?')[1] ?? '').get('task'));
   const [creating, setCreating] = useState(false);
   const [linkMenu, setLinkMenu] = useState(false);
   const [more, setMore] = useState<Record<string, boolean>>({});

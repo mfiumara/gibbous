@@ -249,3 +249,25 @@ export async function createTask(b: Backend, s: string, body: any) {
   invalidate(s);
   return { task: r.task ? toCard(r.task) : null, warning: r.warning ?? null };
 }
+
+// The thread's project board, for the card in the thread's right column: what's running or blocked there now, and
+// which of those this chat itself filed (task.session_id in the thread's session lineage; the board payload omits it).
+export interface ThreadBoard { slug: string; name: string; tasks: (KanbanCard & { fromChat: boolean })[]; now: number }
+export async function threadBoard(b: Backend, slug: string, name: string, lineage: string[]): Promise<ThreadBoard> {
+  const { columns, now } = await boardTasks(b, slug, false);
+  const live = columns.flatMap(c => c.tasks).filter(t => t.status === 'running' || t.status === 'blocked');
+  let mine = new Set<string>();
+  if (live.length && lineage.length) {
+    try {
+      const db = new DatabaseSync(kanbanDbPath(slug), { readOnly: true });
+      try {
+        const q = db.prepare(`SELECT id FROM tasks WHERE session_id IN (${lineage.map(() => '?').join(',')}) AND id IN (${live.map(() => '?').join(',')})`);
+        mine = new Set((q.all(...lineage, ...live.map(t => t.id)) as { id: string }[]).map(r => r.id));
+      } finally { db.close(); }
+    } catch { /* older board db without session_id */ }
+  }
+  // Blocked first (they wait on you), then the longest-running.
+  const tasks = live.map(t => ({ ...t, fromChat: mine.has(t.id) }))
+    .sort((x, y) => Number(y.status === 'blocked') - Number(x.status === 'blocked') || (x.runStartedAt ?? x.startedAt ?? 0) - (y.runStartedAt ?? y.startedAt ?? 0));
+  return { slug, name, tasks, now };
+}

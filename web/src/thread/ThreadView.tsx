@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { FolderGit2, FileCode2, SquareTerminal, Gauge, X, ArrowDown, Globe, Activity, MonitorPlay, ChevronLeft, Paperclip, Clock, Bot } from 'lucide-react';
 import { api } from '../api';
 import { HumanTaskCard } from '../HumanTask';
+import { ThreadBoardCard, useThreadBoard } from '../kanban/ThreadBoard';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
 import { Moon, MoonImplode, IconButton, Empty, Skeleton, go, Elapsed, fmtDuration, fmtTokens, fmtUsd } from '../ui';
@@ -351,6 +352,7 @@ export function ThreadView({ id }: { id: string }) {
           <p className="flex items-center gap-2 text-[15px] text-moon"><Paperclip size={18} className="text-tide" />Drop to attach</p></div>}
         <ThreadHeader thread={thread} tl={tl} panels={panels} panel={panel} setPanel={setPanel} onBranch={branch} onExport={exportThread} />
         <HumanTaskCard thread={thread} />
+        <InlineBoard threadId={thread.id} />
         {finding && <FindBar root={content} onClose={() => setFinding(false)} version={tl.items.length} />}
 
         <div ref={scroller} data-pane="doc" tabIndex={-1} onWheel={markGesture} onTouchMove={markGesture} onPointerDown={markGesture} onKeyDown={markGesture} onScroll={e => {
@@ -469,4 +471,10 @@ function TurnFooter({ item }: { item: Extract<Item, { kind: 'turn' }> }) {
       </span>
     </p>
   );
+}
+
+// Narrow screens: the project board's card as a strip above the chat (CSS hides it when the right column shows).
+function InlineBoard({ threadId }: { threadId: string }) {
+  const board = useThreadBoard(threadId);
+  return board ? <ThreadBoardCard board={board} /> : null;
 }

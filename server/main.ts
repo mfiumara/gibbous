@@ -24,7 +24,8 @@ import * as g from './git.ts';
 import { smoke } from './smoke.ts';
 import { redact, tail } from './diagnostics.ts';
 import { watchBuild } from './build.ts';
-import { listSubagents } from './subagents.ts';
+import { listSubagents, openStateDb } from './subagents.ts';
+import { sessionLineage } from './prHistory.ts';
 import { isHeic, heicToJpeg, cachedJpeg } from './heic.ts';
 import { usage, parseDays } from './usage.ts';
 import { sessionDirs } from './sessionDirs.ts';
@@ -540,6 +541,19 @@ route('GET', '/api/kanban/boards', async () => {
 route('GET', '/api/kanban/boards/:slug/tasks', async (p, _, u) => kanban.boardTasks(await kb(), kslug(p.slug), u.searchParams.get('archived') === '1'));
 route('GET', '/api/kanban/boards/:slug/links', async p => kanban.boardLinks(kslug(p.slug)));
 route('GET', '/api/kanban/boards/:slug/tasks/:id', async p => kanban.taskDetail(await kb(), kslug(p.slug), kanban.taskId(p.id)));
+// The thread's project board (right-column card): null when the thread has no project or the project no board.
+route('GET', '/api/threads/:id/kanban', async p => {
+  const t = need(orch.thread(p.id), 'thread');
+  if (t.host || !t.projectId) return null;
+  const { boards, hermesProjects } = await kanban.listBoards(await kb());
+  const match = kanban.matchBoards(state.projects, boards, hermesProjects, kanban.realpathOr)[t.projectId];
+  const board = match && boards.find(x => x.slug === match.slug);
+  if (!board) return null;
+  const db = openStateDb(t.profile);
+  let lineage: string[] = [];
+  try { lineage = db ? sessionLineage(db, t.sessionId) : [t.sessionId]; } catch { lineage = [t.sessionId]; }
+  return kanban.threadBoard(await kb(), board.slug, board.name, lineage);
+});
 route('POST', '/api/kanban/boards/:slug/tasks', async (p, b) => kanban.createTask(await kb(), kslug(p.slug), b));
 route('POST', '/api/kanban/boards/:slug/tasks/:id/:verb', async (p, b) => kanban.act(await kb(), kslug(p.slug), kanban.taskId(p.id), p.verb, b));
 

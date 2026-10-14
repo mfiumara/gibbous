@@ -1,3 +1,4 @@
+import { ThreadBoardCard, useThreadBoard } from './kanban/ThreadBoard';
 import { GitPullRequest, GitMerge, GitPullRequestClosed, ChevronDown, Check, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Menu, Moon, Fold } from './ui';
@@ -74,9 +75,11 @@ export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelO
   }, [mode, collapsed, prs.length]);
   useEffect(() => { setOpen(false); }, [mode]);
   const hasTasks = !!thread && humanTasks(thread).some(t => t.doneAt == null);
+  const board = useThreadBoard(threadId);
   // Wide screens: the right gutter holds the PR card and, under it, the thread's "For me" tasks.
   if (!prs.length) return <div ref={anchor} data-pr-overview data-mode={mode} className="flex-none">
-    {mode === 'card' && hasTasks && <div data-rail className="absolute right-3 top-[calc(100%+12px)] w-[300px]"><HumanTaskCard thread={thread!} rail /></div>}
+    {mode === 'card' && (hasTasks || board) && <div data-rail className="absolute right-3 top-[calc(100%+12px)] w-[300px] flex flex-col gap-3">
+      {hasTasks && <HumanTaskCard thread={thread!} rail />}{board && <ThreadBoardCard board={board} rail />}</div>}
   </div>;
   const body = <PrList prs={prs} compact/>;
   const heading = <><GitPullRequest size={13}/><span className="flex-1 text-left">Pull requests</span><span className="text-ash tabular-nums">{prs.length}</span><CiDot ci={aggregateCi(prs)}/><ChevronDown size={12} className={`transition-transform duration-300 ease-out ${collapsed ? '-rotate-90' : ''}`}/></>;
@@ -87,6 +90,7 @@ export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelO
         <Fold open={!collapsed}>{body}</Fold>
       </section>
       {hasTasks && <HumanTaskCard thread={thread!} rail />}
+      {board && <ThreadBoardCard board={board} rail />}
     </div> : <div className="relative">
       <button aria-label="Show pull requests" aria-expanded={open} data-tip="Show this session’s pull requests" data-kbd="gp" onClick={() => setOpen(!open)} className="press flex items-center gap-1.5 h-7 pointer-coarse:h-9 px-2 rounded-full border border-line bg-crater text-[11px] text-dust hover:text-moon whitespace-nowrap">PR ×{prs.length}<CiDot ci={aggregateCi(prs)}/></button>
       <Menu open={open} onClose={() => setOpen(false)} className="w-[340px]">

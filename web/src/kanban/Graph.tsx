@@ -211,7 +211,7 @@ export function GraphView({ tasks, links, now, hideDone, onHideDone, doneCount, 
 }
 
 // Board profiles are named <project>-<role> (spice-ts-engineer): on a small node the role says enough.
-const role = (profile: string) => /^[\w.]+(?:-[\w.]+)*-(engineer|review|reviewer|supervisor|designer|analysis|benchmark|core|web|design|social)$/.exec(profile)?.[1] ?? profile;
+export const role = (profile: string) => /^[\w.]+(?:-[\w.]+)*-(engineer|review|reviewer|supervisor|designer|analysis|benchmark|core|web|design|social)$/.exec(profile)?.[1] ?? profile;
 
 const Node = memo(function Node({ t, x, y, now, onOpen, onHover }: { t: KanbanCard; x: number; y: number; now: number; onOpen(id: string): void; onHover(id: string | null): void }) {
   const done = t.status === 'done' || t.status === 'archived';
