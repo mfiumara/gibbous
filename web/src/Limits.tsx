@@ -55,9 +55,9 @@ function Bar({ w, now }: { w: LimitWindow; now: number }) {
   return <div className="min-w-0" data-tip={`${w.label}: ${Math.round(p)}% used${pc ? ` · ${Math.round(Math.abs(pc.delta))}% ${pc.delta < 0 ? 'in deficit' : 'in reserve'}` : ''}${w.resetAt ? ` · resets ${resetIn(w.resetAt, now)}` : ''}`}>
     <div className="flex items-baseline gap-1.5 text-[11px] text-ash"><span className="truncate">{shortLabel(w.label)}</span>
       <span className="ml-auto tabular-nums text-dust">{Math.round(p)}%</span></div>
-    <div className="relative mt-0.5 h-1 rounded-full bg-line overflow-hidden"><div className={`h-full rounded-full ${tone(p)} transition-[width] duration-500`} style={{ width: `${p}%` }} />
-      {/* Where you'd be at an even pace: the bar past this tick = in deficit. */}
-      {el != null && <span aria-hidden className="absolute inset-y-0 w-px bg-moon/70" style={{ left: `${el}%` }} />}</div>
+    <div className="relative mt-0.5 h-1 rounded-full bg-line"><div className={`h-full rounded-full ${tone(p)} transition-[width] duration-500`} style={{ width: `${p}%` }} />
+      {/* Where you'd be at an even pace, like CodexBar: green while you're under it (reserve), red once past it (deficit). */}
+      {el != null && <span aria-hidden className={`absolute -inset-y-px w-[2px] -ml-px rounded-full ${pc!.delta < -0.5 ? 'bg-oxide/80' : 'bg-sprout/80'} shadow-[0_0_0_1px_var(--color-basalt)]`} style={{ left: `${el}%` }} />}</div>
   </div>;
 }
 
