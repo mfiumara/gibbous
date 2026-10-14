@@ -38,6 +38,7 @@ export function RequestCard({ r, showThread }: { r: OpenRequest; showThread?: bo
 
   if (r.method === 'clarify') return shell(<HelpCircle size={17} className="text-halo flex-none mt-0.5" />, <Clarify r={r} />);
 
+  if (r.method === 'vault.save_login') return shell(<KeyRound size={17} className="text-halo flex-none mt-0.5" />, <SaveLogin r={r} />);
   if (r.method === 'sudo' || r.method === 'secret' || r.method === 'vault.code' || r.method === 'vault.unlock_prompt') {
     return shell(<KeyRound size={17} className="text-halo flex-none mt-0.5" />, <SecretInput r={r} />);
   }
@@ -93,10 +94,27 @@ function Clarify({ r }: { r: OpenRequest }) {
 
 function SecretInput({ r }: { r: OpenRequest }) {
   const [v, setV] = useState('');
-  const what = r.method === 'sudo' ? 'Your sudo password' : r.params?.prompt ?? r.params?.description ?? r.params?.name ?? 'A secret value';
+  const what = r.method === 'sudo' ? 'Your sudo password'
+    : r.method === 'vault.code' ? `One-time code${r.params?.site ? ` for ${r.params.site}` : ''}${r.params?.hint ? ` (${r.params.hint})` : ''}`
+    : r.method === 'vault.unlock_prompt' ? `Master password to unlock ${r.params?.display_name ?? r.params?.backend ?? 'your password manager'}`
+    : r.params?.prompt ?? r.params?.description ?? r.params?.name ?? 'A secret value';
   return <form className="space-y-2" onSubmit={e => { e.preventDefault(); answer(r, { value: v }); }}>
     <p className="text-sm font-bold">{what}</p>
     <input type="password" autoComplete="off" className={inputCls} value={v} onChange={e => setV(e.target.value)} />
     <div className="flex gap-2"><Button size="sm" tone="halo" type="submit">Send</Button><Button size="sm" type="button" onClick={() => answer(r, {})}>Cancel</Button></div>
+  </form>;
+}
+
+// The agent wants to log in to a site with no saved login: you type it here, Hermes stores it encrypted in its vault
+// (bound to that site) and fills the page. The agent never sees the password.
+function SaveLogin({ r }: { r: OpenRequest }) {
+  const [id, setId] = useState(''), [pw, setPw] = useState('');
+  const site = r.params?.site || r.params?.origin || 'this site';
+  return <form className="space-y-2" onSubmit={e => { e.preventDefault(); if (pw) answer(r, { value: JSON.stringify({ identifier: id.trim(), password: pw }) }); }}>
+    <p className="text-sm font-bold">Save a login for {site}</p>
+    <p className="text-xs text-dust">Stored encrypted on this machine, for {r.params?.origin ?? site} only. The agent can fill it in but never sees the password.</p>
+    <input autoComplete="off" placeholder="Email or username" className={inputCls} value={id} onChange={e => setId(e.target.value)} autoFocus />
+    <input type="password" autoComplete="off" placeholder="Password" className={inputCls} value={pw} onChange={e => setPw(e.target.value)} />
+    <div className="flex gap-2"><Button size="sm" tone="halo" type="submit" disabled={!pw}>Save and fill</Button><Button size="sm" type="button" onClick={() => answer(r, {})}>Cancel</Button></div>
   </form>;
 }
