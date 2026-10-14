@@ -511,7 +511,9 @@ export class Orchestrator extends EventEmitter {
 
   // ── maintenance: things that quietly go wrong ─────────────────────────
   maintenance() {
-    const used = new Set(state.threads.filter(t => t.status !== 'archived' && t.worktree).map(t => t.worktree!.path));
+    // In use = a live thread works in it: its own worktree, or a fork running in the same folder.
+    const live = state.threads.filter(t => t.status !== 'archived');
+    const used = new Set([...live.filter(t => t.worktree).map(t => t.worktree!.path), ...live.map(t => t.cwd)]);
     const orphans: string[] = [];
     const root = state.settings.worktreeRoot;
     for (const repo of fs.existsSync(root) ? fs.readdirSync(root) : []) {
