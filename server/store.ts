@@ -69,6 +69,7 @@ export interface Thread {
   humanTasks?: import('./humanTasks.ts').HumanTask[];
   humanTask?: { text: string; at: number; by: 'user' | 'agent'; doneAt?: number }; // legacy backups
   pinned?: boolean;                     // shown at the top of the sidebar
+  rank?: number;                        // hand-placed position in its sidebar section (dragged); unset = by recent activity
   // Prompts typed while a turn runs (queue.ts): the server sends the head when a turn ends. A Stop pauses the line.
   queue?: QueueItem[]; queuePaused?: boolean;
   seenAt?: number;  // last time you looked at it on any device; newer activity = unread

@@ -58,7 +58,38 @@ function PrLine({ pr }: { pr: PrBadge }) {
 const SelectCtx = createContext<{ on: boolean; ids: Set<string>; toggle(id: string): void }>({ on: false, ids: new Set(), toggle: () => {} });
 
 // Memoized: a thread event re-renders only that thread's row (upsert keeps the other objects identical).
-const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: boolean; minute?: number }) {
+const THREAD_DRAG = 'application/x-gibbous-thread';
+// A section's threads: ones you never placed first, most recent on top (so new threads show up there), then the ones
+// you dragged into place, in that order.
+export const ordered = (list: Thread[]) => [...list.filter(t => t.rank == null), ...list.filter(t => t.rank != null).sort((a, b) => a.rank! - b.rank!)];
+const reorderThreads = (ids: string[], clear = false) => {
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  useStore.setState(s => ({ threads: s.threads.map(t => rank.has(t.id) ? { ...t, rank: clear ? undefined : rank.get(t.id) } : t) }));
+  api.post('/api/threads/order', { ids, clear }).catch(toastError);
+};
+// Drag a thread within its section (desktop), or Move up/down from its menu (phones).
+interface RowDrag { over: 'above' | 'below' | null; start(): void; enter(where: 'above' | 'below'): void; drop(): void; end(): void; move(d: -1 | 1): void; canUp: boolean; canDown: boolean }
+function ThreadList({ list, activeId, minute }: { list: Thread[]; activeId?: string; minute?: number }) {
+  const rows = ordered(list);
+  const [drag, setDrag] = useState<{ id: string; over?: string; where?: 'above' | 'below' } | null>(null);
+  const place = (id: string, target: string, where: 'above' | 'below') => {
+    if (id === target) return;
+    const ids = rows.map(t => t.id).filter(x => x !== id);
+    ids.splice(ids.indexOf(target) + (where === 'below' ? 1 : 0), 0, id);
+    reorderThreads(ids);
+  };
+  return <>{rows.map((t, i) => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} drag={rows.length < 2 ? undefined : {
+    over: drag && drag.id !== t.id && drag.over === t.id ? drag.where ?? null : null,
+    start: () => setDrag({ id: t.id }),
+    enter: where => setDrag(d => d && (d.over !== t.id || d.where !== where) ? { ...d, over: t.id, where } : d),
+    drop: () => { if (drag && drag.over) place(drag.id, drag.over, drag.where ?? 'above'); setDrag(null); },
+    end: () => setDrag(null),
+    move: d => { const n = rows[i + d]; if (n) place(t.id, n.id, d < 0 ? 'above' : 'below'); },
+    canUp: i > 0, canDown: i < rows.length - 1,
+  }} />)}</>;
+}
+
+const ThreadLink = memo(function ThreadLink({ t, active, drag }: { t: Thread; active: boolean; minute?: number; drag?: RowDrag }) {
   const sel = useContext(SelectCtx);
   const unread = useStore(s => !active && isUnread(t, s.seen));
   const pr = useStore(s => s.prs[t.id]);
@@ -92,8 +123,11 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
       className="w-full h-8 px-3 rounded-lg bg-basalt border border-tide/60 text-[13.5px] text-moon focus:outline-none" />
   );
   return (
-    <div className="group relative" onContextMenu={e => { e.preventDefault(); setMenu(true); }}>
-      <a href={`#/t/${t.id}`} onClick={e => { if (longPressed.current) { e.preventDefault(); longPressed.current = false; return; } close(); }}
+    <div className="group relative" onContextMenu={e => { e.preventDefault(); setMenu(true); }}
+      onDragOver={drag ? e => { if (!e.dataTransfer.types.includes(THREAD_DRAG)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; const r = e.currentTarget.getBoundingClientRect(); drag.enter(e.clientY < r.top + r.height / 2 ? 'above' : 'below'); } : undefined}
+      onDrop={drag ? e => { if (!e.dataTransfer.types.includes(THREAD_DRAG)) return; e.preventDefault(); e.stopPropagation(); drag.drop(); } : undefined}>
+      {drag?.over && <span aria-hidden className={`absolute inset-x-2 h-0.5 rounded-full bg-tide pointer-events-none z-10 ${drag.over === 'above' ? '-top-px' : '-bottom-px'}`} />}
+      <a href={`#/t/${t.id}`} draggable={!!drag} onDragStart={drag ? e => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(THREAD_DRAG, t.id); drag.start(); } : undefined} onDragEnd={drag?.end} onClick={e => { if (longPressed.current) { e.preventDefault(); longPressed.current = false; return; } close(); }}
         onDoubleClick={e => { e.preventDefault(); setRenaming(true); }} onTouchStart={touchStart} onTouchEnd={touchEnd} onTouchMove={touchEnd} onPointerEnter={hoverIn} onPointerLeave={hoverOut}
         aria-current={active ? 'page' : undefined}
         className={`${rowCls(active)} pl-3 pr-2 py-[5px] pointer-coarse:py-2 select-none [-webkit-touch-callout:none] ${pr ? 'flex-wrap gap-y-[3px]' : ''}`}>
@@ -113,6 +147,8 @@ const ThreadLink = memo(function ThreadLink({ t, active }: { t: Thread; active: 
       <Menu open={menu} onClose={() => setMenu(false)} align="left">
         <MenuItem icon={<Check />} onClick={() => { setMenu(false); editHumanTask(t); }}>Add a task for me…</MenuItem>
         <MenuItem icon={<Pencil />} onClick={() => { setMenu(false); setRenaming(true); }}>Rename</MenuItem>
+        {drag?.canUp && <MenuItem icon={<ArrowUp />} onClick={() => { setMenu(false); drag.move(-1); }}>Move up</MenuItem>}
+        {drag?.canDown && <MenuItem icon={<ArrowDown />} onClick={() => { setMenu(false); drag.move(1); }}>Move down</MenuItem>}
         <MenuItem icon={t.pinned ? <PinOff /> : <Pin />} onClick={() => { setMenu(false); api.patch(`/api/threads/${t.id}`, { pinned: !t.pinned }).catch(toastError); }}>{t.pinned ? 'Unpin' : 'Pin to top'}</MenuItem>
         {/* A chat in a project follows the project's space; a chat on its own picks one itself. */}
         {!t.projectId && spaces.length > 0 && <>{spaces.map(sp => <MenuItem key={sp.id} icon={t.space === sp.id ? <Check className="text-tide" /> : <Layers />} onClick={() => { setMenu(false); api.patch(`/api/threads/${t.id}`, { space: t.space === sp.id ? null : sp.id }).catch(toastError); }}>{t.space === sp.id ? `In ${sp.name}` : `Move to ${sp.name}`}</MenuItem>)}</>}
@@ -396,7 +432,7 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
           <button onClick={() => setShowArchived(false)} className="press text-tide hover:underline">Show active</button>
         </div>}
         {matches ? <div className="space-y-px">{matches.length ? matches.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />) : <p className="px-3 py-2 text-[13px] text-ash">No thread matches “{q}”.</p>}</div> : <>
-        {pinned.length > 0 && <Section id="pinned" title="Pinned" collapsed={!!collapsed.pinned} toggle={toggle}>{pinned.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}</Section>}
+        {pinned.length > 0 && <Section id="pinned" title="Pinned" collapsed={!!collapsed.pinned} toggle={toggle}><ThreadList list={pinned} activeId={activeId} minute={minute} /></Section>}
         {hosts.length > 0 && !space && <p className="flex items-center gap-1.5 pl-2 text-[11px] font-bold text-dust"><Laptop size={12} />This Mac</p>}
         {shown.map((p, pi) => {
           const list = visible.filter(t => t.projectId === p.id);
@@ -422,20 +458,21 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
                     <MenuItem icon={<ArrowUp />} onClick={() => { move(p.id, -1); setProjMenu(null); }}>Move up</MenuItem>
                     <MenuItem icon={<ArrowDown />} onClick={() => { move(p.id, 1); setProjMenu(null); }}>Move down</MenuItem>
                     <MenuItem icon={<EyeOff />} onClick={() => { setHidden([...hidden, p.id]); setProjMenu(null); }}>Hide from sidebar</MenuItem>
+                    {list.some(t => t.rank != null) && <MenuItem icon={<History />} onClick={() => { reorderThreads(list.map(t => t.id), true); setProjMenu(null); }}>Sort threads by recent</MenuItem>}
                     {list.length > 0 && <MenuItem icon={<Archive />} onClick={() => { archiveWithUndo(list); setProjMenu(null); }}>Archive {list.length === 1 ? 'its thread' : `its ${list.length} threads`}</MenuItem>}
                     <MenuItem icon={<Trash2 />} tone="danger" onClick={() => { setProjMenu(null); removeProject(p, list); }}>Remove project…</MenuItem>
                     </>}
                   </Menu>
                 </span>
               </>}>
-              {list.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}
+              <ThreadList list={list} activeId={activeId} minute={minute} />
             </Section>
           );
         })}
-        {loose.length > 0 && <Section id="chats" title="Chats" collapsed={!!collapsed.chats} toggle={toggle}>{loose.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}</Section>}
+        {loose.length > 0 && <Section id="chats" title="Chats" collapsed={!!collapsed.chats} toggle={toggle}><ThreadList list={loose} activeId={activeId} minute={minute} /></Section>}
         {bySource.map(([src, list]) => (
           <Section key={src} id={`src:${src}`} title={sourceLabel(src)} count={list.length} collapsed={!!collapsed[`src:${src}`]} toggle={toggle}>
-            {list.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)}
+            <ThreadList list={list} activeId={activeId} minute={minute} />
           </Section>
         ))}
         <button onClick={onAddProject} className="press flex items-center gap-2 pl-3 py-1 pointer-coarse:py-2.5 rounded-lg text-[13px] text-ash hover:text-moon"><FolderPlus size={14} />Add project</button>

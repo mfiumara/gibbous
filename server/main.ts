@@ -285,6 +285,13 @@ function checkedSpaceName(name: unknown, except?: string) {
 
 route('POST', '/api/projects', (_, b) => { const p = orch.addProject(b.path, b.name); orch.fileImported(); return p; });
 // Sidebar order: the given ids first, in that order; anything not listed keeps its place after them.
+// Threads placed by hand in a sidebar section: the given ids get ranks in that order (`clear` drops them again,
+// back to most-recent-first). Ranks only order threads within the section the client sorts.
+route('POST', '/api/threads/order', (_, b) => {
+  const ids: string[] = Array.isArray(b.ids) ? b.ids.map(String) : [];
+  ids.forEach((id, i) => { const t = orch.thread(id); if (!t) return; if (b.clear) delete t.rank; else t.rank = i; orch.changed('thread', t); });
+  save(); return { ok: true };
+});
 route('POST', '/api/projects/order', (_, b) => {
   const ids: string[] = Array.isArray(b.ids) ? b.ids.map(String) : [];
   const rank = new Map(ids.map((id, i) => [id, i]));
