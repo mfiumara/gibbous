@@ -65,3 +65,32 @@ export function listSubagents(sessionId: string, profile?: string): SubagentRow[
     lastText: text(r.last_text, 400),
   }));
 }
+
+// Threads whose subagents are still working while the thread itself sits idle (delegate_task in the background):
+// open children (no end, active in the last 5 minutes, like the card's QUIET_MS) walked up to a thread's session.
+const LIVE_SQL = `SELECT id, json_extract(model_config, '$._delegate_from') AS up FROM sessions
+  WHERE json_extract(model_config, '$._delegate_from') IS NOT NULL AND ended_at IS NULL
+  AND COALESCE(last_activity_at, started_at) > ?`;
+const UP_SQL = `SELECT COALESCE(json_extract(model_config, '$._delegate_from'), parent_session_id) AS up FROM sessions WHERE id = ?`;
+export function busyThreads(threads: { id: string; sessionId: string; profile?: string; status: string; host?: string }[], now = Date.now()): string[] {
+  const out = new Set<string>();
+  const byProfile = new Map<string, typeof threads>();
+  for (const t of threads) if (!t.host && t.status !== 'archived' && t.sessionId) (byProfile.get(t.profile ?? '') ?? byProfile.set(t.profile ?? '', []).get(t.profile ?? '')!).push(t);
+  for (const [profile, ts] of byProfile) {
+    let db: DatabaseSync | undefined;
+    try { db = openStateDb(profile || undefined); } catch { continue; }
+    if (!db) continue;
+    const bySession = new Map(ts.map(t => [t.sessionId, t.id]));
+    try {
+      const up = db.prepare(UP_SQL);
+      for (const r of db.prepare(LIVE_SQL).all((now - 5 * 60_000) / 1000) as { id: string; up: string | null }[]) {
+        for (let cur: string | null = r.up, n = 0; cur && n < 32; n++) {
+          const hit = bySession.get(cur);
+          if (hit) { out.add(hit); break; }
+          cur = (up.get(cur) as { up: string | null } | undefined)?.up ?? null;
+        }
+      }
+    } catch { /* older db or locked: skip this profile */ }
+  }
+  return [...out].sort();
+}

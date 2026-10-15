@@ -22,6 +22,7 @@ interface S {
   build?: string | null; // web build the server serves now (see LOADED_BUILD)
   prs: Record<string, PrBadge>; // compatibility: most relevant PR
   threadPrs: Record<string, PrBadge[]>;
+  busyThreads: string[];   // idle threads whose subagents are still working
   platform?: string; service?: Service; // the server's OS: per-OS copy ("this PC") and its restart command
   toasts: Toast[];
   seen: Record<string, number>;   // thread id → when you last looked (per device)
@@ -48,7 +49,7 @@ const upsert = <T extends { id: string }>(list: T[], item: T, front = false) => 
 let toastId = 0;
 export const useStore = create<S>((set, get) => ({
   loaded: false, authed: null, connected: false, serverUp: false, setupLog: [],
-  projects: [], threads: [], requests: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {}, threadPrs: {},
+  projects: [], threads: [], requests: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {}, threadPrs: {}, busyThreads: [],
   toasts: [], sidebar: false, palette: false,
   activeSpace: localStorage.getItem('gibbous.activeSpace') ?? '',
   setActiveSpace(id) { localStorage.setItem('gibbous.activeSpace', id); set({ activeSpace: id }); },
@@ -134,6 +135,7 @@ rpc.onGibbous = (kind, data) => {
     case 'hosts': useStore.setState({ hosts: data }); break;
     case 'prs': useStore.setState({ prs: data }); break;
     case 'threadPrs': useStore.setState({ threadPrs: data }); break;
+    case 'busyThreads': useStore.setState({ busyThreads: data }); break;
     case 'settings': useStore.setState({ settings: data }); break;
     case 'hermes': useStore.setState({ hermesReady: data.ready }); break;
     case 'health': useStore.setState({ hermes: { ...s.hermes, ready: s.hermesReady, ...data } }); break;

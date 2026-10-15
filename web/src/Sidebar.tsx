@@ -94,6 +94,7 @@ function ThreadList({ list, activeId, minute }: { list: Thread[]; activeId?: str
 const ThreadLink = memo(function ThreadLink({ t, active, drag }: { t: Thread; active: boolean; minute?: number; drag?: RowDrag }) {
   const sel = useContext(SelectCtx);
   const unread = useStore(s => !active && isUnread(t, s.seen));
+  const subsBusy = useStore(s => s.busyThreads.includes(t.id));   // subagents still working in the background
   const pr = useStore(s => s.prs[t.id]);
   const prs = useStore(s => s.threadPrs[t.id] ?? NONE);
   const ci = aggregateCi(prs);
@@ -133,7 +134,7 @@ const ThreadLink = memo(function ThreadLink({ t, active, drag }: { t: Thread; ac
         onDoubleClick={e => { e.preventDefault(); setRenaming(true); }} onTouchStart={touchStart} onTouchEnd={touchEnd} onTouchMove={touchEnd} onPointerEnter={hoverIn} onPointerLeave={hoverOut}
         aria-current={active ? 'page' : undefined}
         className={`${rowCls(active)} pl-3 pr-2 py-[5px] pointer-coarse:py-2 select-none [-webkit-touch-callout:none] ${pr ? 'flex-wrap gap-y-[3px]' : ''}`}>
-        <Moon thread={t.status} size={9} />
+        <Moon thread={t.status === 'idle' && subsBusy ? 'running' : t.status} size={9} />
         <span className={`truncate flex-1 ${unread ? 'font-bold text-moon' : ''}`}>{t.title}</span>
         {/* Tasks stay in their thread; the row only says how many wait on you. */}
         {openTasks > 0 && <span className="flex-none inline-flex items-center gap-0.5 text-[11px] text-tide tabular-nums" data-tip={`${openTasks} for you to do`} aria-label={`${openTasks} tasks for you`}><UserCheck size={11} />{openTasks}</span>}

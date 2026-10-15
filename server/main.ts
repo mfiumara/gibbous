@@ -24,7 +24,7 @@ import * as g from './git.ts';
 import { smoke } from './smoke.ts';
 import { redact, tail } from './diagnostics.ts';
 import { watchBuild } from './build.ts';
-import { listSubagents, openStateDb } from './subagents.ts';
+import { listSubagents, openStateDb, busyThreads } from './subagents.ts';
 import { accountLimits, redeemCodexReset } from './limits.ts';
 import { sessionLineage } from './prHistory.ts';
 import { isHeic, heicToJpeg, cachedJpeg } from './heic.ts';
@@ -235,7 +235,7 @@ function publicState() {
     requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health, ...setupPublic() },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
-    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(), threadPrs: threadPrs(),
+    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(), threadPrs: threadPrs(), busyThreads: busy,
     platform: process.platform, service: serviceInfo(), // per-OS copy in the web app ("this Mac", restart command)
   };
 }
@@ -865,6 +865,10 @@ setBadgeSource(() => unreadCount(state.threads));
 orch.on('change', ({ kind }) => { if (['requests', 'thread', 'reload', 'thread-deleted'].includes(kind)) badgeChanged(); });
 
 // Sidebar PR + CI badges: poll gh every minute, push only when something changed.
+// Idle threads with subagents still at work: the sidebar shows them as running. Checked every 5s, sent on change.
+let busy: string[] = [];
+const pollBusy = () => { try { const b = busyThreads(state.threads); if (b.join() !== busy.join()) { busy = b; broadcast('busyThreads', b); } } catch (e) { console.error('[busy]', e); } };
+setInterval(pollBusy, 5000).unref?.(); setTimeout(pollBusy, 2000);
 const pollPrs = () => refreshPrs((b, lists) => { broadcast('prs', b); broadcast('threadPrs', lists); }).catch(e => console.error('[prs]', e));
 setTimeout(pollPrs, 3000);
 setInterval(pollPrs, 60_000);
