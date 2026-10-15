@@ -18,8 +18,13 @@ export function useUsage(range: Range): UsageReport | null | undefined {
   const [r, setR] = useState<{ range: Range; data: UsageReport | null }>();
   useEffect(() => {
     let live = true;
-    loadUsage(range).then(d => live && setR({ range, data: d }), () => live && setR({ range, data: null }));
-    return () => { live = false; };
+    const load = () => loadUsage(range).then(d => live && setR({ range, data: d }), () => live && setR(cur => cur?.range === range && cur.data ? cur : { range, data: null }));
+    load();
+    // Stays current while open: once a minute (the server re-reads at most that often) and when you come back to the app.
+    const tick = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 60_000);
+    const back = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', back); addEventListener('focus', back);
+    return () => { live = false; clearInterval(tick); document.removeEventListener('visibilitychange', back); removeEventListener('focus', back); };
   }, [range]);
   return r?.range === range ? r.data : undefined;
 }

@@ -22,7 +22,9 @@ export function useLimits(): AccountLimits[] | undefined {
     subs.add(setV);
     if (!last) load();
     if (!timer) timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 120_000);
-    return () => { subs.delete(setV); if (!subs.size && timer) { clearInterval(timer); timer = undefined; } };
+    const back = () => { if (document.visibilityState === 'visible' && (!last?.[0] || Date.now() - last[0].fetchedAt > 60_000)) load(); };
+    document.addEventListener('visibilitychange', back);
+    return () => { subs.delete(setV); document.removeEventListener('visibilitychange', back); if (!subs.size && timer) { clearInterval(timer); timer = undefined; } };
   }, []);
   return v;
 }
