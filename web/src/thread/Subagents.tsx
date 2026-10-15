@@ -79,7 +79,7 @@ export function SubagentGroup({ agents, onOpen, open, setOpen }: { agents: Agent
           card's lead moon steps aside instead of doubling up. */}
       <button onClick={() => single ? onOpen(agents[0].key) : setOpen(o => !o)} aria-expanded={single ? undefined : open} data-tip={single ? 'Open this subagent' : open ? 'Fold' : 'Show each subagent'}
         className="press w-full flex items-center px-3 py-2 text-left rounded-xl">
-        <span className={`grid place-items-center overflow-hidden flex-none transition-[opacity,scale] duration-300 ease-out w-4 mr-2.5 ${unfolded ? 'opacity-0 scale-50' : 'opacity-100'}`}>{lead}</span>
+        <span className={`grid place-items-center overflow-hidden flex-none transition-[opacity,scale,width,margin] duration-300 ease-out ${unfolded ? 'w-0 mr-0 opacity-0 scale-50' : 'w-4 mr-2.5 opacity-100'}`}>{lead}</span>
         <span className="flex-1 min-w-0">
           <span className="block text-[12.5px] text-moon">{title}</span>
           {/* The live line folds away with the card open: each row below shows the same details. */}
