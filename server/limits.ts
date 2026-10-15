@@ -12,13 +12,48 @@ export interface AccountLimits { provider: string; label: string; plan: string |
 // The logins worth asking about: subscription providers Hermes knows how to read. Unknown/unused ones answer nothing.
 export const LIMIT_PROVIDERS: Record<string, string> = { 'openai-codex': 'Codex', anthropic: 'Claude', nous: 'Nous' };
 
+// Claude: Hermes scales utilization <= 1 as a fraction, so 1% reads as 100%. Its payload is already in percent and
+// carries a \`limits\` list (session, weekly, per-model weekly like "Fable"): read that response ourselves instead.
 const PY = `import json,sys
+import agent.account_usage as au
+from datetime import datetime
 from agent.account_usage import fetch_account_usage
+seen={}
+_get=au._get_json
+def _keep(url,h,**k):
+    r=_get(url,h,**k); seen[url]=r; return r
+au._get_json=_keep
+def claude_windows(raw):
+    out=[]
+    for l in raw.get('limits') or []:
+        if not isinstance(l,dict) or not isinstance(l.get('percent'),(int,float)): continue
+        kind=str(l.get('kind') or ''); name=((l.get('scope') or {}).get('model') or {}).get('display_name') if isinstance(l.get('scope'),dict) else None
+        label='Current session' if kind=='session' else (f'{name} week' if name else 'Current week')
+        t=l.get('resets_at')
+        try: ts=datetime.fromisoformat(t).timestamp()*1000 if t else None
+        except Exception: ts=None
+        out.append({'label':label,'usedPercent':float(l['percent']),'resetAt':ts,'scope':'model' if name else 'account','detail':None,'windowSeconds':18000 if kind=='session' else 604800})
+    if out: return out
+    for key,label in (('five_hour','Current session'),('seven_day','Current week')):
+        w=raw.get(key)
+        if isinstance(w,dict) and isinstance(w.get('utilization'),(int,float)):
+            t=w.get('resets_at')
+            try: ts=datetime.fromisoformat(t).timestamp()*1000 if t else None
+            except Exception: ts=None
+            out.append({'label':label,'usedPercent':float(w['utilization']),'resetAt':ts,'scope':'account','detail':None,'windowSeconds':18000 if key=='five_hour' else 604800})
+    return out
 out=[]
 for p in json.load(sys.stdin):
+    seen.clear()
     try: s=fetch_account_usage(p, read_only=True)
     except Exception as e: s=None
     if not s: continue
+    if p=='anthropic':
+        raw=next((r for u,r in seen.items() if 'oauth/usage' in u), None)
+        wins=claude_windows(raw) if isinstance(raw,dict) else []
+        if wins:
+            out.append({'provider':p,'plan':s.plan,'details':list(s.details or ()),'unavailable':s.unavailable_reason,'resets':None,'windows':wins})
+            continue
     raw=s.raw or {}
     rl=raw.get('rate_limit') or {}
     rawwins=[x for x in (rl.get('primary_window'),rl.get('secondary_window')) if isinstance(x,dict)]

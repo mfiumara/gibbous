@@ -30,7 +30,7 @@ export function useLimits(): AccountLimits[] | undefined {
 }
 
 // "Current session" → "Session", "Current week" → "Week", "Weekly" → "Week".
-export const shortLabel = (l: string) => /session|5.?h/i.test(l) ? 'Session' : /week/i.test(l) ? (/opus/i.test(l) ? 'Opus week' : /sonnet/i.test(l) ? 'Sonnet week' : 'Week') : l;
+export const shortLabel = (l: string) => /session|5.?h/i.test(l) ? 'Session' : /^(current )?week(ly)?$/i.test(l.trim()) ? 'Week' : l.replace(/\bweek\b/i, 'weekly');   // 'Fable week' → 'Fable weekly'
 export function resetIn(at: number | null, now = Date.now()): string {
   if (at == null) return '';
   const m = Math.max(0, Math.round((at - now) / 60_000));
