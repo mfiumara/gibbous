@@ -14,10 +14,26 @@ import { baseName } from '../paths';
 // Local file paths (attachments, generated images) load through the authenticated image route.
 export const imageSrc = (src: string) => /^(https?:|data:|blob:)/.test(src) ? src : `/api/image?path=${encodeURIComponent(src.replace(/^file:\/\//, ''))}`;
 
-function CopyButton({ text, className = '' }: { text: string; className?: string }) {
+// Copies the quote as you see it: one line per paragraph/list item, without the "+ For me" buttons.
+function QuoteBlock({ children, ...p }: React.ComponentProps<'blockquote'>) {
+  const ref = useRef<HTMLQuoteElement>(null);
+  const text = () => {
+    const el = ref.current?.cloneNode(true) as HTMLElement | undefined;
+    if (!el) return '';
+    el.querySelectorAll('.reply-task-action').forEach(b => b.remove());
+    const blocks = [...el.querySelectorAll(':scope > *')];
+    return (blocks.length ? blocks.map(b => b.textContent?.trim() ?? '').filter(Boolean).join('\n\n') : el.textContent?.trim()) ?? '';
+  };
+  return <div className="group/quote relative">
+    <blockquote ref={ref} {...p}>{children}</blockquote>
+    <CopyButton text="" getText={text} className="absolute top-0 right-0 opacity-0 group-hover/quote:opacity-100 focus:opacity-100 pointer-coarse:opacity-100 bg-well/95" />
+  </div>;
+}
+
+function CopyButton({ text, getText, className = '' }: { text: string; getText?: () => string; className?: string }) {
   const [done, setDone] = useState(false);
   return (
-    <button aria-label="Copy" data-tip={done ? 'Copied' : 'Copy'} onClick={() => { navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1400); }}
+    <button aria-label="Copy" data-tip={done ? 'Copied' : 'Copy'} onClick={() => { navigator.clipboard.writeText(getText ? getText() : text); setDone(true); setTimeout(() => setDone(false), 1400); }}
       className={`press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge ${className}`}>
       {done ? <Check size={13} className="text-sprout animate-pop" /> : <Copy size={13} />}
     </button>
@@ -50,6 +66,8 @@ export const Markdown = memo(function Markdown({ text: live, taskThread }: { tex
       // Agents write line breaks inside table cells as `<br>` (Markdown has no other way); raw HTML stays off.
       td: ({ node: _n, children, ...p }) => <td {...p}>{withBreaks(children)}</td>,
       th: ({ node: _n, children, ...p }) => <th {...p}>{withBreaks(children)}</th>,
+      // Quotes are usually text to paste elsewhere (a drafted email or message): a copy button like code blocks.
+      blockquote: ({ node: _n, children, ...p }) => <QuoteBlock {...p}>{children}</QuoteBlock>,
       pre: ({ node: _n, children, ...p }) => (
         <div className="group/code relative">
           <pre {...p}>{children}</pre>
