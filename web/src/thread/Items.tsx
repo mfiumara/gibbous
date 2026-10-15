@@ -112,7 +112,9 @@ export const AssistantMessage = memo(function AssistantMessage({ item, endOfTurn
       <Menu open={!!taskMenu} onClose={() => setTaskMenu(undefined)}><MenuItem icon={<ListTodo />} onClick={() => { if (taskThread && taskMenu) addReplyTask(taskThread, taskMenu); setTaskMenu(undefined); }}>Add to For me</MenuItem>
         <MenuItem icon={<GitFork />} onClick={() => { setTaskMenu(undefined); if (taskThread) forkThread(taskThread, rowOf(item.id)); }}>Fork from here</MenuItem></Menu>
       {media.length > 0 && <div className="mt-3 space-y-2">{media.map(m => <MediaCard key={m} path={m} />)}</div>}
-      {!item.streaming && !tail && <div className={`absolute -bottom-1 -left-1 translate-y-full flex opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 ${endOfTurn ? '' : 'pointer-coarse:hidden rounded-lg bg-crater border border-line shadow-sm'}`}><CopyButton text={item.text} />
+      {!item.streaming && !tail && {/* End of a turn: the actions sit in the gap below the reply. Mid-turn the next row (a tool, "Stopped.") is right
+          underneath, so they float over the reply's own top-right corner instead of covering it. */}
+      <div className={`absolute flex opacity-0 group-hover/msg:opacity-100 transition-opacity z-10 ${endOfTurn ? '-bottom-1 -left-1 translate-y-full' : '-top-3 right-0 pointer-coarse:hidden rounded-lg bg-crater border border-line shadow-sm'}`}><CopyButton text={item.text} />
         {canSpeak && <button aria-label="Read aloud" data-tip="Read aloud" onClick={() => speak(item.text)} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Volume2 size={13} /></button>}
         {taskThread && <button aria-label="Fork from here" data-tip="Fork from here: a new thread with the conversation up to this reply" onClick={() => forkThread(taskThread, rowOf(item.id))} className="press size-7 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><GitFork size={13} /></button>}</div>}
     </div>
