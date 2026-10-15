@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, Zap, Search, Check, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react';
+import { ChevronDown, Zap, Search, Check, RefreshCw, ShieldCheck, ShieldOff, Brain } from 'lucide-react';
 import { useRpc } from '../rpc';
 import { useStore, toastError } from '../store';
 import { Menu, MoonImplode, MoonDisc, PhaseMoon, inputCls, useSheet, useRichTip } from '../ui';
@@ -17,6 +17,28 @@ export const shortModel = (m: string) => m.replace(/^.*\//, '').replace(/^(claud
 
 // `draft`: the new-thread screen, before a session exists. Picks are kept here and sent with the thread instead.
 export interface ModelDraft { model?: string; provider?: string; effort?: string; set(p: Partial<Omit<ModelDraft, 'set'>>): void }
+// New-thread screen: reasoning effort as its own chip next to the model (empty = the model's default).
+export function EffortPicker({ draft }: { draft: ModelDraft }) {
+  const [open, setOpen] = useState(false);
+  const pick = (e?: string) => { draft.set({ effort: e }); setOpen(false); };
+  return (
+    <div className="relative flex-none">
+      <button onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" aria-label="Reasoning effort" data-tip="Reasoning effort for this thread"
+        className={`press inline-flex items-center gap-1.5 h-8 px-2 rounded-lg text-[12px] hover:text-moon hover:bg-ridge ${draft.effort ? 'text-moon' : 'text-dust'}`}>
+        <Brain size={13} className="flex-none" /><span>{draft.effort ?? 'default'}</span><ChevronDown size={11} className="flex-none" />
+      </button>
+      <Menu open={open} onClose={() => setOpen(false)} align="left" side="top" className="w-44">
+        <p className="label px-2.5 pt-1.5 pb-1">Reasoning effort</p>
+        {[undefined, ...EFFORTS].map(e => (
+          <button key={e ?? 'default'} onClick={() => pick(e)} className="press w-full flex items-center gap-2 h-8 px-2.5 rounded-md text-[13px] hover:bg-ridge">
+            <span className="flex-1 text-left">{e ?? 'Default'}</span>{draft.effort === e && <Check size={13} className="text-tide" />}
+          </button>
+        ))}
+      </Menu>
+    </div>
+  );
+}
+
 export function ModelPicker({ info: live, sid, draft }: { info?: SessionLiveInfo; sid?: string; draft?: ModelDraft }) {
   const [dflt, setDflt] = useState<{ model?: string; provider?: string }>({});
   const info = (draft ? { model: draft.model ?? dflt.model, provider: draft.provider ?? dflt.provider, reasoning_effort: draft.effort } : live) as SessionLiveInfo | undefined;
@@ -56,7 +78,7 @@ export function ModelPicker({ info: live, sid, draft }: { info?: SessionLiveInfo
       <button onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" disabled={!sid && !draft} data-tip="Model for this thread"
         className="press inline-flex items-center gap-1.5 h-8 px-2 rounded-lg text-[12px] text-dust hover:text-moon hover:bg-ridge disabled:opacity-40 min-w-0 max-w-full overflow-hidden">
         <span className="font-mono truncate min-w-0 max-w-36 sm:max-w-52"><span className="sm:hidden">{shortModel(info?.model ?? 'model')}</span><span className="hidden sm:inline">{info?.model ?? 'model'}</span></span>
-        {info?.reasoning_effort && <span className="label text-[9px] text-ash hidden sm:inline">{info.reasoning_effort}</span>}
+        {!draft && info?.reasoning_effort && <span className="label text-[9px] text-ash hidden sm:inline">{info.reasoning_effort}</span>}
         {info?.fast && <Zap size={11} className="text-halo flex-none" />}
         <ChevronDown size={11} className="flex-none" />
       </button>

@@ -4,7 +4,7 @@ import { api, type Project, type Thread } from './api';
 import { useStore, toastError, NONE } from './store';
 import { useAttachments, AttachmentChips, filesFrom, handOff } from './attachments';
 import { useCompletions } from './thread/completions';
-import { ModelPicker, type ModelDraft } from './thread/ModelPicker';
+import { EffortPicker, ModelPicker, type ModelDraft } from './thread/ModelPicker';
 import { Button, IconButton, Modal, Moon, Switch, inputCls, go, ago, sourceLabel, useDraft, NO_PREDICT } from './ui';
 import { haptic } from './iosBridge';
 import { useUsage } from './useUsage';
@@ -148,7 +148,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
                 <input ref={fileInput} type="file" multiple hidden onChange={e => { if (e.target.files) att.add(e.target.files); e.target.value = ''; }} />
                 <button aria-label="Attach files" data-tip="Attach files, or paste a screenshot" onClick={() => fileInput.current?.click()} className="press size-8 pointer-coarse:size-10 -ml-1 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Paperclip size={16} /></button>
               </>
-              {!host && <ModelPicker draft={md} />}
+              {!host && <><ModelPicker draft={md} /><EffortPicker draft={md} /></>}
               <span className="truncate font-mono">{project ? (canWorktree && worktree ? `new branch off ${base || project.baseBranch}` : project.path) : '~'}</span>
               <button onClick={start} disabled={(!text.trim() && !att.files.length) || busy} aria-label="Start thread" data-kbd="↵" data-tip="Start thread"
                 className="press ml-auto size-9 grid place-items-center rounded-full bg-moon text-basalt disabled:opacity-25 shadow-[inset_0_1px_0_rgb(255_255_255/.35)] hover:shadow-[inset_0_1px_0_rgb(255_255_255/.35),0_0_0_5px_color-mix(in_srgb,var(--color-moon)_14%,transparent)]"><ArrowUp size={18} strokeWidth={2.5} /></button>
