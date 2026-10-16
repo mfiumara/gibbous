@@ -22,9 +22,11 @@ export function useLimits(): AccountLimits[] | undefined {
     subs.add(setV);
     if (!last) load();
     if (!timer) timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 120_000);
-    const back = () => { if (document.visibilityState === 'visible' && (!last?.[0] || Date.now() - last[0].fetchedAt > 60_000)) load(); };
+    const stale = () => !last?.[0] || Date.now() - last[0].fetchedAt > 60_000 || last.some(l => l.windows.some(w => w.resetAt != null && w.resetAt <= Date.now() && l.fetchedAt < w.resetAt));
+    const back = () => { if (document.visibilityState === 'visible' && stale()) load(true); };
+    const roll = setInterval(() => { if (document.visibilityState === 'visible' && last?.some(l => l.windows.some(w => w.resetAt != null && w.resetAt <= Date.now() && l.fetchedAt < w.resetAt))) load(true); }, 30_000);
     document.addEventListener('visibilitychange', back);
-    return () => { subs.delete(setV); document.removeEventListener('visibilitychange', back); if (!subs.size && timer) { clearInterval(timer); timer = undefined; } };
+    return () => { subs.delete(setV); clearInterval(roll); document.removeEventListener('visibilitychange', back); if (!subs.size && timer) { clearInterval(timer); timer = undefined; } };
   }, []);
   return v;
 }
@@ -46,7 +48,9 @@ const tone = (p: number) => p >= 90 ? 'bg-oxide' : p >= 75 ? 'bg-halo' : 'bg-tid
 // Like CodexBar: the bar is what's LEFT of the window, the marker is how much time is left. Bar ending short of the
 // marker = using it faster than the clock (deficit, red marker); past it = reserve (green marker).
 function Bar({ w, now }: { w: LimitWindow; now: number }) {
-  const used = Math.max(0, Math.min(100, w.usedPercent ?? 0)), left = 100 - used, pc = pace(w.usedPercent, w.resetAt, w.windowSeconds, now);
+  // Past its reset time the window has started over: the numbers we hold belong to the old one.
+  const over = w.resetAt != null && w.resetAt <= now;
+  const used = over ? 0 : Math.max(0, Math.min(100, w.usedPercent ?? 0)), left = 100 - used, pc = over ? null : pace(w.usedPercent, w.resetAt, w.windowSeconds, now);
   const timeLeft = pc ? Math.max(0, Math.min(100, 100 - (used + pc.delta))) : null;
   return <div className="min-w-0" data-tip={`${w.label}: ${Math.round(left)}% left${pc ? ` · ${Math.round(Math.abs(pc.delta))}% ${pc.delta < 0 ? 'in deficit' : 'in reserve'}` : ''}${w.resetAt ? ` · resets ${resetIn(w.resetAt, now)}` : ''}`}>
     <div className="flex items-baseline gap-1.5 text-[11px] text-ash"><span className="truncate">{shortLabel(w.label)}</span>
@@ -87,7 +91,7 @@ export function LimitsCard() {
         {l.windows.map(w => (
           <div key={w.label}>
             <Bar w={w} now={now} />
-            <p className="mt-0.5 flex flex-wrap gap-x-2 text-[10.5px] text-ash">{w.resetAt && <span className="whitespace-nowrap">resets {resetIn(w.resetAt, now)}{w.scope === 'model' ? ' · this model only' : ''}</span>}</p>
+            <p className="mt-0.5 flex flex-wrap gap-x-2 text-[10.5px] text-ash">{w.resetAt && <span className="whitespace-nowrap">{w.resetAt <= now ? 'just reset' : `resets ${resetIn(w.resetAt, now)}`}{w.scope === 'model' ? ' · this model only' : ''}</span>}</p>
           </div>
         ))}
         {l.details.map(d => <p key={d} className="text-[11.5px] text-dust">{detailText(d)}</p>)}
