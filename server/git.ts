@@ -34,6 +34,16 @@ export const fileLines = (s: string) => (s.endsWith('\n') ? s.slice(0, -1) : s).
 
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'thread';
 
+// A worktree name (and branch gibbous/<name>) not taken yet: the summary itself, else -2, -3…
+export async function freeName(repo: string, root: string, base: string): Promise<string> {
+  for (let i = 1; i < 50; i++) {
+    const name = i === 1 ? base : `${base}-${i}`;
+    const taken = fs.existsSync(path.join(root, path.basename(repo), name)) || await git(repo, 'rev-parse', '--verify', '--quiet', `refs/heads/gibbous/${name}`).then(() => true, () => false);
+    if (!taken) return name;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
+
 export async function addWorktree(repo: string, root: string, name: string, base: string) {
   if (!(await hasCommits(repo))) throw new Error(`${path.basename(repo)} has no commits yet. Make a first commit, or start the thread without a worktree.`);
   const branch = `gibbous/${name}`;

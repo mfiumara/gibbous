@@ -287,11 +287,15 @@ export class Orchestrator extends EventEmitter {
     const project = this.project(o.projectId);
     const title = o.title?.trim() || 'New thread';
     let cwd = o.cwd ?? project?.path ?? (host ? '~' : sys().home);
-    let worktree: Thread['worktree'];
+    let worktree: Thread['worktree'], summary: string | undefined;
     if (o.worktree) {
       if (!project) throw new Error('worktree threads need a project');
       const base = o.base ?? project.baseBranch ?? await g.currentBranch(project.path);
-      worktree = await g.addWorktree(project.path, state.settings.worktreeRoot, `${g.slug(title)}-${newId('w').slice(-4)}`, base);
+      // Branch named after a short summary of the task ("gibbous/led-annotation-missing"), not the first words of the
+      // message. The same summary becomes the thread title. Falls back to the message's words if titling fails.
+      const opening = (o.prompt ?? o.title ?? '').trim();
+      summary = opening && (o.autoTitle || title === 'New thread' || title === opening.slice(0, title.length)) ? await this.summarize(opening, profile) : undefined;
+      worktree = await g.addWorktree(project.path, state.settings.worktreeRoot, await g.freeName(project.path, state.settings.worktreeRoot, g.slug(summary ?? title)), base);
       cwd = worktree.path;
       if (project.setupScript) await runScript(project.setupScript, cwd);
     }
@@ -304,7 +308,7 @@ export class Orchestrator extends EventEmitter {
       ...(o.effort && /^(low|medium|high|xhigh|max|none)$/.test(o.effort) ? { reasoning_effort: o.effort } : {}),
     });
     const t: Thread = {
-      id: newId('th'), projectId: project?.id, ...(!project && o.space && state.settings.spaces.some(x => x.id === o.space) ? { space: o.space } : {}), title, autoTitle: o.autoTitle || title === 'New thread' || undefined, sessionId: r.stored_session_id, cwd, worktree,
+      id: newId('th'), projectId: project?.id, ...(!project && o.space && state.settings.spaces.some(x => x.id === o.space) ? { space: o.space } : {}), title: summary ?? title, autoTitle: summary ? undefined : o.autoTitle || title === 'New thread' || undefined, sessionId: r.stored_session_id, cwd, worktree,
       role: 'chat', profile, host, status: 'idle', createdAt: Date.now(), updatedAt: Date.now(), seenAt: Date.now(),
     };
     state.threads.unshift(t);
@@ -322,6 +326,16 @@ export class Orchestrator extends EventEmitter {
   private titling = new Set<string>();
   // A short AI title from the thread's opening message (fallback: Hermes' first-line title). Clears autoTitle, so a
   // later rename or Hermes title never fights it. Returns the new title, or undefined when nothing changed.
+  // A 2–4 word summary of a message (the thread-title prompt), or undefined after ~8s / on failure.
+  async summarize(text: string, profile?: string): Promise<string | undefined> {
+    if (!this.hc.ready) return undefined;
+    const r = await Promise.race([
+      this.hc.call('llm.oneshot', { instructions: SHORT_TITLE_PROMPT, input: text.slice(0, 4000), task: 'title_generation', max_tokens: 400, temperature: 0.2, ...(profile ? { profile } : {}) }).catch(() => null),
+      new Promise<null>(res => setTimeout(() => res(null), 8000)),
+    ]);
+    return cleanTitle(String((r as any)?.text ?? '')) ?? undefined;
+  }
+
   async shortTitle(t: Thread, fallback?: string): Promise<string | undefined> {
     if (this.titling.has(t.id)) return;
     this.titling.add(t.id);
