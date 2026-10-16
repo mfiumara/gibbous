@@ -10,7 +10,8 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    MARKETING_VERSION: "1.1.0"
+    # The iPhone app's own version. Desktop releases (scripts/release-mac.sh) use package.json's version.
+    MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "2"
     DEVELOPMENT_TEAM: 6726M85H57
     CODE_SIGN_STYLE: Automatic

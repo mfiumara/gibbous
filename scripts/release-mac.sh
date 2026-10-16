@@ -17,7 +17,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 [ -n "$DEVELOPER_DIR" ] || export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 command -v xcodegen >/dev/null || { echo "xcodegen is missing: brew install xcodegen" >&2; exit 1; }
 
-VERSION=$(sed -n 's/^ *MARKETING_VERSION: "\(.*\)"/\1/p' "$ROOT/ios/project.yml")
+# The desktop version (package.json); ios/project.yml's MARKETING_VERSION is the iPhone app's own version.
+VERSION=$(node -p "require('$ROOT/package.json').version")
 BUILD="${BUILD:-$(git -C "$ROOT" rev-list --count HEAD)}"
 ASC="$HOME/.appstoreconnect"
 KEY_ID=$(node -p "require('$ASC/gibbous.json').keyId")
@@ -39,7 +40,7 @@ xcodebuild -project Gibbous.xcodeproj -scheme GibbousMac -configuration Release 
   PRODUCT_BUNDLE_IDENTIFIER=dev.gibbous.desktop \
   CODE_SIGN_ENTITLEMENTS=../desktop/Gibbous-DeveloperID.entitlements \
   ENABLE_APP_SANDBOX=NO ENABLE_HARDENED_RUNTIME=YES \
-  OTHER_CODE_SIGN_FLAGS=--timestamp CURRENT_PROJECT_VERSION="$BUILD" \
+  OTHER_CODE_SIGN_FLAGS=--timestamp MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
   GIBBOUS_SERVER_BUNDLE="$WORK/server/gibbous-server" ENABLE_USER_SCRIPT_SANDBOXING=NO
 
 cat > "$WORK/ExportOptions.plist" <<EOF

@@ -6,9 +6,9 @@ import { openStateDb } from './subagents.ts';
 import { folderOf } from './sessionDirs.ts';
 import type { Project } from './store.ts';
 
-// Symlinked folders (macOS /var → /private/var) compare by their real path.
+// Symlinked folders (macOS /var → /private/var) and Windows 8.3 short names (RUNNER~1) compare by their real path.
 // A folder that's gone resolves through its nearest existing parent.
-const real = (p: string): string => { const a = path.resolve(p); try { return fs.realpathSync(a); } catch { const up = path.dirname(a); return up === a ? a : path.join(real(up), path.basename(a)); } };
+const real = (p: string): string => { const a = path.resolve(p); try { return fs.realpathSync.native(a); } catch { const up = path.dirname(a); return up === a ? a : path.join(real(up), path.basename(a)); } };
 const inside = (dir: string, root: string) => { const r = path.relative(root, dir); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
 
 // Deepest project containing any of the candidate folders (a repo, or the folder itself).

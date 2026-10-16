@@ -1,7 +1,7 @@
 {
   "name": "gibbous-desktop",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Gibbous for Windows and Linux (Tauri v2 shell). Not part of the pnpm workspace on purpose.",
   "license": "MIT",
   "scripts": {
