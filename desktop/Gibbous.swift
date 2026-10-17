@@ -22,6 +22,11 @@ final class Window: NSWindow {
 // Inspect. Remembers the last mouse-down so a drag the page asks for (gibbousWindow {drag}) can start from it.
 final class Web: WKWebView {
   var lastMouseDown: NSEvent?
+  // Back from a video's full screen (or any reparenting): fill the window again.
+  override func viewDidMoveToSuperview() {
+    super.viewDidMoveToSuperview()
+    if let s = superview, s is NSVisualEffectView { frame = s.bounds; autoresizingMask = [.width, .height] }
+  }
   override func mouseDown(with e: NSEvent) { lastMouseDown = e; super.mouseDown(with: e) }
   static let browserItems: Set<String> = ["Reload", "GoBack", "GoForward", "InspectElement", "OpenLinkInNewWindow", "DownloadLinkedFile",
     "OpenImageInNewWindow", "DownloadImage", "OpenFrameInNewWindow", "OpenMediaInNewWindow", "DownloadMedia"].reduce(into: []) { $0.insert("WKMenuItemIdentifier" + $1) }
@@ -214,12 +219,11 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
     glass.blendingMode = .behindWindow
     glass.state = .followsWindowActiveState
     window.contentView = glass
+    // Autoresizing, not Auto Layout: a video's full screen moves the web view into WebKit's own window and back, and
+    // the constraints don't survive that trip. The web view came back with no size, leaving a grey, dead window.
+    web.frame = glass.bounds
+    web.autoresizingMask = [.width, .height]
     glass.addSubview(web)
-    web.translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      web.topAnchor.constraint(equalTo: glass.topAnchor), web.bottomAnchor.constraint(equalTo: glass.bottomAnchor),
-      web.leadingAnchor.constraint(equalTo: glass.leadingAnchor), web.trailingAnchor.constraint(equalTo: glass.trailingAnchor),
-    ])
     installShellScript()
     window.setFrameAutosaveName("GibbousMain")
     if !window.setFrameUsingName("GibbousMain") { window.center() }
