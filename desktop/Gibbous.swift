@@ -229,6 +229,7 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
     if !window.setFrameUsingName("GibbousMain") { window.center() }
     window.makeKeyAndOrderFront(nil)
     if defaults.bool(forKey: "fullScreen") { DispatchQueue.main.async { if !self.window.styleMask.contains(.fullScreen) { self.window.toggleFullScreen(nil) } } }
+    if window.styleMask.contains(.fullScreen) { glass.blendingMode = .withinWindow }
 
     buildMenu()
     buildStatusItem()
@@ -260,6 +261,9 @@ final class App: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigation
   }
   // Full screen hides the traffic lights, so the page drops the strip; “will” so it moves with the transition.
   func fullScreen(_ on: Bool) {
+    // In a full-screen space nothing sits behind the window, so behind-window glass samples the wallpaper and the
+    // sidebar turned the wallpaper's colour (brown). Full screen blends over the window's own dark background instead.
+    (window.contentView as? NSVisualEffectView)?.blendingMode = on ? .withinWindow : .behindWindow
     web.evaluateJavaScript(on ? "document.documentElement.dataset.fullscreen = ''" : "delete document.documentElement.dataset.fullscreen")
   }
   func windowWillEnterFullScreen(_ n: Notification) { fullScreen(true) }
