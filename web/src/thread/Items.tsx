@@ -1,4 +1,4 @@
-import { Children, memo, useDeferredValue, useRef, useState, type ReactNode } from 'react';
+import { Children, memo, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -79,6 +79,37 @@ export const Markdown = memo(function Markdown({ text: live, taskThread }: { tex
 
 // Files an agent hands you arrive as `MEDIA:/path` lines: shown as the thing itself, not as a path.
 const mediaUrl = (p: string, download = false) => `/api/media?path=${encodeURIComponent(p)}${download ? '&download=1' : ''}`;
+// An HTML file an agent made (a chart, a mockup, a widget), drawn right in the reply. It runs in a sandboxed frame with
+// an opaque origin (no allow-same-origin): its scripts run, but it can't read the app, its cookies or call the API.
+// The app's theme arrives as CSS variables (--foreground, --muted-foreground, --accent, --border, --card) plus the font,
+// zero margins and a transparent background, like Hermes desktop's ::preview; the frame grows to the content's height.
+function HtmlPreview({ path: p, name, download }: { path: string; name: string; download: ReactNode }) {
+  const [html, setHtml] = useState<string | null>();
+  const [h, setH] = useState(160);
+  const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    let live = true;
+    fetch(mediaUrl(p)).then(r => r.ok ? r.text() : Promise.reject()).then(t => live && setHtml(t), () => live && setHtml(null));
+    const onMsg = (e: MessageEvent) => { if (e.source === frame.current?.contentWindow && typeof e.data?.gibbousHeight === 'number') setH(Math.min(4000, Math.max(40, Math.ceil(e.data.gibbousHeight)))); };
+    addEventListener('message', onMsg);
+    return () => { live = false; removeEventListener('message', onMsg); };
+  }, [p]);
+  const doc = useMemo(() => {
+    if (html == null) return '';
+    const cs = getComputedStyle(document.documentElement), v = (n: string) => cs.getPropertyValue(n).trim();
+    const theme = `<style>:root{--foreground:${v('--color-moon')};--muted-foreground:${v('--color-dust')};--accent:${v('--color-tide')};--border:${v('--color-line')};--card:${v('--color-crater')};color-scheme:dark}
+html,body{margin:0;background:transparent;color:var(--foreground);font-family:${getComputedStyle(document.body).fontFamily};font-size:14px}</style>`;
+    const size = `<script>(()=>{const s=()=>parent.postMessage({gibbousHeight:document.documentElement.scrollHeight},'*');new ResizeObserver(s).observe(document.documentElement);addEventListener('load',s);s()})()</script>`;
+    return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + theme).replace(/<\/body>/i, size + '</body>') + (/<\/body>/i.test(html) ? '' : size) : theme + html + size;
+  }, [html]);
+  if (html === null) return <p className="text-[12.5px] text-ash">{name} is no longer on disk</p>;
+  return <div className="space-y-1 max-w-3xl">
+    {html === undefined ? <div className="h-40 rounded-xl border border-line bg-well/40 animate-pulse" />
+      : <iframe ref={frame} title={name} sandbox="allow-scripts allow-popups" srcDoc={doc} style={{ height: h }} className="w-full block rounded-xl border border-line bg-transparent" />}
+    <p className="flex items-center gap-1 text-[12px] text-ash font-mono"><span className="truncate flex-1">{name}</span>{download}</p>
+  </div>;
+}
+
 export function MediaCard({ path: p }: { path: string }) {
   const name = baseName(p), ext = name.split('.').pop()?.toLowerCase() ?? '';
   const download = <button onClick={() => saveMedia(p)} aria-label={`Download ${name}`} data-tip="Download" className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Download size={15} /></button>;
@@ -86,6 +117,7 @@ export function MediaCard({ path: p }: { path: string }) {
   if (/^(mp4|mov|m4v|webm)$/.test(ext)) return <div className="space-y-1 max-w-xl"><video src={mediaUrl(p)} controls playsInline preload="metadata" className="max-h-96 w-full rounded-xl border border-line bg-well" />
     <p className="flex items-center gap-1 text-[12px] text-ash font-mono"><span className="truncate flex-1">{name}</span>
       <button onClick={() => viewMedia(mediaUrl(p), name)} aria-label={`Full screen ${name}`} data-tip="Full screen" className="press size-8 grid place-items-center rounded-lg text-dust hover:text-moon hover:bg-ridge flex-none"><Maximize2 size={14} /></button>{download}</p></div>;
+  if (/^html?$/.test(ext)) return <HtmlPreview path={p} name={name} download={download} />;
   if (/^(mp3|m4a|wav|ogg)$/.test(ext)) return <div className="flex items-center gap-2"><audio src={mediaUrl(p)} controls className="w-full max-w-md" />{download}</div>;
   return (
     <div className="flex items-center gap-3 w-fit max-w-full tile rounded-xl pl-3 pr-1 py-1.5">
@@ -98,7 +130,10 @@ export function MediaCard({ path: p }: { path: string }) {
 }
 const splitMedia = (text: string) => {
   const media: string[] = [];
-  const rest = text.replace(/^[ \t]*MEDIA:[ \t]*(\S.*?)[ \t]*$/gm, (_, p) => { media.push(p.replace(/^["'`]|["'`]$/g, '')); return ''; }).replace(/\n{3,}/g, '\n\n').trim();
+  const rest = text.replace(/^[ \t]*MEDIA:[ \t]*(\S.*?)[ \t]*$/gm, (_, p) => { media.push(p.replace(/^["'`]|["'`]$/g, '')); return ''; })
+    // Hermes desktop's inline widget directive, on its own line: shown the same way as an HTML file handed over.
+    .replace(/^[ \t]*::preview\{\s*file\s*=\s*["']([^"']+)["'][^}]*\}[ \t]*$/gm, (_, p) => { media.push(p); return ''; })
+    .replace(/\n{3,}/g, '\n\n').trim();
   return { media, rest };
 };
 
