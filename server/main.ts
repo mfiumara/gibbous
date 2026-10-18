@@ -187,15 +187,29 @@ const hostStatus = () => state.hosts.map(h => ({ ...h, connected: !!remote.get(h
 for (const h of state.hosts) connectHost(h);
 
 // ── auth ────────────────────────────────────────────────────────────────
+// This machine's tailnet name while Tailscale is up. Re-checked every 20s: starting (or stopping) Tailscale after
+// Gibbous is running shows up without a restart, in Settings → Phone and in which Host headers are accepted.
+const parseTailnet = (out: string): { host?: string } => {
+  const s = JSON.parse(out), host = String(s.Self?.DNSName ?? '').replace(/\.$/, '');
+  return s.BackendState === 'Running' && host ? { host } : {};
+};
 function tailnet(): { host?: string } {
-  try {
-    const s = JSON.parse(execFileSync('tailscale', ['status', '--json'], { encoding: 'utf8', timeout: 3000 }));
-    return { host: String(s.Self?.DNSName ?? '').replace(/\.$/, '') };
-  } catch { return {}; }
+  try { return parseTailnet(execFileSync('tailscale', ['status', '--json'], { encoding: 'utf8', timeout: 3000 })); } catch { return {}; }
 }
 const ts = tailnet();
 const allowedHosts = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`, ...(process.env.GIBBOUS_ALLOWED_HOSTS ?? '').split(',').filter(Boolean)]);
-if (ts.host) { allowedHosts.add(ts.host); allowedHosts.add(`${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}`); }
+const tsHosts = (h?: string) => h ? [h, `${h}:${process.env.GIBBOUS_TS_PORT ?? 8444}`] : [];
+for (const h of tsHosts(ts.host)) allowedHosts.add(h);
+setInterval(() => execFile('tailscale', ['status', '--json'], { timeout: 5000 }, (err, out) => {
+  let next: { host?: string } = {};
+  if (!err) try { next = parseTailnet(out); } catch { /* keep {} */ }
+  if (next.host === ts.host) return;
+  for (const h of tsHosts(ts.host)) allowedHosts.delete(h);
+  ts.host = next.host;
+  for (const h of tsHosts(ts.host)) allowedHosts.add(h);
+  console.log(ts.host ? `[tailnet] up: https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : '[tailnet] down');
+  orch.changed('reload');
+}), 20_000).unref?.();
 
 const eq = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const cookie = (req: http.IncomingMessage, name: string) =>
