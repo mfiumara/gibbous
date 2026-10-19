@@ -18,7 +18,7 @@ interface S {
   projects: Project[]; threads: Thread[]; requests: OpenRequest[];
   settings?: Settings; hermesReady: boolean; hermes?: HermesSetup; gatewayReplies?: boolean;
   setupLog: string[]; setupResult?: { ok: boolean; error?: string; at: number }; // the Hermes installer's live output (Setup.tsx)
-  hosts: (Host & { connected: boolean })[]; tailnetUrl: string | null; tailnetLogin: string | null; vapidPublicKey: string;
+  hosts: (Host & { connected: boolean; error?: { message: string; link?: string } })[]; tailnetUrl: string | null; tailnetLogin: string | null; vapidPublicKey: string;
   build?: string | null; // web build the server serves now (see LOADED_BUILD)
   prs: Record<string, PrBadge>; // compatibility: most relevant PR
   threadPrs: Record<string, PrBadge[]>;

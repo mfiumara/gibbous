@@ -493,7 +493,11 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
                 actions={<a href={`#/new?host=${h.id}`} onClick={close} data-tip={`New thread on ${h.name}`} aria-label={`New thread on ${h.name}`} className="press size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Plus size={14} /></a>}>
                 <p className="pl-3 pb-0.5 label text-[9.5px] text-tide/80">remote</p>
                 {list.length ? list.map(t => <ThreadLink key={t.id} t={t} active={t.id === activeId} minute={minute} />)
-                  : <p className="pl-3 py-1 text-[12.5px] text-ash">{h.connected ? 'No threads here yet' : 'Connecting…'}</p>}
+                  : h.connected ? <p className="pl-3 py-1 text-[12.5px] text-ash">No threads here yet</p>
+                  : h.error ? <div className="pl-3 py-1 space-y-1 text-[12.5px]"><p className="text-halo">{h.error.message}</p>
+                      {h.error.link && <a href={h.error.link} target="_blank" rel="noreferrer" className="text-tide hover:underline">Approve in Tailscale →</a>}
+                      <p className="text-[11.5px] text-ash">Retrying by itself.</p></div>
+                  : <p className="pl-3 py-1 text-[12.5px] text-ash">Connecting…</p>}
               </Section>
             </div>
           );

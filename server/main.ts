@@ -172,10 +172,20 @@ hc.start();
 try { const n = orch.fileImported(); if (n) console.log(`[import] filed ${n} imported thread(s) under their project`); } catch (e) { console.error('[import]', e); }
 
 // Remote Hermes hosts: one client each, backends reached through SSH tunnels.
-const remote = new Map<string, { client: HermesClient; backend?: Backend }>();
+const remote = new Map<string, { client: HermesClient; backend?: Backend; error?: { message: string; link?: string } }>();
 function connectHost(h: Host) {
-  const entry: { client: HermesClient; backend?: Backend } = { client: undefined as unknown as HermesClient };
-  entry.client = new HermesClient(async () => (entry.backend = await ensureRemoteBackend(h)));
+  const entry: { client: HermesClient; backend?: Backend; error?: { message: string; link?: string } } = { client: undefined as unknown as HermesClient };
+  // The last reason it couldn't connect, for the sidebar and Settings (instead of "Connecting…" forever), plus Tailscale
+  // SSH's approval link when check mode wants a browser sign-in that Gibbous can't give.
+  entry.client = new HermesClient(async () => {
+    try { entry.backend = await ensureRemoteBackend(h); entry.error = undefined; return entry.backend; }
+    catch (e) {
+      const msg = (e as Error).message, link = /https:\/\/login\.tailscale\.com\/a\/\w+/.exec(msg)?.[0];
+      const next = { message: friendlyHostError(msg, h), ...(link ? { link } : {}) };
+      if (JSON.stringify(next) !== JSON.stringify(entry.error)) { entry.error = next; broadcast('hosts', hostStatus()); }
+      throw e;
+    }
+  });
   remote.set(h.id, entry);
   orch.addClient(h.id, entry.client);
   entry.client.on('ready', () => broadcast('hosts', hostStatus()));
@@ -183,7 +193,16 @@ function connectHost(h: Host) {
   entry.client.start();
 }
 orch.hostBackend = id => remote.get(id)?.backend;
-const hostStatus = () => state.hosts.map(h => ({ ...h, connected: !!remote.get(h.id)?.client.ready }));
+const hostStatus = () => state.hosts.map(h => { const r = remote.get(h.id); return { ...h, connected: !!r?.client.ready, ...(r?.client.ready || !r?.error ? {} : { error: r.error }) }; });
+function friendlyHostError(msg: string, h: Host): string {
+  if (/login\.tailscale\.com|To authenticate/i.test(msg)) return 'Tailscale SSH wants you to approve this Mac again (check mode).';
+  if (/Could not resolve hostname/i.test(msg)) return `Can't find ${h.ssh.split('@').pop()}: is Tailscale running on this Mac?`;
+  if (/Permission denied|publickey/i.test(msg)) return `SSH refused the login as ${h.ssh.split('@')[0]}.`;
+  if (/policy does not permit/i.test(msg)) return `The tailnet policy doesn't allow SSH as ${h.ssh.split('@')[0]}.`;
+  if (/timed out|Connection closed|Connection refused|No route/i.test(msg)) return `Can't reach ${h.name} over SSH right now.`;
+  if (/did not come up/i.test(msg)) return `Hermes didn't start on ${h.name} (see ~/.hermes/gibbous-serve.log there).`;
+  return msg.replace(/^couldn't start Hermes on [^:]+:\s*/, '');
+}
 for (const h of state.hosts) connectHost(h);
 
 // ── auth ────────────────────────────────────────────────────────────────

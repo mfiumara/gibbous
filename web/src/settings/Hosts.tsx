@@ -38,7 +38,7 @@ export function HostsTab() {
         <li key={h.id} className="py-3 flex items-center gap-3 text-sm">
           <Server size={15} className="text-dust" />
           <span className="flex-1 min-w-0"><span className="block font-bold">{h.name}</span><span className="block font-mono text-[12px] text-dust">{h.ssh} · port {h.remotePort}</span></span>
-          <span className="flex items-center gap-1.5 text-[12px]"><span className={`size-1.5 rounded-full ${h.connected ? 'bg-sprout' : 'bg-halo animate-pulse'}`} />{h.connected ? 'connected' : 'connecting'}</span>
+          <span className="flex items-center gap-1.5 text-[12px]" data-tip={!h.connected && h.error ? h.error.message : undefined}><span className={`size-1.5 rounded-full ${h.connected ? 'bg-sprout' : 'bg-halo animate-pulse'}`} />{h.connected ? 'connected' : h.error ? (h.error.link ? <a href={h.error.link} target="_blank" rel="noreferrer" className="text-tide hover:underline">approve in Tailscale</a> : 'can’t connect') : 'connecting'}</span>
           <IconButton label="Test SSH" onClick={() => test(h.id)}><FlaskConical size={14} /></IconButton>
           <IconButton label="Remove host" onClick={() => confirm(`Remove ${h.name}? Its threads stay listed but can't be opened.`) && api.del(`/api/hosts/${h.id}`).catch(toastError)}><Trash2 size={14} /></IconButton>
         </li>

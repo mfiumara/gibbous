@@ -68,7 +68,11 @@ export async function ensureRemoteBackend(host: Host): Promise<Backend> {
   if (await alive(b)) return b;
   // Not running (or started with another token): start a fresh backend with ours.
   const r = await ssh(host, ['bash', '-l', '-s'], startScript(b.token, host.remotePort));
-  if (r.code !== 0) throw new Error(`couldn't start Hermes on ${host.name}: ${r.out.trim().split('\n').pop()}`);
+  if (r.code !== 0) {
+    // Keep Tailscale SSH's check-mode link (printed before ssh's last line) so the app can offer it.
+    const link = /https:\/\/login\.tailscale\.com\/a\/\w+/.exec(r.out)?.[0];
+    throw new Error(`couldn't start Hermes on ${host.name}: ${r.out.trim().split('\n').pop()}${link ? ` (approve: ${link})` : ''}`);
+  }
   for (let i = 0; i < 60; i++) { await new Promise(res => setTimeout(res, 1000)); ensureTunnel(host, b.port); if (await alive(b)) return b; }
   throw new Error(`Hermes on ${host.name} did not come up (see ~/.hermes/gibbous-serve.log there)`);
 }
