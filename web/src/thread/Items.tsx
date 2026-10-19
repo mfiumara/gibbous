@@ -102,10 +102,13 @@ html,body{margin:0;background:transparent;color:var(--foreground);font-family:${
     const size = `<script>(()=>{const s=()=>parent.postMessage({gibbousHeight:document.documentElement.scrollHeight},'*');new ResizeObserver(s).observe(document.documentElement);addEventListener('load',s);s()})()</script>`;
     return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + theme).replace(/<\/body>/i, size + '</body>') + (/<\/body>/i.test(html) ? '' : size) : theme + html + size;
   }, [html]);
+  // A full-window page (a map, an app: html/body at height 100% or 100vh) is as tall as whatever frame it's in, so
+  // measuring it shrinks the frame to nothing. Those get a fixed, roomy frame instead of following their height.
+  const fills = html != null && /(?:^|[^-\w])(?:min-)?height\s*:\s*100(?:%|d?vh)/i.test(html);
   if (html === null) return <p className="text-[12.5px] text-ash">{name} is no longer on disk</p>;
   return <div className="space-y-1 max-w-3xl">
     {html === undefined ? <div className="h-40 rounded-xl border border-line bg-well/40 animate-pulse" />
-      : <iframe ref={frame} title={name} sandbox="allow-scripts allow-popups" srcDoc={doc} style={{ height: h }} className="w-full block rounded-xl border border-line bg-transparent" />}
+      : <iframe ref={frame} title={name} sandbox="allow-scripts allow-popups" srcDoc={doc} style={{ height: fills ? 'min(600px, 70vh)' : h }} className="w-full block rounded-xl border border-line bg-transparent" />}
     <p className="flex items-center gap-1 text-[12px] text-ash font-mono"><span className="truncate flex-1">{name}</span>{download}</p>
   </div>;
 }
