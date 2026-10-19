@@ -2,6 +2,7 @@
 // loopback (desktop mode, token handed over in a private file, never on a command line) and talk to it through
 // an `ssh -L` tunnel. Neither end listens on a public interface.
 import { spawn, type ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import fs from 'node:fs';
@@ -22,12 +23,21 @@ async function alive(b: Backend) {
   try { return (await fetch(`http://127.0.0.1:${b.port}/api/config`, { headers: { 'X-Hermes-Session-Token': b.token }, signal: AbortSignal.timeout(3000) })).ok; } catch { return false; }
 }
 
+// Tailscale SSH in check mode holds the connection open until you approve in a browser: the link is announced the moment
+// it appears (hostNotices 'approve'), and the call gives up after two minutes instead of hanging forever.
+export const hostNotices = new EventEmitter();
 function ssh(host: Host, args: string[], input?: string): Promise<{ code: number; out: string }> {
   return new Promise(resolve => {
     const p = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host.ssh, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
-    let out = '';
-    p.stdout.on('data', d => (out += d)); p.stderr.on('data', d => (out += d));
-    p.on('close', code => resolve({ code: code ?? 1, out }));
+    let out = '', told = false;
+    const seen = (d: Buffer) => {
+      out += d;
+      const link = !told && /https:\/\/login\.tailscale\.com\/a\/\w+/.exec(out)?.[0];
+      if (link) { told = true; hostNotices.emit('approve', host.id, link); }
+    };
+    p.stdout.on('data', seen); p.stderr.on('data', seen);
+    const kill = setTimeout(() => { out += '\nssh: timed out waiting for the host'; p.kill(); }, 120_000);
+    p.on('close', code => { clearTimeout(kill); resolve({ code: code ?? 1, out }); });
     p.stdin.end(input ?? '');
   });
 }

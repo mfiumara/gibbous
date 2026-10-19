@@ -9,7 +9,7 @@ import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ensureBackend, upstreamUrl, restGet, HermesClient, HermesMissing, type Backend } from './hermes.ts';
 import { Installer, detectHermes, hermesVersion, modelState, installerCommand, manualInstallCommand, setupOs, INSTALL_DOCS, type InstallResult, type ModelState } from './setup.ts';
-import { ensureRemoteBackend, closeHost, testHost, findLogin } from './hosts.ts';
+import { ensureRemoteBackend, closeHost, testHost, findLogin, hostNotices } from './hosts.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Host } from './store.ts';
 import * as kanban from './kanban.ts';
@@ -193,6 +193,12 @@ function connectHost(h: Host) {
   entry.client.start();
 }
 orch.hostBackend = id => remote.get(id)?.backend;
+hostNotices.on('approve', (id: string, link: string) => {
+  const r = remote.get(id), h = state.hosts.find(x => x.id === id);
+  if (!r || !h) return;
+  r.error = { message: 'Tailscale SSH wants you to approve this Mac again (check mode).', link };
+  broadcast('hosts', hostStatus());
+});
 const hostStatus = () => state.hosts.map(h => { const r = remote.get(h.id); return { ...h, connected: !!r?.client.ready, ...(r?.client.ready || !r?.error ? {} : { error: r.error }) }; });
 function friendlyHostError(msg: string, h: Host): string {
   if (/login\.tailscale\.com|To authenticate/i.test(msg)) return 'Tailscale SSH wants you to approve this Mac again (check mode).';
