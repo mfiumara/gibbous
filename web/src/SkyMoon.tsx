@@ -66,28 +66,48 @@ function setup(canvas: HTMLCanvasElement, imgs: HTMLImageElement[]) {
 
 const load = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
 
+// Drawn with WebGL into a scratch canvas, then copied onto the visible (2D) canvas and the WebGL context released.
+// A live WebGL context can be taken away at any time (GPU reset, sleep, a video going full screen, or the browser's cap
+// on contexts when a preview page opens its own), and a lost one stays blank: the moon used to vanish that way.
+function paint(target: HTMLCanvasElement, imgs: HTMLImageElement[]): boolean {
+  const scratch = document.createElement('canvas');
+  scratch.width = target.width; scratch.height = target.height;
+  const render = setup(scratch, imgs);
+  if (!render) return false;
+  render();
+  const ctx = target.getContext('2d');
+  if (!ctx) return false;
+  ctx.clearRect(0, 0, target.width, target.height);
+  ctx.drawImage(scratch, 0, 0);
+  (scratch.getContext('webgl') as WebGLRenderingContext | null)?.getExtension('WEBGL_lose_context')?.loseContext();
+  return true;
+}
+
 export function SkyMoon() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined, alive = true, render: (() => void) | null = null;
+    let timer: ReturnType<typeof setInterval> | undefined, alive = true, imgs: HTMLImageElement[] | null = null;
+    const draw = () => { const c = ref.current; if (alive && c && imgs && paint(c, imgs)) c.dataset.ready = ''; };
     const run = async () => {
       const c = ref.current;
-      if (!c || document.documentElement.dataset.skymoon === 'off' || render) return;
-      const imgs = await Promise.all([load('/moon/albedo.webp'), load('/moon/normal.webp')]).catch(() => null);
-      if (!alive || !imgs || render) return;
+      if (!c || document.documentElement.dataset.skymoon === 'off' || imgs) return;
+      const got = await Promise.all([load('/moon/albedo.webp'), load('/moon/normal.webp')]).catch(() => null);
+      if (!alive || !got || imgs) return;
+      imgs = got;
       // Fixed backing size: the moon is a large soft background, 1536px of texture is its real detail ceiling.
       c.width = c.height = Math.min(1536, Math.round(c.clientWidth * Math.min(devicePixelRatio, 2)));
-      render = setup(c, imgs);
-      if (!render) return;
-      render(); c.dataset.ready = '';
-      timer = setInterval(render, 10 * 60_000);   // the tilt turns ~15°/hour as the Moon crosses your sky
-      locate().then(() => alive && render?.());
+      draw();
+      timer = setInterval(draw, 10 * 60_000);   // the tilt turns ~15°/hour as the Moon crosses your sky
+      locate().then(draw);
     };
+    // Back from sleep or a hidden tab: repaint (cheap), in case the canvas was discarded meanwhile.
+    const back = () => { if (document.visibilityState === 'visible') draw(); };
     // Decorative: wait until the app itself is idle.
     const idle = (window as any).requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300));
     idle(run);
     addEventListener('gibbous:prefs', run);
-    return () => { alive = false; clearInterval(timer); removeEventListener('gibbous:prefs', run); };
+    document.addEventListener('visibilitychange', back);
+    return () => { alive = false; clearInterval(timer); removeEventListener('gibbous:prefs', run); document.removeEventListener('visibilitychange', back); };
   }, []);
   return <><canvas ref={ref} aria-hidden className="sky-moon" /><div aria-hidden className="moon-wash" /></>;
 }
