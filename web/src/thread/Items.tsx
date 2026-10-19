@@ -100,10 +100,7 @@ function HtmlPreview({ path: p, name, download }: { path: string; name: string; 
     const cs = getComputedStyle(document.documentElement), v = (n: string) => cs.getPropertyValue(n).trim();
     const theme = `<style>:root{--foreground:${v('--color-moon')};--muted-foreground:${v('--color-dust')};--accent:${v('--color-tide')};--border:${v('--color-line')};--card:${v('--color-crater')};color-scheme:dark}
 html,body{margin:0;background:transparent;color:var(--foreground);font-family:${getComputedStyle(document.body).fontFamily};font-size:14px}
-*{scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.35) transparent}
-::-webkit-scrollbar{width:8px;height:8px;background:transparent}::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
-::-webkit-scrollbar-thumb{background:rgba(128,128,128,.35);border-radius:9999px;border:2px solid transparent;background-clip:padding-box}
-::-webkit-scrollbar-thumb:hover{background-color:rgba(128,128,128,.55)}${fills ? '' : 'html{overflow-y:hidden}'}</style>`;
+*{scrollbar-width:none!important}::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}${fills ? '' : 'html{overflow-y:hidden}'}</style>`;
     const size = `<script>(()=>{const s=()=>parent.postMessage({gibbousHeight:document.documentElement.scrollHeight},'*');new ResizeObserver(s).observe(document.documentElement);addEventListener('load',s);s()})()</script>`;
     return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + theme).replace(/<\/body>/i, size + '</body>') + (/<\/body>/i.test(html) ? '' : size) : theme + html + size;
   }, [html, fills]);
