@@ -37,7 +37,7 @@ export function ThreadBoardCard({ board, rail = false }: { board: NonNullable<Bo
   const lead = running[0] ?? board.tasks[0];
   const toTask = (id?: string) => go(`/kanban/${board.slug}${id ? `?task=${encodeURIComponent(id)}` : ''}`);
   const summary = [running.length && `${running.length} running`, blocked.length && `${blocked.length} blocked`].filter(Boolean).join(' · ');
-  const card = <div className={`group/kb rounded-xl border transition-[background-color,border-color] duration-300 ease-out border-line/70 bg-crater/40 hover:border-ash/40 hover:bg-crater/70`}>
+  const card = <div className="group/kb rounded-xl surface bg-basalt">
     <div className="flex items-center pr-1.5">
       <button onClick={toggle} aria-expanded={open} aria-label={open ? 'Fold board tasks' : 'Show board tasks'} className="press flex-1 min-w-0 flex items-center px-3 py-2 text-left rounded-xl">
         <span className={`grid place-items-center overflow-hidden flex-none transition-[opacity,scale,width,margin] duration-300 ease-out ${open ? 'w-0 mr-0 opacity-0 scale-50' : 'w-4 mr-2.5'}`}><Moon kanban={running.length ? 'running' : 'blocked'} size={10} /></span>
