@@ -21,7 +21,8 @@ export function parse(h: string): Route {
   if (a === 't' && b) return { name: 'thread', id: b };
   if (a === 'board' && b) return { name: 'board', projectId: b };
   if (a === 'kanban') return { name: 'kanban', slug: b || undefined };
-  if (a === 'new') return { name: 'home', projectId: b, host: new URLSearchParams(query).get('host') ?? undefined };
+  // #/new/chat: a new thread outside any project (projectId '' = no project).
+  if (a === 'new') return { name: 'home', projectId: b === 'chat' ? '' : b, host: new URLSearchParams(query).get('host') ?? undefined };
   if (a === 'search') return { name: 'search', q: new URLSearchParams(query).get('q') ?? '' };
   if (a === 'settings') return { name: 'settings', tab: b ?? '' }; // '' = the section list (phones); desktop shows General
   if (a === 'rooms') return { name: 'rooms', id: b };

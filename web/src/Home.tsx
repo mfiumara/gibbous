@@ -47,7 +47,7 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
   });
   const previousSpace = useRef(space);
   useEffect(() => {
-    if (previousSpace.current !== space && !projectId) setPid(scopedProjects[0]?.id ?? '');
+    if (previousSpace.current !== space && projectId == null) setPid(scopedProjects[0]?.id ?? '');
     previousSpace.current = space;
   }, [space, projectId, scopedProjects]);
   const project = projects.find(p => p.id === pid);
@@ -59,12 +59,12 @@ export function Home({ projectId, host: hostParam, onAddProject }: { projectId?:
   const [branches, setBranches] = useState<string[]>([]);
   useEffect(() => { if (hostParam) setHost(hostParam); }, [hostParam]);
   // Each "New" entry point (a project's +, a host's +, the plain New thread) keeps its own unsent text.
-  const [text, setText] = useDraft(`home:${hostParam ? `h:${hostParam}` : projectId ?? 'none'}`);
+  const [text, setText] = useDraft(`home:${hostParam ? `h:${hostParam}` : projectId || 'none'}`);
   const [busy, setBusy] = useState(false);
   const ta = useRef<HTMLTextAreaElement>(null);
   const completions = useCompletions(text, setText, ta);
 
-  useEffect(() => { if (projectId) setPid(projectId); }, [projectId]);
+  useEffect(() => { if (projectId != null) setPid(projectId); }, [projectId]);
   useEffect(() => { localStorage.setItem('gibbous.lastProject', pid); setBase(''); setBranches([]); if (project?.baseBranch) api.get<string[]>(`/api/projects/${pid}/branches`).then(setBranches).catch(() => {}); }, [pid, project?.baseBranch]);
   useEffect(() => { localStorage.setItem('gibbous.worktree', worktree ? '1' : '0'); }, [worktree]);
   // Focus the box when the user asked for a new thread (#/new…: ⌘N, New thread, a project's +). Plain Home (launch, or k

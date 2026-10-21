@@ -475,7 +475,8 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
             </Section>
           );
         })}
-        {loose.length > 0 && <Section id="chats" title="Chats" collapsed={!!collapsed.chats} toggle={toggle}><ThreadList list={loose} activeId={activeId} minute={minute} /></Section>}
+        {loose.length > 0 && <Section id="chats" title="Chats" collapsed={!!collapsed.chats} toggle={toggle}
+          actions={<a href="#/new/chat" onClick={close} data-tip="New chat" aria-label="New chat outside a project" className="press size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-ridge"><Plus size={14} /></a>}><ThreadList list={loose} activeId={activeId} minute={minute} /></Section>}
         {bySource.map(([src, list]) => (
           <Section key={src} id={`src:${src}`} title={sourceLabel(src)} count={list.length} collapsed={!!collapsed[`src:${src}`]} toggle={toggle}>
             <ThreadList list={list} activeId={activeId} minute={minute} />
