@@ -1,7 +1,7 @@
 // Questions the agent asks the user (approval, clarify, sudo/secret). Answered via Gibbous's server,
 // which owns these requests for every thread.
-import { useState } from 'react';
-import { ShieldAlert, HelpCircle, KeyRound } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ShieldAlert, HelpCircle, KeyRound, Plug, Check, ExternalLink } from 'lucide-react';
 import { api, type OpenRequest } from '../api';
 import { toastError, useStore } from '../store';
 import { Button, inputCls, go } from '../ui';
@@ -35,6 +35,8 @@ export function RequestCard({ r, showThread }: { r: OpenRequest; showThread?: bo
       </div>
     </>);
   }
+
+  if (r.method === 'connection') return shell(<Plug size={17} className="text-halo flex-none mt-0.5" />, <Connection r={r} />);
 
   if (r.method === 'clarify') return shell(<HelpCircle size={17} className="text-halo flex-none mt-0.5" />, <Clarify r={r} />);
 
@@ -117,4 +119,51 @@ function SaveLogin({ r }: { r: OpenRequest }) {
     <input type="password" autoComplete="off" placeholder="Password" className={inputCls} value={pw} onChange={e => setPw(e.target.value)} />
     <div className="flex gap-2"><Button size="sm" tone="halo" type="submit" disabled={!pw}>Save and fill</Button><Button size="sm" type="button" onClick={() => answer(r, {})}>Cancel</Button></div>
   </form>;
+}
+
+// Connecting an app (Linear, Gmail…, or installing an MCP server). Hermes holds the agent's turn while this card is
+// open and settles it once the account shows up as connected, every row is skipped, or Continue is pressed.
+type ConnTarget = { name: string; kind: string; action: string; state: string; display?: string | null; detail?: string | null; instructions?: string | null;
+  connect_url?: string | null; description?: string | null; required_env?: { name: string; required: boolean; secret: boolean; default: string; prompt?: string | null }[] | null };
+const STATE: Record<string, string> = { pending: 'Not connected yet', initiated: 'Waiting for you to sign in…', connected: 'Connected', skipped: 'Skipped', failed: 'Failed', expired: 'Link expired', not_connected: 'Not connected' };
+
+function Connection({ r }: { r: OpenRequest }) {
+  const targets: ConnTarget[] = r.params?.targets ?? [];
+  const [env, setEnv] = useState<Record<string, Record<string, string>>>({});
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 15_000); return () => clearInterval(i); }, []);
+  const send = (result: unknown) => { setBusy(true); answer(r, result).finally(() => setBusy(false)); };
+  const row = (t: ConnTarget, status: 'approved' | 'skipped') => send({ respond: { targets: [{ name: t.name, status, ...(status === 'approved' && env[t.name] ? { env: env[t.name] } : {}) }] } });
+  const label = (t: ConnTarget) => t.display || t.name.charAt(0).toUpperCase() + t.name.slice(1);
+  const left = r.params?.deadline_at ? Math.max(0, Math.round((r.params.deadline_at * 1000 - now) / 60_000)) : null;
+  return <div className="space-y-2.5">
+    <p className="text-sm font-bold">Connect {targets.map(label).join(', ')}</p>
+    {targets.map(t => {
+      const open = t.state === 'pending' || t.state === 'initiated';
+      const install = t.kind !== 'connector';
+      return <div key={t.name} className="space-y-1.5 rounded-md border border-line bg-well/50 p-2.5">
+        <div className="flex items-center gap-2 text-[13px]">
+          <span className="font-semibold">{label(t)}</span>
+          <span className={`text-[12px] ${t.state === 'connected' ? 'text-sprout' : t.state === 'failed' || t.state === 'expired' ? 'text-oxide' : 'text-ash'}`}>{t.state === 'connected' && <Check size={12} className="inline -mt-0.5 mr-0.5" />}{STATE[t.state] ?? t.state}</span>
+        </div>
+        {(t.description || t.instructions) && <p className="text-[12.5px] text-dust">{t.instructions || t.description}</p>}
+        {t.detail && t.state !== 'connected' && <p className="text-[12.5px] text-ash">{t.detail}</p>}
+        {install && open && t.state === 'pending' && t.required_env?.map(f =>
+          <input key={f.name} type={f.secret ? 'password' : 'text'} autoComplete="off" placeholder={f.prompt || f.name} defaultValue={f.default} className={inputCls}
+            onChange={e => setEnv(v => ({ ...v, [t.name]: { ...v[t.name], [f.name]: e.target.value } }))} />)}
+        {t.state !== 'connected' && t.state !== 'skipped' && <div className="flex flex-wrap gap-2 pt-0.5">
+          {!install && open && t.connect_url && <a href={t.connect_url} target="_blank" rel="noreferrer" onClick={() => haptic('allow')}
+            className="press inline-flex items-center gap-1.5 h-7 px-3 rounded-md bg-halo text-basalt text-[12.5px] font-semibold">Sign in to {label(t)} <ExternalLink size={12} /></a>}
+          {!install && (t.state === 'failed' || t.state === 'expired') && <Button size="sm" tone="halo" disabled={busy} onClick={() => send({ retry: t.name })}>Try again</Button>}
+          {install && (t.state === 'pending' || t.state === 'failed') && <Button size="sm" tone="halo" disabled={busy} onClick={() => row(t, 'approved')}>{t.state === 'failed' ? 'Try again' : t.action === 'enable' ? 'Enable' : t.action === 'authorize' ? 'Authorize' : 'Install'}</Button>}
+          <Button size="sm" disabled={busy} onClick={() => row(t, 'skipped')}>Not now</Button>
+        </div>}
+      </div>;
+    })}
+    <div className="flex items-center gap-2">
+      <Button size="sm" tone="ghost" disabled={busy} onClick={() => send({ respond: { settled_by: 'continue' } })}>Continue without waiting</Button>
+      {left != null && <span className="text-[11.5px] text-ash">{left > 0 ? `closes in ~${left} min` : 'closing…'}</span>}
+    </div>
+  </div>;
 }

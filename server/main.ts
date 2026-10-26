@@ -653,7 +653,7 @@ route('GET', '/api/sessions/:sid/transcript', async (p, _, u) => {
 });
 
 
-route('POST', '/api/requests/:id/answer', (p, b) => { orch.answer(decodeURIComponent(p.id), b.result); return { ok: true }; });
+route('POST', '/api/requests/:id/answer', async (p, b) => { const r = await orch.answer(decodeURIComponent(p.id), b.result); return { ok: true, ...(r && typeof r === 'object' ? { result: r } : {}) }; });
 
 route('PATCH', '/api/settings', (_, b) => {
   const s = state.settings;

@@ -138,6 +138,7 @@ export class Orchestrator extends EventEmitter {
       this.touch(t, { status: 'needs_input' });
       const what = r.method === 'approval' ? `Approve: ${String(r.params?.command ?? r.params?.description ?? '').slice(0, 120)}`
         : r.method === 'clarify' ? String(r.params?.questions?.[0]?.question ?? 'Question').slice(0, 160)
+        : r.method === 'connection' ? `Connect ${(r.params?.targets ?? []).map((x: any) => x.display ?? x.name).join(', ')}`
         : `Needs ${r.method}`;
       notify({ kind: 'input', title: `⏸ ${t.title}`, body: what, url: `/#/t/${t.id}`, tag: `req-${t.id}` });
     }
@@ -153,9 +154,38 @@ export class Orchestrator extends EventEmitter {
     this.addRequest({ id: frame.id, method: frame.method, params: frame.params, threadId, at: Date.now(), host: host === 'local' ? undefined : host });
   }
 
+  // Connecting an app (manage_connections / CONNECTION_REQUIRED): Hermes opens an "operation" and expects the client to
+  // show a card with the sign-in link; it settles when Hermes sees the account connected, the user skips or continues,
+  // or after ~5 minutes. Gibbous never showed that card, so every connect quietly ran out. It's an open request here,
+  // kept up to date by connection.update and closed when the operation settles.
+  private onConnection(t: Thread, sessionId: string, type: string, p: any) {
+    const id = `conn:${p.op_id}`, r = this.requests.get(id);
+    if (type === 'connection.request') {
+      if (!r) this.addRequest({ id, method: 'connection', params: { ...p, session_id: sessionId, ...(t.profile ? { profile: t.profile } : {}) }, threadId: t.id, at: Date.now(), host: t.host });
+      return;
+    }
+    if (!r) return;
+    if (p.settled) {
+      this.requests.delete(id);
+      this.changed('requests');
+      if (t.status === 'needs_input' && ![...this.requests.values()].some(x => x.threadId === t.id)) this.touch(t, { status: 'running' });
+      return;
+    }
+    r.params = { ...r.params, targets: p.targets ?? r.params.targets, deadline_at: p.deadline_at ?? r.params.deadline_at, seq: p.seq };
+    this.changed('requests');
+  }
+
+  // The card's answers: { respond: ConnectionAnswer } or { retry: name } (a failed or expired sign-in link, re-minted).
+  private async answerConnection(r: OpenRequest, a: any) {
+    const owner = { type: 'session', session_id: r.params.session_id }, profile = r.params.profile ? { profile: r.params.profile } : {};
+    if (a?.retry) return this.cl(r).call('connectors.connect', { connectors: [a.retry], reconnect: true, owner, ...profile });
+    return this.cl(r).call('connection.respond', { op_id: r.params.op_id, result: a?.respond ?? {}, owner, ...profile });
+  }
+
   answer(id: string, result: unknown) {
     const r = this.requests.get(id);
     if (!r) throw new Error('request no longer open');
+    if (r.method === 'connection') return this.answerConnection(r, result);
     this.cl(r).respond(id, result);
     this.requests.delete(id);
     this.changed('requests');
@@ -188,6 +218,7 @@ export class Orchestrator extends EventEmitter {
     const tid = this.byLive.get(ev.session_id);
     const t = tid ? this.thread(tid) : undefined;
     if (!t) return;
+    if (ev.type === 'connection.request' || ev.type === 'connection.update') { this.onConnection(t, ev.session_id, ev.type, ev.payload ?? {}); return; }
     if ((ev.type === 'session.usage' || ev.type === 'message.complete') && ev.payload?.usage) {
       const u = ev.payload.usage;
       t.usage = { tokens: u.total ?? ((u.prompt ?? 0) + (u.completion ?? 0)), costUsd: u.cost_usd ?? t.usage?.costUsd ?? 0 };
