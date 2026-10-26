@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { FolderGit2, FileCode2, SquareTerminal, Gauge, X, ArrowDown, Globe, Activity, MonitorPlay, ChevronLeft, Paperclip, Clock, Bot } from 'lucide-react';
 import { api } from '../api';
 import { HumanTaskCard } from '../HumanTask';
+import { InlineLinear } from '../LinearCard';
 import { ThreadBoardCard, useThreadBoard } from '../kanban/ThreadBoard';
 import { rpcFor, RpcContext, type HermesEvent } from '../rpc';
 import { useStore, toastError } from '../store';
@@ -351,6 +352,7 @@ export function ThreadView({ id }: { id: string }) {
         {dragOver && <div className="absolute inset-2 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-tide/60 bg-basalt/80 backdrop-blur-sm pointer-events-none animate-fade">
           <p className="flex items-center gap-2 text-[15px] text-moon"><Paperclip size={18} className="text-tide" />Drop to attach</p></div>}
         <ThreadHeader thread={thread} tl={tl} panels={panels} panel={panel} setPanel={setPanel} onBranch={branch} onExport={exportThread} />
+        <InlineLinear threadId={thread.id} />
         <HumanTaskCard thread={thread} />
         <InlineBoard threadId={thread.id} />
         {finding && <FindBar root={content} onClose={() => setFinding(false)} version={tl.items.length} />}

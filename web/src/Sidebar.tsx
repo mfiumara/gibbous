@@ -2,6 +2,8 @@ import { LimitsMini } from './Limits';
 import { useCorner } from './corner';
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, History, Settings, ChevronDown, FolderPlus, Archive, Search, ArchiveRestore, Users, Server, Laptop, Pin, PinOff, Pencil, CalendarClock, KanbanSquare, X, ListFilter, Check, MoreHorizontal, ArrowUp, ArrowDown, EyeOff, GripVertical, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Trash2, UserCheck, Layers, Gauge } from 'lucide-react';
+import { LinearState, primaryIssue } from './LinearCard';
+import type { LinearIssue } from '../../server/linear';
 import { useStore, toastError, archiveWithUndo, deleteWithUndo, isUnread, NONE } from './store';
 import { useShallow } from 'zustand/react/shallow';
 import { api, type Thread, type Project, type PrBadge } from './api';
@@ -31,7 +33,13 @@ const prLook: Record<PrBadge['state'], { Icon: typeof GitPullRequest; cls: strin
 const ciLook = { pass: { cls: 'text-sprout', word: 'passed' }, fail: { cls: 'text-oxide', word: 'failing' }, pending: { cls: 'text-[#d29922]', word: 'running' } };
 const kNum = (n: number) => n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
-function PrLine({ pr }: { pr: PrBadge }) {
+// A thread's Linear ticket on its sidebar row: Linear's status glyph and the identifier.
+function IssueMark({ issue }: { issue: LinearIssue }) {
+  return <span className="flex-none inline-flex items-center gap-1 text-[11px] leading-none font-mono text-ash" data-tip={`${issue.identifier} · ${issue.state.name} · ${issue.title}`} aria-label={`Linear ${issue.identifier}, ${issue.state.name}`}>
+    <LinearState state={issue.state} size={10} />{issue.identifier}</span>;
+}
+
+function PrLine({ pr, issue }: { pr: PrBadge; issue?: LinearIssue }) {
   const { Icon, cls, word } = prLook[pr.state];
   const live = pr.state === 'open' || pr.state === 'draft';
   const ci = live && pr.ci ? ciLook[pr.ci] : null;
@@ -48,10 +56,12 @@ function PrLine({ pr }: { pr: PrBadge }) {
             : <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 {pr.ci === 'pass' ? <path d="M1.2 4.3 3.2 6.2 6.8 1.9" /> : <path d="M1.6 1.6l4.8 4.8M6.4 1.6 1.6 6.4" />}</svg>}
           {ci.word}</span></>}
-      <span className="ml-auto pl-2 flex gap-1 text-[10.5px] group-hover:opacity-0 transition-opacity">
+      {issue && <><span aria-hidden className="opacity-50">·</span><IssueMark issue={issue} /></>}
+      {/* With a ticket on the line too there's no room: the +/− counts stay in the PR card. */}
+      {!issue && <span className="ml-auto pl-2 flex gap-1 text-[10.5px] group-hover:opacity-0 transition-opacity">
         {pr.additions > 0 && <span className="text-sprout/85">+{kNum(pr.additions)}</span>}
         {pr.deletions > 0 && <span className="text-oxide/85">−{kNum(pr.deletions)}</span>}
-      </span>
+      </span>}
     </span>
   );
 }
@@ -98,6 +108,7 @@ const ThreadLink = memo(function ThreadLink({ t, active, drag }: { t: Thread; ac
   const pr = useStore(s => s.prs[t.id]);
   const prs = useStore(s => s.threadPrs[t.id] ?? NONE);
   const ci = aggregateCi(prs);
+  const issue = useStore(s => { const l = s.threadLinear[t.id]; return l?.length ? primaryIssue(l) : undefined; });
   const archived = t.status === 'archived';
   const spaces = useStore(s => s.settings?.spaces ?? NONE);
   const openTasks = humanTasks(t).filter(x => x.doneAt == null).length;
@@ -137,11 +148,12 @@ const ThreadLink = memo(function ThreadLink({ t, active, drag }: { t: Thread; ac
         <Moon thread={t.status === 'idle' && subsBusy ? 'running' : t.status} size={9} />
         <span className={`truncate flex-1 ${unread ? 'font-bold text-moon' : ''}`}>{t.title}</span>
         {/* Tasks stay in their thread; the row only says how many wait on you. */}
+        {issue && !pr && !(prs.length > 1) && <IssueMark issue={issue} />}
         {openTasks > 0 && <span className="flex-none inline-flex items-center gap-0.5 text-[11px] text-tide tabular-nums" data-tip={`${openTasks} for you to do`} aria-label={`${openTasks} tasks for you`}><UserCheck size={11} />{openTasks}</span>}
         {unread && <span className="size-1.5 rounded-full bg-tide flex-none"><span className="sr-only">unread</span></span>}
         {t.pinned && <Pin size={11} className="text-ash flex-none" aria-label="pinned" />}
         <span className="text-[11px] text-ash group-hover:opacity-0 transition-opacity">{ago(t.updatedAt)}</span>
-        {prs.length > 1 ? <span className="basis-full pl-[19px] h-4 text-[11px] text-ash flex items-center gap-1.5" data-tip="Pull requests created by this thread · open the thread to see all"><GitPullRequest size={10} />PR ×{prs.length}<CiDot ci={ci} /></span> : pr && <PrLine pr={pr} />}
+        {prs.length > 1 ? <span className="basis-full pl-[19px] h-4 text-[11px] text-ash flex items-center gap-1.5" data-tip="Pull requests created by this thread · open the thread to see all"><GitPullRequest size={10} />PR ×{prs.length}<CiDot ci={ci} />{issue && <><span aria-hidden className="opacity-50">·</span><IssueMark issue={issue} /></>}</span> : pr && <PrLine pr={pr} issue={issue} />}
       </a>
       <button onClick={toggleArchive} aria-label={archived ? `Unarchive ${t.title}` : `Archive ${t.title}`} data-tip={archived ? 'Unarchive' : 'Archive'}
         className="absolute right-1.5 top-1/2 -translate-y-1/2 size-6 grid place-items-center rounded-md text-ash hover:text-moon hover:bg-line/60 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity pointer-coarse:hidden">

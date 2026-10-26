@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { api, ApiError, type PrBadge, type Project, type Thread, type Settings, type OpenRequest, type Host } from './api';
 import { rpc } from './rpc';
+import type { LinearIssue } from '../../server/linear';
 import { showsTarget } from './notify';
 import { inIosApp, iosNotify, iosNativeBanners } from './iosBridge';
 import type { Service } from './paths';
@@ -22,6 +23,7 @@ interface S {
   build?: string | null; // web build the server serves now (see LOADED_BUILD)
   prs: Record<string, PrBadge>; // compatibility: most relevant PR
   threadPrs: Record<string, PrBadge[]>;
+  threadLinear: Record<string, LinearIssue[]>;
   busyThreads: string[];   // idle threads whose subagents are still working
   platform?: string; service?: Service; // the server's OS: per-OS copy ("this PC") and its restart command
   toasts: Toast[];
@@ -49,7 +51,7 @@ const upsert = <T extends { id: string }>(list: T[], item: T, front = false) => 
 let toastId = 0;
 export const useStore = create<S>((set, get) => ({
   loaded: false, authed: null, connected: false, serverUp: false, setupLog: [],
-  projects: [], threads: [], requests: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {}, threadPrs: {}, busyThreads: [],
+  projects: [], threads: [], requests: [], hosts: [], hermesReady: false, tailnetUrl: null, tailnetLogin: null, vapidPublicKey: '', prs: {}, threadPrs: {}, threadLinear: {}, busyThreads: [],
   toasts: [], sidebar: false, palette: false,
   activeSpace: localStorage.getItem('gibbous.activeSpace') ?? '',
   setActiveSpace(id) { localStorage.setItem('gibbous.activeSpace', id); set({ activeSpace: id }); },
@@ -135,6 +137,7 @@ rpc.onGibbous = (kind, data) => {
     case 'hosts': useStore.setState({ hosts: data }); break;
     case 'prs': useStore.setState({ prs: data }); break;
     case 'threadPrs': useStore.setState({ threadPrs: data }); break;
+    case 'threadLinear': useStore.setState({ threadLinear: data }); break;
     case 'busyThreads': useStore.setState({ busyThreads: data }); break;
     case 'settings': useStore.setState({ settings: data }); break;
     case 'hermes': useStore.setState({ hermesReady: data.ready }); break;

@@ -5,6 +5,7 @@ import { Menu, Moon, Fold } from './ui';
 import { aggregateCi, overviewCollapsed, overviewMode, stackRows } from './prOverview';
 import { useStore, NONE } from './store';
 import { HumanTaskCard } from './HumanTask';
+import { LinearCard } from './LinearCard';
 import { humanTasks } from '../../server/humanTasks';
 import type { PrBadge } from './api';
 import type { CiState } from '../../server/git';
@@ -76,10 +77,11 @@ export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelO
   useEffect(() => { setOpen(false); }, [mode]);
   const hasTasks = !!thread && humanTasks(thread).some(t => t.doneAt == null);
   const board = useThreadBoard(threadId);
+  const linear = useStore(s => s.threadLinear[threadId] ?? NONE);
   // Wide screens: the right gutter holds the PR card and, under it, the thread's "For me" tasks.
   if (!prs.length) return <div ref={anchor} data-pr-overview data-mode={mode} className="flex-none">
-    {mode === 'card' && (hasTasks || board) && <div data-rail className="absolute right-3 top-[calc(100%+12px)] w-[300px] flex flex-col gap-3">
-      {hasTasks && <HumanTaskCard thread={thread!} rail />}{board && <ThreadBoardCard board={board} rail />}</div>}
+    {mode === 'card' && (hasTasks || board || linear.length > 0) && <div data-rail className="absolute right-3 top-[calc(100%+12px)] w-[300px] flex flex-col gap-3">
+      {linear.length > 0 && <LinearCard issues={linear} rail />}{hasTasks && <HumanTaskCard thread={thread!} rail />}{board && <ThreadBoardCard board={board} rail />}</div>}
   </div>;
   const body = <PrList prs={prs} compact/>;
   const heading = <><GitPullRequest size={13}/><span className="flex-1 text-left">Pull requests</span><span className="text-ash tabular-nums">{prs.length}</span><CiDot ci={aggregateCi(prs)}/><ChevronDown size={12} className={`transition-transform duration-300 ease-out ${collapsed ? '-rotate-90' : ''}`}/></>;
@@ -89,6 +91,7 @@ export function PullRequestOverview({threadId,panelOpen}:{threadId:string;panelO
         <button aria-label={collapsed ? 'Expand pull requests' : 'Collapse pull requests'} aria-expanded={!collapsed} onClick={toggleCollapse} className="press w-full flex items-center gap-2 px-3.5 py-3 text-[12px] text-dust hover:text-moon">{heading}</button>
         <Fold open={!collapsed}>{body}</Fold>
       </section>
+      {linear.length > 0 && <LinearCard issues={linear} rail />}
       {hasTasks && <HumanTaskCard thread={thread!} rail />}
       {board && <ThreadBoardCard board={board} rail />}
     </div> : <div className="relative">

@@ -33,6 +33,7 @@ import { sessionDirs } from './sessionDirs.ts';
 import { foreignOrigins } from './foreignOrigins.ts';
 import { openingMessage } from './titles.ts';
 import { liveBranch, prBadges, threadPrs, refreshPrs } from './prs.ts';
+import { threadLinear, refreshLinear } from './linear.ts';
 import { MAX_QUEUE, MAX_TEXT as MAX_QUEUE_TEXT } from './queue.ts';
 import { sys, isInside, badFolderName, downloadsDir, revealCommand, launch, mediaAllowed, serviceInfo, exitSignals, hermesHome, knownHermesBins } from './platform.ts';
 
@@ -274,7 +275,7 @@ function publicState() {
     requests: [...orch.requests.values()], hermes: { ready: hc.ready, port: backend?.port, ...health, ...setupPublic() },
     tailnetUrl: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}` : null,
     tailnetLogin: ts.host ? `https://${ts.host}:${process.env.GIBBOUS_TS_PORT ?? 8444}/login?token=${secret.accessToken}` : null,
-    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(), threadPrs: threadPrs(), busyThreads: busy,
+    vapidPublicKey: vapidPublicKey(), apns: apnsStatus(), build: webBuild(), prs: prBadges(), threadPrs: threadPrs(), threadLinear: threadLinear(), busyThreads: busy,
     platform: process.platform, service: serviceInfo(), // per-OS copy in the web app ("this Mac", restart command)
   };
 }
@@ -911,6 +912,10 @@ setInterval(pollBusy, 5000).unref?.(); setTimeout(pollBusy, 2000);
 const pollPrs = () => refreshPrs((b, lists) => { broadcast('prs', b); broadcast('threadPrs', lists); }).catch(e => console.error('[prs]', e));
 setTimeout(pollPrs, 3000);
 setInterval(pollPrs, 60_000);
+// Linear tickets per thread: every 2 minutes (one GraphQL query through the user's Hermes Linear connection).
+const pollLinear = () => refreshLinear(lists => broadcast('threadLinear', lists));
+setTimeout(pollLinear, 8000);
+setInterval(pollLinear, 120_000);
 setInterval(() => orch.reconcileRunning().catch(e => console.error('[reconcile]', e)), 30_000);
 notifications.on('notify', n => broadcast('notify', n));
 hc.on('ready', () => { broadcast('hermes', { ready: true }); pollHealth(true); setSetup({ installed: true, error: undefined }); checkModel(); }); // after `hermes update`, serve restarts
