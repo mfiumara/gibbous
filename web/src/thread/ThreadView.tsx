@@ -360,6 +360,9 @@ export function ThreadView({ id }: { id: string }) {
         <div ref={scroller} data-pane="doc" tabIndex={-1} onWheel={markGesture} onTouchMove={markGesture} onPointerDown={markGesture} onKeyDown={markGesture} onScroll={e => {
             // Only scrolling *up* stops following; growth, scroll anchoring and smooth-scrolls down never do.
             const el = e.currentTarget, b = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            // overflow-x: hidden still lets focus/scrollIntoView shift it sideways, sliding the whole conversation off
+            // to the left with no way back. The transcript never scrolls sideways (wide content scrolls in its own box).
+            if (el.scrollLeft) el.scrollLeft = 0;
             // Layout changes (a growing composer, content settling) can move scrollTop too; only a real gesture unfollows.
             // Any upward gesture lets go at once, even inside the 80px "at the bottom" zone: otherwise the first flick
             // up got pulled back by the next output or resize and scrolling seemed to stall until a second try.

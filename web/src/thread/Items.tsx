@@ -225,8 +225,12 @@ export const ToolRow = memo(function ToolRow({ item, cwd }: { item: Extract<Item
   const inner = item.name === 'tool_call' && Array.isArray(item.args?.calls) ? item.args.calls as { name?: string; arguments?: Record<string, unknown> }[] : undefined;
   // MCP tools arrive as mcp__<server>__<tool> (also inside tool_call): show the tool, badge the server.
   const raw = inner ? inner.map(c => c.name ?? '?') : [item.name];
-  const mcp = raw.map(n => /^mcp__([^_]+(?:_[^_]+)*?)__(.+)$/.exec(n)).find(Boolean);
-  const name = raw.map(n => n.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, '')).join(', ');
+  // App connectors arrive as connectors__<app>__<ACTION>: same treatment, the app as the badge.
+  const mcp = raw.map(n => /^(?:mcp|connectors)__([^_]+(?:_[^_]+)*?)__(.+)$/.exec(n)).find(Boolean);
+  // A batch of the same call reads "CREATE_LINEAR_ISSUE ×7", not the name seven times (that row once ran ~1700px wide).
+  const counted = new Map<string, number>();
+  for (const n of raw.map(n => n.replace(/^(?:mcp|connectors)__[^_]+(?:_[^_]+)*?__/, ''))) counted.set(n, (counted.get(n) ?? 0) + 1);
+  const name = [...counted].map(([n, k]) => k > 1 ? `${n} ×${k}` : n).join(', ');
   const args = inner?.length === 1 ? inner[0].arguments : item.args;
   const Icon = toolIcon(name);
   const cmd = typeof args?.command === 'string' ? args.command : undefined;
@@ -241,7 +245,7 @@ export const ToolRow = memo(function ToolRow({ item, cwd }: { item: Extract<Item
         className="press w-[calc(100%+0.75rem)] flex items-center gap-2 py-1 px-1.5 -mx-1.5 text-left text-[13px] text-dust hover:text-moon hover:bg-crater/70 rounded-md">
         <ChevronRight size={13} className={`flex-none text-ash transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
         <Icon size={14} className={`flex-none ${item.status === 'running' ? 'text-tide animate-pulse' : item.status === 'error' ? 'text-oxide' : ''}`} />
-        <span className="font-mono text-moon/90 flex-none">{name}</span>
+        <span className="font-mono text-moon/90 truncate min-w-0 max-w-[70%] flex-none" title={name}>{name}</span>
         {mcp && <span className="label text-[9px] text-ash flex-none">{mcp[1]}</span>}
         <span className="font-mono truncate min-w-0 text-ash group-hover:text-dust transition-colors">{detail}</span>
         {item.status === 'running' && <span className="ml-auto pl-2 flex-none flex items-center"><Moon thread="running" size={9} /></span>}
