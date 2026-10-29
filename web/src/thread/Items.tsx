@@ -9,6 +9,8 @@ import { DiffView } from '../panels/DiffView';
 import { Moon, viewMedia, saveMedia, routeNow, Menu, MenuItem } from '../ui';
 import { addReplyTask } from '../HumanTask';
 import { forkThread } from '../fork';
+import { api } from '../api';
+import { useStore, toastError } from '../store';
 import { baseName } from '../paths';
 
 // Local file paths (attachments, generated images) load through the authenticated image route.
@@ -51,13 +53,48 @@ function withBreaks(children: ReactNode): ReactNode {
     : c.split(/<br\s*\/?>/gi).flatMap((part, i) => i ? [<br key={i} />, part] : [part]));
 }
 
-export const Markdown = memo(function Markdown({ text: live, taskThread }: { text: string; taskThread?: string }) {
+// One task-list row: the box (replacing GFM's disabled input) and its text, struck through when done.
+// Whether the Markdown itself says "- [x]" (the hast li's first input).
+const taskChecked = (node: any): boolean => {
+  const find = (n: any): any => n?.tagName === 'input' ? n : (n?.children ?? []).reduce((f: any, c: any) => f ?? find(c), undefined);
+  return !!find(node)?.properties?.checked;
+};
+function TaskBox({ threadId, initial, children }: { threadId: string; initial: boolean; children: ReactNode }) {
+  const key = taskKey(nodeText(children));
+  // Server list holds what you changed: ticked keys, and "!"-prefixed keys for boxes the text ticked that you unticked.
+  const mine = useStore(s => s.threads.find(t => t.id === threadId)?.checked);
+  const on = mine?.includes(key) ? true : mine?.includes('!' + key) ? false : initial;
+  const rest = children;
+  const toggle = () => api.patch(`/api/threads/${threadId}`, { check: { key: initial ? '!' + key : key, on: initial ? on : !on } })
+    .then((t: any) => useStore.setState(s => ({ threads: s.threads.map(x => x.id === t.id ? t : x) }))).catch(toastError);
+  // Only the box toggles: the text stays selectable and its links and code clickable.
+  return <div className={`task-row ${on ? 'is-done' : ''}`}>
+    <input type="checkbox" className="task-check" checked={on} onChange={toggle} aria-label={on ? 'Mark not done' : 'Mark done'} />
+    <div className="task-body">{rest}</div>
+  </div>;
+}
+// Stable across reloads and devices: the step's own words (not a row id, which differs between live and history).
+function taskKey(text: string) {
+  let h = 5381; const s = text.trim().replace(/\s+/g, ' ').slice(0, 400);
+  for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) >>> 0;
+  return `t${h.toString(36)}${s.length.toString(36)}`;
+}
+
+export const Markdown = memo(function Markdown({ text: live, taskThread, checkThread }: { text: string; taskThread?: string; checkThread?: string }) {
   const text = useDeferredValue(live);
   const action = (children: ReactNode) => taskThread ? <button type="button" aria-label="Add to For me" className="reply-task-action press" onClick={e => { e.stopPropagation(); addReplyTask(taskThread, nodeText(children)); }}>+ For me</button> : null;
   return <div className="prose-moon"><ReactMarkdown remarkPlugins={MD_PLUGINS.remark} rehypePlugins={MD_PLUGINS.rehype}
     components={{
       p: ({ node: _n, children, ...p }) => <p {...p} className={taskThread ? 'reply-task-line' : undefined}>{children}{action(children)}</p>,
-      li: ({ node: _n, children, ...p }) => <li {...p} className={taskThread ? 'reply-task-line' : undefined}>{children}{action(children)}</li>,
+      // GFM task lists ("- [ ] step"): real checkboxes you can tick, remembered per thread on the server (every device).
+      li: ({ node: _n, children, ...p }) => {
+        const task = String(p.className ?? '').includes('task-list-item');
+        if (task && checkThread) return <li {...p} className={`task-item ${taskThread ? 'reply-task-line' : ''}`}><TaskBox threadId={checkThread} initial={taskChecked(_n)} children={children} />{action(children)}</li>;
+        return <li {...p} className={`${task ? 'task-item' : ''} ${taskThread ? 'reply-task-line' : ''}`.trim() || undefined}>{children}{action(children)}</li>;
+      },
+      // GFM's own (disabled) box: TaskBox draws a working one instead.
+      input: ({ node: _n, ...p }) => p.type === 'checkbox' && checkThread ? null : <input {...p} />,
+      ul: ({ node: _n, children, ...p }) => <ul {...p} className={String(p.className ?? '').includes('contains-task-list') ? 'task-list' : p.className}>{children}</ul>,
       // Links into Gibbous's own file routes open in the viewer: a new window would be a browser without the session.
       a: ({ node: _n, ...p }) => /^\/api\/(media|image)\?/.test(String(p.href ?? ''))
         ? <a {...p} onClick={e => { e.preventDefault(); viewMedia(String(p.href), baseName(new URLSearchParams(String(p.href).split('?')[1]).get('path') ?? '')); }} />
@@ -165,7 +202,7 @@ export const AssistantMessage = memo(function AssistantMessage({ item, endOfTurn
   return (
     <div className={`group/msg relative ${item.streaming ? 'caret' : ''}`} onContextMenu={e => { const text = lineText(e.target); if (text && taskThread) { e.preventDefault(); setTaskMenu(text); } }}
       onTouchStart={e => { const text = lineText(e.target); if (text && taskThread) press.current = setTimeout(() => setTaskMenu(text), 500); }} onTouchMove={cancelPress} onTouchEnd={cancelPress} onTouchCancel={cancelPress}>
-      <Markdown text={rest} taskThread={taskThread} />
+      <Markdown text={rest} taskThread={taskThread} checkThread={taskThread} />
       <Menu open={!!taskMenu} onClose={() => setTaskMenu(undefined)}><MenuItem icon={<ListTodo />} onClick={() => { if (taskThread && taskMenu) addReplyTask(taskThread, taskMenu); setTaskMenu(undefined); }}>Add to For me</MenuItem>
         <MenuItem icon={<GitFork />} onClick={() => { setTaskMenu(undefined); if (taskThread) forkThread(taskThread, rowOf(item.id)); }}>Fork from here</MenuItem></Menu>
       {media.length > 0 && <div className="mt-3 space-y-2">{media.map(m => <MediaCard key={m} path={m} />)}</div>}

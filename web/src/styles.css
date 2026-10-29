@@ -203,6 +203,21 @@ li p > .reply-task-action, table .reply-task-action, pre .reply-task-action { di
   .prose-moon h1 { font-size: 1.24em; } .prose-moon h2 { font-size: 1.12em; } .prose-moon h3 { font-size: 1em; }
   .prose-moon ul { list-style: disc; padding-left: 1.3em; } .prose-moon ol { list-style: decimal; padding-left: 1.4em; }
   .prose-moon li + li { margin-top: .22em; } .prose-moon li::marker { color: var(--color-ash); }
+  /* Task lists: a box instead of the bullet, the text hanging next to it, ticked steps struck through and dimmed. */
+  .prose-moon ul.task-list { list-style: none; padding-left: .1em; }
+  .prose-moon li.task-item { list-style: none; }
+  .prose-moon li.task-item::marker { content: none; }
+  .prose-moon .task-row { display: flex; align-items: flex-start; gap: .55em; }
+  .prose-moon .task-body { min-width: 0; flex: 1; }
+  .prose-moon .task-body > p:first-child { margin-top: 0; }
+  .prose-moon .task-row.is-done .task-body { color: var(--color-ash); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--color-ash) 70%, transparent); }
+  .prose-moon .task-row.is-done .task-body pre { text-decoration: none; opacity: .6; }
+  .prose-moon .task-check { appearance: none; flex: none; width: 1.05em; height: 1.05em; margin-top: .27em; border-radius: .3em; border: 1.5px solid var(--color-ash); background: transparent; cursor: pointer; display: grid; place-items: center; transition: background-color .15s, border-color .15s; }
+  .prose-moon .task-check:hover { border-color: var(--color-dust); }
+  .prose-moon .task-check:checked { background: var(--color-tide); border-color: var(--color-tide); }
+  .prose-moon .task-check:checked::after { content: ""; width: .32em; height: .58em; margin-top: -.12em; border: solid var(--color-basalt); border-width: 0 .14em .14em 0; transform: rotate(45deg); }
+  .prose-moon .task-check:focus-visible { outline: 2px solid var(--color-tide); outline-offset: 2px; }
+  .prose-moon li.task-item > input[type=checkbox] { margin-right: .5em; }
   .prose-moon a { color: var(--color-tide); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--color-tide) 40%, transparent); text-underline-offset: 3px; transition: text-decoration-color .15s; }
   .prose-moon a:hover { text-decoration-color: var(--color-tide); }
   .prose-moon blockquote { border-left: 2px solid var(--color-line); padding-left: .9em; color: var(--color-dust); }

@@ -405,6 +405,13 @@ route('PATCH', '/api/threads/:id', (p, b) => {
   if ('space' in b) { try { assignSpace(t, b.space, state.settings.spaces); } catch (e) { throw new HttpError(400, (e as Error).message); } }
   if ('pinned' in b) t.pinned = b.pinned ? true : undefined;
   if (b.status === 'idle' && t.status === 'archived') t.status = 'idle';
+  // Tick / untick a task-list box in a reply: { check: { key, on } }. Newest last, capped.
+  if (b.check && typeof b.check.key === 'string') {
+    const key = b.check.key.slice(0, 80), rest = (t.checked ?? []).filter(k => k !== key);
+    t.checked = b.check.on ? [...rest, key].slice(-500) : rest;
+    if (!t.checked.length) t.checked = undefined;
+    save(); orch.changed('thread', t); return t;   // not activity: no updatedAt bump, no unread
+  }
   save(); orch.changed('thread', t); return t;
 });
 route('POST', '/api/threads/:id/attach', async p => ({ session_id: await orch.withLive(need(orch.thread(p.id), 'thread'), async sid => {

@@ -73,6 +73,7 @@ export interface Thread {
   // Prompts typed while a turn runs (queue.ts): the server sends the head when a turn ends. A Stop pauses the line.
   queue?: QueueItem[]; queuePaused?: boolean;
   seenAt?: number;  // last time you looked at it on any device; newer activity = unread
+  checked?: string[];  // task-list boxes ticked in replies (keys from the web: hash of the item's text), synced across devices
   space?: string;   // a chat without a project can sit in a space too (a project's chats follow the project)
   // Messages already handed to Hermes' own queue (with images) until the running turn ends: shown on every device.
   held?: { id: string; shown: string; at: number }[];
