@@ -50,19 +50,25 @@ function Term({ thread, name, active, onExit, controls }: { thread: Thread; name
       t.loadAddon(fit);
       t.open(el.current);
       const sendSize = () => ws.current?.readyState === 1 && ws.current.send('\x00' + JSON.stringify({ resize: { cols: t.cols, rows: t.rows } }));
+      let replaying = 0;
       const connect = () => {
         const s = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/pty?thread=${thread.id}&name=${encodeURIComponent(name)}`);
         ws.current = s;
+        let first = true;
         s.onopen = () => { fit.fit(); sendSize(); onExit(null); };
         s.onmessage = e => {
           const d = String(e.data);
           if (d.startsWith('\x00')) { try { const m = JSON.parse(d.slice(1)); if (m.exit != null) { onExit(m.exit); t.write(`\r\n\x1b[2m── exited with code ${m.exit} ──\x1b[0m\r\n`); } } catch {} return; }
+          // The first message on a reattach is the replayed history. It holds queries a program asked long ago (the
+          // shell's mode/colour/device probes); xterm answers them again, and those answers landed in the live prompt as
+          // "69;0$y2026;2$y…rgb:0000/0000/0000…1;2c". Answers produced while the replay is being drawn are dropped.
+          if (first) { first = false; replaying++; t.write(d, () => { replaying--; }); return; }
           t.write(d);
         };
         s.onclose = e => { if (!closed && e.code !== 4001) setTimeout(connect, 1500); };
       };
       connect();
-      const data = t.onData(d => ws.current?.readyState === 1 && ws.current.send(d));
+      const data = t.onData(d => { if (replaying && d.startsWith('\x1b')) return; if (ws.current?.readyState === 1) ws.current.send(d); });
       const ro = new ResizeObserver(() => { try { fit.fit(); sendSize(); } catch {} });
       ro.observe(el.current);
       // Follow night/light switches live.
