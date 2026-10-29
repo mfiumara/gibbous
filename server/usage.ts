@@ -3,6 +3,7 @@
 // server's local timezone. Results are cached for a minute per range.
 import type { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
+import os from 'node:os';
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { openStateDb } from './subagents.ts';
@@ -21,13 +22,19 @@ export interface UsageModel extends UsageStats { id: string; label: string; prov
 export interface UsageDay { day: string; tokens: number; costUsd: number | null; sessions: number; byModel: Record<string, number> }
 export interface UsageGroup extends UsageStats { key: string; label: string }
 export interface UsageThread extends UsageStats { threadId: string; title: string }
+// One cell per (model, project, where it ran, profile): the Usage page groups, splits and filters these in the browser.
+export interface UsageCell { model: string; project: string; source: string; profile: string; tokens: number; costUsd: number; priced: boolean; sessions: number }
 export interface UsageReport {
   days: number | null; since: number | null; generatedAt: number;
   totals: UsageStats & { cacheHitRate: number | null };
   models: UsageModel[]; daily: UsageDay[]; sources: UsageGroup[]; profiles: UsageGroup[]; threads: UsageThread[];
+  cells: UsageCell[];
+  labels: { model: Record<string, string>; project: Record<string, string>; source: Record<string, string>; profile: Record<string, string> };
 }
 export interface UsageDb { profile: string; db: DatabaseSync }
-export interface UsageThreadRef { id: string; title: string; sessionId: string }
+export interface UsageThreadRef { id: string; title: string; sessionId: string; projectId?: string; projectName?: string }
+// Project keys for sessions with no project: a Gibbous thread outside any project, or a session no thread owns.
+export const NO_PROJECT = '-chats', OUTSIDE = '-outside', OTHER_DIRS = '-other';
 
 const empty = (): UsageStats => ({ sessions: 0, apiCalls: 0, toolCalls: 0, messages: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, tokens: 0, costUsd: null, includedUsd: 0, pricedSessions: 0 });
 
@@ -35,6 +42,7 @@ interface Row {
   id: string; source: string; model: string | null; provider: string | null; parent: string | null; delegated: number;
   started: number; messages: number; tools: number; api: number; input: number; output: number;
   cacheRead: number; cacheWrite: number; reasoning: number; est: number | null; status: string | null;
+  dir?: string | null;   // the repo (or folder) it worked in, for sessions no Gibbous thread owns
 }
 
 // Sessions that never did anything (most editor/ACP probes) are left out entirely.
@@ -43,7 +51,7 @@ const SQL = `SELECT id, source, model, billing_provider AS provider, parent_sess
   COALESCE(message_count, 0) AS messages, COALESCE(tool_call_count, 0) AS tools, COALESCE(api_call_count, 0) AS api,
   COALESCE(input_tokens, 0) AS input, COALESCE(output_tokens, 0) AS output, COALESCE(cache_read_tokens, 0) AS cacheRead,
   COALESCE(cache_write_tokens, 0) AS cacheWrite, COALESCE(reasoning_tokens, 0) AS reasoning,
-  estimated_cost_usd AS est, cost_status AS status
+  estimated_cost_usd AS est, cost_status AS status/*DIR*/
 FROM sessions WHERE started_at >= ? AND (COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) + COALESCE(cache_read_tokens, 0) > 0 OR COALESCE(message_count, 0) > 0)`;
 const PARENTS = `SELECT id, parent_session_id AS parent FROM sessions WHERE parent_session_id IS NOT NULL`;
 // A long-lived session (a Discord chat, a supervisor) runs for weeks and can switch models. Hermes keeps per-model totals
@@ -152,7 +160,9 @@ export function loadRows(dbs: UsageDb[]): UsageRows[] {
   const out: UsageRows[] = [];
   for (const { profile, db } of dbs) {
     try {
-      const rows = db.prepare(SQL).all(0) as unknown as Row[];
+      let rows: Row[];
+      try { rows = db.prepare(SQL.replace('/*DIR*/', ", COALESCE(NULLIF(git_repo_root, ''), cwd) AS dir")).all(0) as unknown as Row[]; }
+      catch { rows = db.prepare(SQL).all(0) as unknown as Row[]; }   // older databases: no cwd / git_repo_root
       let pieces: ModelPiece[] = [], activity: { id: string; hour: number; n: number }[] = [];
       try { pieces = db.prepare(MODEL_USAGE).all() as unknown as ModelPiece[]; } catch { /* no per-model table yet */ }
       try { activity = db.prepare(ACTIVITY).all() as unknown as typeof activity; } catch { /* no messages index/table */ }
@@ -162,11 +172,40 @@ export function loadRows(dbs: UsageDb[]): UsageRows[] {
   return out;
 }
 
-export function computeUsage(sets: UsageRows[], threads: UsageThreadRef[], days: number | null, now = Date.now()): UsageReport {
+export interface UsageProjectRef { id: string; name: string; path: string }
+// Sessions no thread owns (kanban workers, cron, Discord, the CLI) still worked somewhere: a Gibbous project's folder or a
+// worktree of it counts as that project; another repo shows under its own name; a kanban worker (no folder of its own)
+// under its board, from its profile ("spice-ts-engineer" → spice-ts); scratch and temp folders are "Other folders".
+const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, '');
+export function projectOf(dir: string | null | undefined, projects: UsageProjectRef[], home = '', profile = '', boards: string[] = []): { key: string; label?: string } {
+  const named = (name: string) => {
+    const p = projects.find(x => norm(x.name) === norm(name) || norm(path.basename(x.path)) === norm(name));
+    return p ? { key: p.id } : { key: `dir:${name}`, label: name };
+  };
+  const h = home.replace(/\/+$/, ''), d = (dir ?? '').replace(/\/+$/, '');
+  if (!d || d === h) {
+    const board = boards.filter(b => profile === b || profile.startsWith(b + '-')).sort((a, b) => b.length - a.length)[0];
+    return board ? named(board) : { key: OUTSIDE };
+  }
+  let best: UsageProjectRef | undefined;
+  for (const p of projects) { const pp = p.path.replace(/\/+$/, ''); if ((d === pp || d.startsWith(pp + '/')) && (!best || pp.length > best.path.length)) best = p; }
+  if (best) return { key: best.id };
+  const wt = /\/\.gibbous\/worktrees\/([^/]+)/.exec(d)?.[1];
+  if (wt) return named(wt);
+  const repo = /\/repos\/([^/]+)/.exec(d)?.[1];
+  if (repo) return named(repo);
+  const under = h && d.startsWith(h + '/') ? d.slice(h.length + 1).split('/')[0] : '';
+  if (!under || under.startsWith('.') || /^(tmp|temp|Library|Downloads|Desktop)$/i.test(under)) return { key: OTHER_DIRS };
+  return named(under);
+}
+
+export function computeUsage(sets: UsageRows[], threads: UsageThreadRef[], days: number | null, now = Date.now(), projects: UsageProjectRef[] = [], home = '', boards: string[] = []): UsageReport {
   const since = rangeStart(days, now);
   const totals = empty();
   const models = new Map<string, UsageModel>(), sources = new Map<string, UsageGroup>(), profiles = new Map<string, UsageGroup>();
   const perThread = new Map<string, UsageThread>(), daily = new Map<string, UsageDay>();
+  const cells = new Map<string, UsageCell>(), cellIds = new Map<string, Set<string>>();
+  const projectLabels: Record<string, string> = { [NO_PROJECT]: 'Chats (no project)', [OUTSIDE]: 'No folder', [OTHER_DIRS]: 'Other folders' };
   const bySession = new Map(threads.filter(t => t.sessionId).map(t => [t.sessionId, t]));
   let first = Infinity;
   for (const { profile, rows, parents } of sets) {
@@ -194,6 +233,16 @@ export function computeUsage(sets: UsageRows[], threads: UsageThreadRef[], days:
         if (!t) perThread.set(thread.id, t = { ...empty(), threadId: thread.id, title: thread.title });
         add(t, r);
       }
+      const where = thread ? undefined : projectOf(r.dir, projects, home, profile, boards);
+      const pk = thread ? (thread.projectId ?? NO_PROJECT) : where!.key;
+      if (thread?.projectId) projectLabels[thread.projectId] = thread.projectName ?? thread.projectId;
+      if (where && !projectLabels[pk]) projectLabels[pk] = where.label ?? projects.find(p => p.id === pk)?.name ?? pk;
+      const ck = `${mid}\u0000${pk}\u0000${sk}\u0000${profile}`;
+      let cell = cells.get(ck);
+      if (!cell) { cells.set(ck, cell = { model: mid, project: pk, source: sk, profile, tokens: 0, costUsd: 0, priced: false, sessions: 0 }); cellIds.set(ck, new Set()); }
+      cell.tokens += r.input + r.output;
+      const cc = cost(r); if (cc != null) { cell.costUsd += cc; cell.priced = true; }
+      const ids = cellIds.get(ck)!; if (!ids.has(r.id)) { ids.add(r.id); cell.sessions++; }
       const dk = dayKey(r.started);
       let d = daily.get(dk);
       if (!d) daily.set(dk, d = { day: dk, tokens: 0, costUsd: null, sessions: 0, byModel: {} });
@@ -231,6 +280,13 @@ export function computeUsage(sets: UsageRows[], threads: UsageThreadRef[], days:
     sources: [...sources.values()].sort(byTokens),
     profiles: [...profiles.values()].sort(byTokens),
     threads: [...perThread.values()].sort(byTokens).slice(0, 8),
+    cells: [...cells.values()].filter(c => c.tokens > 0).map(c => ({ ...c, tokens: Math.round(c.tokens), costUsd: Math.round(c.costUsd * 1e4) / 1e4 })),
+    labels: {
+      model: Object.fromEntries([...models.values()].map(m => [m.id, m.label])),
+      project: projectLabels,
+      source: Object.fromEntries([...sources.values()].map(x => [x.key, x.label])),
+      profile: Object.fromEntries([...profiles.values()].map(x => [x.key, x.label])),
+    },
   };
 }
 
@@ -258,12 +314,13 @@ export const parseDays = (v: string | null): number | null => {
 // Rows are re-read at most once a minute; each range is then a few ms of arithmetic (also cached for that minute).
 let loaded: { at: number; sets: UsageRows[] } | undefined;
 const cache = new Map<string, UsageReport>();
-export function usage(days: number | null, threads: UsageThreadRef[], ttlMs = 60_000): UsageReport {
+const kanbanBoards = () => { try { return fs.readdirSync(path.join(hermesHome(), 'kanban', 'boards')); } catch { return []; } };
+export function usage(days: number | null, threads: UsageThreadRef[], ttlMs = 60_000, projects: UsageProjectRef[] = []): UsageReport {
   const now = Date.now();
   if (!loaded || now - loaded.at >= ttlMs) { loaded = { at: now, sets: loadRows(usageDbs()) }; cache.clear(); refreshPrices(loaded.sets, now); }
   const key = String(days);
   let report = cache.get(key);
-  if (!report) cache.set(key, report = computeUsage(loaded.sets, threads, days, now));
+  if (!report) cache.set(key, report = computeUsage(loaded.sets, threads, days, now, projects, os.homedir(), kanbanBoards()));
   return report;
 }
 

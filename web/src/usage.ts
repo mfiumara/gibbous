@@ -1,5 +1,5 @@
 // Usage for Settings → Usage and the new-thread glance: pure shaping and formatting (fetching is in useUsage.ts).
-import type { UsageReport, UsageDay } from '../../server/usage.ts';
+import type { UsageCell, UsageReport, UsageDay } from '../../server/usage.ts';
 
 export type { UsageReport, UsageDay };
 export type Range = '7' | '30' | '90' | 'all';
@@ -51,4 +51,31 @@ export function glance(r: UsageReport | null | undefined): { tokens: string; mod
     model: top && top.tokens > 0 ? `${top.tokens / r.totals.tokens >= 0.5 ? 'mostly' : 'led by'} ${top.label}` : undefined,
     cost: r.totals.costUsd != null && r.totals.costUsd >= 0.01 ? `~${fmtCost(r.totals.costUsd)} API-equivalent` : undefined,
   };
+}
+
+// Breakdown: the report's cells grouped by one dimension, each row split by another, after filters.
+export type Dim = 'project' | 'model' | 'source' | 'profile';
+export type Metric = 'tokens' | 'cost';
+export interface BreakRow { key: string; total: number; sessions: number; parts: { key: string; value: number }[] }
+export function breakdown(cells: UsageCell[], group: Dim, split: Dim | null, filters: Partial<Record<Dim, string>>, metric: Metric): BreakRow[] {
+  const rows = new Map<string, BreakRow & { m: Map<string, number> }>();
+  for (const c of cells) {
+    if (Object.entries(filters).some(([d, v]) => v != null && c[d as Dim] !== v)) continue;
+    const v = metric === 'cost' ? c.costUsd : c.tokens;
+    if (!v) continue;
+    const k = c[group];
+    let r = rows.get(k);
+    if (!r) rows.set(k, r = { key: k, total: 0, sessions: 0, parts: [], m: new Map() });
+    r.total += v; r.sessions += c.sessions;
+    const sk = split ? c[split] : '';
+    r.m.set(sk, (r.m.get(sk) ?? 0) + v);
+  }
+  return [...rows.values()].map(({ m, ...r }) => ({ ...r, parts: [...m].map(([key, value]) => ({ key, value })).sort((a, b) => b.value - a.value) }))
+    .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key));
+}
+/** The split values that get their own colour (largest overall first); the rest share "other". */
+export function splitSeries(rows: BreakRow[], n = 6): string[] {
+  const t = new Map<string, number>();
+  for (const r of rows) for (const p of r.parts) t.set(p.key, (t.get(p.key) ?? 0) + p.value);
+  return [...t].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
 }

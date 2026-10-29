@@ -2,10 +2,10 @@
 // every Hermes state.db by the Gibbous server (/api/usage). Charts are hand-drawn SVG; numbers are tabular.
 import { LimitsCard } from '../Limits';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { Segmented, Skeleton, Empty, MoonDisc } from '../ui';
 import { useUsage } from '../useUsage';
-import { buckets, fmtCount, fmtCost, fmtPct, niceMax, seriesOf, type Range, type UsageReport, type Bucket } from '../usage';
+import { buckets, breakdown, splitSeries, fmtCount, fmtCost, fmtPct, niceMax, seriesOf, type Range, type UsageReport, type Bucket, type Dim, type Metric } from '../usage';
 
 const RANGES: { value: Range; label: string }[] = [{ value: '7', label: '7d' }, { value: '30', label: '30d' }, { value: '90', label: '90d' }, { value: 'all', label: 'All' }];
 const RANGE_WORDS: Record<Range, string> = { '7': 'the last 7 days', '30': 'the last 30 days', '90': 'the last 90 days', all: 'all time' };
@@ -127,19 +127,71 @@ function Models({ r, series }: { r: UsageReport; series: string[] }) {
   </div>;
 }
 
-function Groups({ rows, total, limit = 6 }: { rows: { key: string; label: string; tokens: number; sessions: number }[]; total: number; limit?: number }) {
+
+// One card instead of Models / Where it ran / Profiles: group by any of the four, split each bar by another, and click a
+// bar segment or legend entry to narrow to it ("which projects use Opus 5.5" = Group by Project, click Opus 5.5).
+const DIMS: { value: Dim; label: string; word: string }[] = [
+  { value: 'project', label: 'Project', word: 'project' }, { value: 'model', label: 'Model', word: 'model' },
+  { value: 'source', label: 'Where it ran', word: 'where it ran' }, { value: 'profile', label: 'Profile', word: 'profile' },
+];
+const pref = <T,>(k: string, d: T): T => { try { return (JSON.parse(localStorage.getItem(k) ?? 'null') as T) ?? d; } catch { return d; } };
+function Breakdown({ r, series }: { r: UsageReport; series: string[] }) {
+  const [group, setGroup] = useState<Dim>(() => pref('gibbous.usage.group', 'project'));
+  const [split, setSplit] = useState<Dim | null>(() => pref<Dim | null>('gibbous.usage.split', 'model'));
+  const [metric, setMetric] = useState<Metric>(() => pref('gibbous.usage.metric', 'tokens'));
+  const [filters, setFilters] = useState<Partial<Record<Dim, string>>>({});
   const [all, setAll] = useState(false);
-  const cut = rows.length > limit + 1 && !all; // never hide just one row behind a "Show 1 more"
-  const shown = cut ? rows.slice(0, limit) : rows;
-  return <div>
-    <div className="flex gap-3 pb-2 label"><span className="flex-1" /><span>Sessions</span><span className="w-12 text-right">Tokens</span></div>
-    <ul className="space-y-2.5">{shown.map(g => (
-      <li key={g.key} className="text-[13px] space-y-1.5">
-        <div className="flex items-baseline gap-3"><span className="flex-1 truncate">{g.label}</span><span className="text-[12px] text-ash tabular-nums">{g.sessions.toLocaleString()}</span><span className="w-12 tabular-nums text-right">{fmtCount(g.tokens)}</span></div>
-        <Bar f={g.tokens / (total || 1)} c="var(--color-chart)" />
-      </li>
-    ))}</ul>
-    {rows.length > limit + 1 && <button onClick={() => setAll(!all)} className="press mt-3 text-[12px] text-dust hover:text-moon">{all ? 'Show fewer' : `Show ${rows.length - limit} more`}</button>}
+  useEffect(() => { localStorage.setItem('gibbous.usage.group', JSON.stringify(group)); localStorage.setItem('gibbous.usage.split', JSON.stringify(split)); localStorage.setItem('gibbous.usage.metric', JSON.stringify(metric)); }, [group, split, metric]);
+  const priced = r.cells.some(c => c.priced);
+  const m: Metric = priced ? metric : 'tokens';
+  const sp = split === group ? null : split;
+  const rows = useMemo(() => breakdown(r.cells, group, sp, filters, m), [r, group, sp, filters, m]);
+  // Models keep the colours they have in the per-day chart; other dimensions colour their largest values.
+  const keys = useMemo(() => sp === 'model' ? series : sp ? splitSeries(rows) : [], [sp, series, rows]);
+  const colorOf = (k: string) => { const i = keys.indexOf(k); return sp ? color(i) : 'var(--color-chart)'; };
+  const label = (d: Dim, k: string) => r.labels[d][k] ?? k;
+  const total = rows.reduce((n, x) => n + x.total, 0) || 1, max = Math.max(1, ...rows.map(x => x.total));
+  const fmt = (v: number) => m === 'cost' ? `~${fmtCost(v)}` : fmtCount(v);
+  const narrow = (d: Dim, k: string) => { setFilters(f => f[d] === k ? (({ [d]: _, ...rest }) => rest)(f) : { ...f, [d]: k }); setAll(false); };
+  const limit = 8, cut = rows.length > limit + 1 && !all, shown = cut ? rows.slice(0, limit) : rows;
+  const legend = sp ? [...keys.filter(k => rows.some(x => x.parts.some(p => p.key === k))), ...(rows.some(x => x.parts.some(p => !keys.includes(p.key))) ? ['\u0000other'] : [])] : [];
+  const sel = 'h-7 rounded-md bg-well border border-line px-2 text-[12.5px] text-moon focus:outline-none focus:border-tide/50';
+  return <div className="space-y-3.5">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px] text-dust">
+      <Segmented label="Group by" value={group} onChange={v => { setGroup(v); if (split === v) setSplit(group); }} options={DIMS.map(d => ({ value: d.value, label: d.label }))} />
+      <label className="inline-flex items-center gap-1.5">split by
+        <select aria-label="Split by" className={sel} value={sp ?? ''} onChange={e => setSplit((e.target.value || null) as Dim | null)}>
+          <option value="">nothing</option>
+          {DIMS.filter(d => d.value !== group).map(d => <option key={d.value} value={d.value}>{d.word}</option>)}
+        </select></label>
+      {priced && <span className="sm:ml-auto"><Segmented label="Measure" value={m} onChange={setMetric} options={[{ value: 'tokens', label: 'Tokens' }, { value: 'cost', label: 'API-eq.' }]} /></span>}
+    </div>
+    {Object.keys(filters).length > 0 && <div className="flex flex-wrap gap-1.5">
+      {(Object.entries(filters) as [Dim, string][]).map(([d, k]) => <button key={d} onClick={() => narrow(d, k)} className="press inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1.5 rounded-full bg-ridge text-[12px] text-moon">
+        <span className="text-ash">{DIMS.find(x => x.value === d)!.label}:</span>{label(d, k)}<X size={12} className="text-ash" /></button>)}
+      <button onClick={() => setFilters({})} className="press h-6 px-2 text-[12px] text-ash hover:text-moon">Clear</button>
+    </div>}
+    {!rows.length ? <p className="text-[13px] text-ash py-6 text-center">Nothing matches.</p> : <ul className="space-y-2.5">{shown.map(x => (
+      <li key={x.key} className="text-[13px] space-y-1.5">
+        <div className="flex items-baseline gap-3">
+          <button onClick={() => narrow(group, x.key)} className="press flex-1 min-w-0 truncate text-left text-moon hover:text-tide" data-tip={`Only ${label(group, x.key)}`}>{label(group, x.key)}</button>
+          <span className="text-[12px] text-ash tabular-nums" data-tip="sessions">{x.sessions.toLocaleString()}</span>
+          <span className="w-16 tabular-nums text-right">{fmt(x.total)}</span>
+          <span className="w-10 tabular-nums text-right text-[12px] text-dust hidden sm:block">{fmtPct(x.total / total)}</span>
+        </div>
+        <span className="flex h-[7px] rounded-full bg-ridge/80 overflow-hidden" style={{ width: `${Math.max(1.5, x.total / max * 100)}%` }}>
+          {x.parts.map(p => <span key={p.key} role={sp ? 'button' : undefined} tabIndex={sp ? 0 : undefined}
+            onClick={sp ? () => narrow(sp, p.key) : undefined} onKeyDown={sp ? e => { if (e.key === 'Enter') narrow(sp, p.key); } : undefined}
+            data-tip={sp ? `${label(sp, p.key)} · ${fmt(p.value)} · ${fmtPct(p.value / x.total)}` : undefined}
+            className={`block h-full transition-[width,opacity] duration-300 ${sp ? 'cursor-pointer hover:opacity-80' : ''}`}
+            style={{ width: `${p.value / x.total * 100}%`, background: colorOf(p.key) }} />)}
+        </span>
+      </li>))}</ul>}
+    {rows.length > limit + 1 && <button onClick={() => setAll(!all)} className="press text-[12px] text-dust hover:text-moon">{all ? 'Show fewer' : `Show ${rows.length - limit} more`}</button>}
+    {legend.length > 0 && <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 pt-1 text-[12px] text-dust">
+      {legend.map(k => k === '\u0000other' ? <span key={k} className="inline-flex items-center gap-1.5"><Dot c={color(-1)} />other</span>
+        : <button key={k} onClick={() => narrow(sp!, k)} className={`press inline-flex items-center gap-1.5 hover:text-moon ${filters[sp!] === k ? 'text-moon' : ''}`}><Dot c={colorOf(k)} />{label(sp!, k)}</button>)}
+    </div>}
   </div>;
 }
 
@@ -188,11 +240,8 @@ export function UsageTab() {
             {others > 0 && <span className="inline-flex items-center gap-1.5"><Dot c={color(-1)} />{others} other{others === 1 ? '' : 's'}</span>}
           </div>
         </Card>
-        <Card title="Models" aside={`${shown.models.length}`}><Models r={shown} series={series} /></Card>
-        <div className="grid sm:grid-cols-2 gap-4">
-          <Card title="Where it ran"><Groups rows={shown.sources} total={shown.totals.tokens} /></Card>
-          <Card title="Profiles" aside={`${shown.profiles.length}`}><Groups rows={shown.profiles} total={shown.totals.tokens} /></Card>
-        </div>
+        {shown.cells ? <Card title="Breakdown" aside="click a bar or colour to narrow"><Breakdown r={shown} series={series} /></Card>
+          : <Card title="Models" aside={`${shown.models.length}`}><Models r={shown} series={series} /></Card>}
         {shown.threads.length > 0 && <Card title="Top threads" aside="incl. subagents"><Threads r={shown} /></Card>}
         <p className="text-[11.5px] text-ash px-1">Tokens are input plus output; cache reads are counted separately. API-equivalent cost is an estimate at API list prices. Subscription use (a ChatGPT/Codex login) is priced at the same list prices, at the base rate (long-prompt surcharges aren't known): that's what it would have cost on the API, not what you paid.</p>
       </div>}

@@ -490,7 +490,7 @@ route('POST', '/api/threads/retitle', async (_, b) => {
 // Account limits (Codex / Claude session and weekly windows), from Hermes. ?fresh=1 re-asks (at most every 20s).
 route('GET', '/api/limits', (_, __, u) => accountLimits(u.searchParams.get('fresh') === '1'));
 route('POST', '/api/limits/codex/reset', (_, b) => redeemCodexReset(b?.force === true));
-route('GET', '/api/usage', (_, __, u) => usage(parseDays(u.searchParams.get('days')), state.threads.filter(t => !t.host).map(t => ({ id: t.id, title: t.title, sessionId: t.sessionId }))));
+route('GET', '/api/usage', (_, __, u) => usage(parseDays(u.searchParams.get('days')), state.threads.filter(t => !t.host).map(t => ({ id: t.id, title: t.title, sessionId: t.sessionId, projectId: t.projectId, projectName: state.projects.find(p => p.id === t.projectId)?.name })), 60_000, state.projects.map(p => ({ id: p.id, name: p.name, path: p.path }))));
 route('GET', '/api/threads/:id/subagents', p => { const t = need(orch.thread(p.id), 'thread'); return { subagents: t.host ? [] : listSubagents(t.sessionId, t.profile) }; });
 route('GET', '/api/threads/:id/history', (p, _, u) => {
   const n = (k: string) => { const v = u.searchParams.get(k); return v == null || v === '' ? undefined : Number(v) || 0; };

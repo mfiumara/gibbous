@@ -134,3 +134,28 @@ test('costOf: subscription use is priced at the API list price; API use keeps He
   assert.equal(costOf({ ...r, model: 'k3' }, table), null);
   assert.equal(costOf({ ...r, provider: 'anthropic', status: 'estimated', est: null }, table), null);
 });
+
+test('cells: one per model × project × where it ran × profile; they add up to the totals', () => {
+  const r = computeUsage(dbs, [{ id: 'T1', title: 'Fix login', sessionId: 's1', projectId: 'p1', projectName: 'biss-client' }], 7, NOW);
+  assert.equal(r.cells.reduce((n, c) => n + c.tokens, 0), r.totals.tokens);
+  const opus = r.cells.filter(c => c.model === r.models.find(m => /opus/.test(m.id))!.id);
+  assert.deepEqual(opus.map(c => [c.project, c.source, c.sessions]).sort(), [['p1', 'subagents', 1], ['p1', 'threads', 2]]);
+  assert.equal(r.labels.project.p1, 'biss-client');
+  assert.ok(r.cells.some(c => c.project === '-outside' && c.source === 'cron'));
+  assert.ok(r.cells.some(c => c.profile === 'review'));
+});
+
+test('projectOf: project folders and their worktrees, other repos by name, nothing → no folder', async () => {
+  const { projectOf } = await import('./usage.ts');
+  const ps = [{ id: 'p1', name: 'biss-client', path: '/r/biss-client' }, { id: 'p2', name: 'pkg', path: '/r/biss-client/packages/x' }];
+  assert.equal(projectOf('/r/biss-client/src', ps).key, 'p1');
+  assert.equal(projectOf('/r/biss-client/packages/x/y', ps).key, 'p2');
+  assert.equal(projectOf('/h/.gibbous/worktrees/biss-client/fix-leds', ps).key, 'p1');
+  assert.deepEqual(projectOf('/r/repos/spice-ts/packages/core', ps), { key: 'dir:spice-ts', label: 'spice-ts' });
+  assert.equal(projectOf('/h/.hermes/cache/scratch/x', ps, '/h').key, '-other');
+  assert.deepEqual(projectOf('/h/fiumaralabs/site', ps, '/h'), { key: 'dir:fiumaralabs', label: 'fiumaralabs' });
+  assert.equal(projectOf(null, ps, '/h', 'biss-client-engineer', ['biss-client', 'biss']).key, 'p1');
+  assert.deepEqual(projectOf(null, ps, '/h', 'spice-ts-review', ['spice-ts']), { key: 'dir:spice-ts', label: 'spice-ts' });
+  assert.equal(projectOf(null, ps).key, '-outside');
+  assert.equal(projectOf('/h', ps, '/h').key, '-outside');
+});

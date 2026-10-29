@@ -44,3 +44,15 @@ test('glance names the top model and the API-equivalent cost, or hides', () => {
   assert.equal(glance(null), null);
   assert.deepEqual(seriesOf([{ id: 'a', tokens: 3 }, { id: 'b', tokens: 0 }]), ['a']);
 });
+
+test('breakdown: group, split and filter the cells; splitSeries picks the largest split values', async () => {
+  const { breakdown, splitSeries } = await import('./usage.ts');
+  const c = (model: string, project: string, tokens: number, costUsd = 0) => ({ model, project, source: 'threads', profile: 'default', tokens, costUsd, priced: costUsd > 0, sessions: 1 });
+  const cells = [c('opus', 'biss', 100, 2), c('opus', 'gib', 300, 6), c('gpt', 'biss', 50), c('gpt', 'gib', 10)];
+  const byProject = breakdown(cells, 'project', 'model', {}, 'tokens');
+  assert.deepEqual(byProject.map(r => [r.key, r.total]), [['gib', 310], ['biss', 150]]);
+  assert.deepEqual(byProject[0].parts, [{ key: 'opus', value: 300 }, { key: 'gpt', value: 10 }]);
+  assert.deepEqual(breakdown(cells, 'project', null, { model: 'gpt' }, 'tokens').map(r => [r.key, r.total, r.parts.length]), [['biss', 50, 1], ['gib', 10, 1]]);
+  assert.deepEqual(breakdown(cells, 'project', 'model', {}, 'cost').map(r => [r.key, r.total]), [['gib', 6], ['biss', 2]]);
+  assert.deepEqual(splitSeries(byProject, 1), ['opus']);
+});
