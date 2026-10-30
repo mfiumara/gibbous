@@ -436,7 +436,9 @@ export function Sidebar({ route, onAddProject }: { route: Route; onAddProject():
         <button disabled={!picked.size} className="press px-2 h-7 pointer-coarse:h-9 rounded-md text-oxide hover:bg-line disabled:opacity-40" onClick={() => { deleteWithUndo(threads.filter(t => picked.has(t.id))); endSelect(); }}>Delete</button>
       </div>}
       <SelectCtx.Provider value={selCtx}>
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 pt-3 pb-3 space-y-3.5">
+      {/* Scrolled: the top edge fades, so a row cut off there reads as "more above" rather than a broken row. */}
+      <div onScroll={e => e.currentTarget.toggleAttribute('data-scrolled', e.currentTarget.scrollTop > 2)}
+        className="flex-1 min-h-0 overflow-y-auto px-2 pt-3 pb-3 space-y-3.5 data-[scrolled]:[mask-image:linear-gradient(to_bottom,transparent,black_28px)]">
         {space && !shown.length && <div className="px-3 py-2 space-y-2 text-[13px] text-ash">
           <p>{projects.some(p => inSpace(p, space)) ? 'This space’s projects are hidden.' : 'No projects here yet. Move one here from All.'}</p>
           <button onClick={() => projects.some(p => inSpace(p, space)) ? setHidden(hidden.filter(id => !projects.some(p => p.id === id && inSpace(p, space)))) : useStore.getState().setActiveSpace('')}
