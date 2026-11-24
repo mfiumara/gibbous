@@ -14,9 +14,14 @@ import { notify } from './push.ts';
 import * as Q from './queue.ts';
 import { historyPage, forkSeed, allRows } from './history.ts';
 import { openStateDb } from './subagents.ts';
+import { ToolShots } from './toolShots.ts';
+import { GIBBOUS_HOME } from './store.ts';
 import { defaultShell, shellArgs, sys } from './platform.ts';
 
 export interface OpenRequest { id: string; method: string; params: any; threadId?: string; at: number; host?: string }
+
+export const toolShots = new ToolShots(path.join(GIBBOUS_HOME, 'cache', 'tool-shots'));
+toolShots.prune();
 
 export class Orchestrator extends EventEmitter {
   hc: HermesClient;                              // this Mac's Hermes
@@ -218,6 +223,7 @@ export class Orchestrator extends EventEmitter {
     const tid = this.byLive.get(ev.session_id);
     const t = tid ? this.thread(tid) : undefined;
     if (!t) return;
+    if (ev.type === 'tool.complete' && ev.payload?.tool_id) toolShots.keep(String(ev.payload.tool_id), [ev.payload.result, ev.payload.result_text]);
     if (ev.type === 'connection.request' || ev.type === 'connection.update') { this.onConnection(t, ev.session_id, ev.type, ev.payload ?? {}); return; }
     if ((ev.type === 'session.usage' || ev.type === 'message.complete') && ev.payload?.usage) {
       const u = ev.payload.usage;

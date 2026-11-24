@@ -10,7 +10,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { ensureBackend, upstreamUrl, restGet, HermesClient, HermesMissing, type Backend } from './hermes.ts';
 import { Installer, detectHermes, hermesVersion, modelState, installerCommand, manualInstallCommand, setupOs, INSTALL_DOCS, type InstallResult, type ModelState } from './setup.ts';
 import { ensureRemoteBackend, closeHost, testHost, findLogin, hostNotices } from './hosts.ts';
-import { Orchestrator } from './orchestrator.ts';
+import { Orchestrator, toolShots } from './orchestrator.ts';
 import { state, save, saveNow, backup, restore, secret, newId, readJson, GIBBOUS_HOME, type Host } from './store.ts';
 import * as kanban from './kanban.ts';
 import { unreadCount, openHumanTask, humanTasks, addHumanTasks, patchHumanTask, removeHumanTask, completeHumanTask, taskNotifier } from './humanTasks.ts';
@@ -741,6 +741,9 @@ route('POST', '/api/fs/mkdir', (_, b) => {
 const IMAGE_MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 async function serveImage(u: URL, res: http.ServerResponse) {
   let p = path.resolve(u.searchParams.get('path') ?? '');
+  // A tool step's own copy of the picture, taken when it finished (the file itself may have been overwritten since).
+  const kept = u.searchParams.get('tool') ? toolShots.find(u.searchParams.get('tool')!, p) : undefined;
+  if (kept) { res.writeHead(200, { 'Content-Type': IMAGE_MIME[path.extname(kept)] ?? 'image/png', 'Cache-Control': 'private, max-age=604800, immutable' }); fs.createReadStream(kept).pipe(res); return; }
   if (isHeic(p) && (isInside(p, sys().home) || inTemp(p)) && fs.existsSync(p)) p = await heicJpeg(p);
   const type = IMAGE_MIME[path.extname(p).toLowerCase()];
   // Agents often render screenshots/plots into the system temp folder ($TMPDIR, per user on macOS): images only.

@@ -14,7 +14,7 @@ import { useStore, toastError } from '../store';
 import { baseName } from '../paths';
 
 // Local file paths (attachments, generated images) load through the authenticated image route.
-export const imageSrc = (src: string) => /^(https?:|data:|blob:)/.test(src) ? src : `/api/image?path=${encodeURIComponent(src.replace(/^file:\/\//, ''))}`;
+export const imageSrc = (src: string, tool?: string) => /^(https?:|data:|blob:)/.test(src) ? src : `/api/image?path=${encodeURIComponent(src.replace(/^file:\/\//, ''))}${tool ? `&tool=${encodeURIComponent(tool)}` : ''}`;
 
 // Copies the quote as you see it: one line per paragraph/list item, without the "+ For me" buttons.
 function QuoteBlock({ children, ...p }: React.ComponentProps<'blockquote'>) {
@@ -250,10 +250,10 @@ function resultImages(r: unknown): string[] {
 }
 
 // A tool's image; one that's gone (temp file cleaned up, moved) shrinks to a quiet note instead of a broken box.
-function ToolImage({ src }: { src: string }) {
+function ToolImage({ src, tool }: { src: string; tool?: string }) {
   const [gone, setGone] = useState(false);
   if (gone) return <span className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-line text-[11.5px] text-ash" title={src}><ImageOff size={12} />{baseName(src)} is no longer on disk</span>;
-  return <button onClick={() => viewMedia(imageSrc(src), baseName(src))} aria-label="View image" className="cursor-zoom-in"><img src={imageSrc(src)} alt="" loading="lazy" onError={() => setGone(true)} className="h-40 rounded-lg border border-line object-cover hover:border-ash transition-colors" /></button>;
+  return <button onClick={() => viewMedia(imageSrc(src, tool), baseName(src))} aria-label="View image" className="cursor-zoom-in"><img src={imageSrc(src, tool)} alt="" loading="lazy" onError={() => setGone(true)} className="h-40 rounded-lg border border-line object-cover hover:border-ash transition-colors" /></button>;
 }
 
 export const ToolRow = memo(function ToolRow({ item, cwd }: { item: Extract<Item, { kind: 'tool' }>; cwd?: string }) {
@@ -289,7 +289,7 @@ export const ToolRow = memo(function ToolRow({ item, cwd }: { item: Extract<Item
         {item.duration != null && <span className="ml-auto pl-2 font-mono text-[11px] text-ash flex-none">{item.duration < 1 ? `${Math.round(item.duration * 1000)}ms` : `${item.duration.toFixed(1)}s`}</span>}
       </button>
       {!open && item.diff && <div className="ml-6 my-1 animate-fade"><DiffView diff={item.diff} compact /></div>}
-      {images.length > 0 && <div className="ml-6 my-1.5 flex flex-wrap gap-2">{images.map(src => <ToolImage key={src} src={src} />)}</div>}
+      {images.length > 0 && <div className="ml-6 my-1.5 flex flex-wrap gap-2">{images.map(src => <ToolImage key={src} src={src} tool={item.id} />)}</div>}
       {open && (
         <div className="ml-6 my-1.5 space-y-2 animate-rise">
           {item.diff && <DiffView diff={item.diff} />}
