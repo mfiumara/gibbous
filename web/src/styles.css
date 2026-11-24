@@ -387,7 +387,10 @@ li p > .reply-task-action, table .reply-task-action, pre .reply-task-action { di
   /* No drag ghost when a click on a link or icon wanders a few pixels; real drags use draggable="true" and images in
      messages can still be dragged out. */
   :where(img, a) { -webkit-user-drag: none; }
-  :where(.prose-moon) :where(img, a), [draggable="true"] { -webkit-user-drag: auto; }
+  :where(.prose-moon) :where(img, a) { -webkit-user-drag: auto; }
+  /* WebKit implements draggable="true" as user-drag: element; "auto" here switched it off for anything that isn't a
+     link or image (project headers in the sidebar couldn't be dragged in Safari or the Mac app). */
+  [draggable="true"] { -webkit-user-drag: element; }
   /* No double-tap zoom (and no 300ms wait for it) anywhere; pans and pinch stay with the browser. Effective
      touch-action is the intersection up the tree, so this on html covers everything. */
   html { touch-action: manipulation; }
